@@ -2,12 +2,14 @@ use crate::document::Document;
 use lsp_types::*;
 
 use std::sync::Arc;
-use typedlua_core::ast::expression::{Expression, ExpressionKind};
-use typedlua_core::ast::pattern::Pattern;
-use typedlua_core::ast::statement::{ClassMember, Statement, VariableKind};
 use typedlua_core::diagnostics::CollectingDiagnosticHandler;
-use typedlua_core::string_interner::StringInterner;
-use typedlua_core::{Lexer, Parser, Span};
+use typedlua_parser::ast::expression::{Expression, ExpressionKind};
+use typedlua_parser::ast::pattern::Pattern;
+use typedlua_parser::ast::statement::{ClassMember, Statement, VariableKind};
+use typedlua_parser::lexer::Lexer;
+use typedlua_parser::parser::Parser;
+use typedlua_parser::span::Span;
+use typedlua_parser::string_interner::StringInterner;
 
 /// Provides semantic tokens for syntax highlighting based on semantic analysis
 pub struct SemanticTokensProvider {

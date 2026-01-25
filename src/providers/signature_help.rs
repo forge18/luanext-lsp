@@ -2,9 +2,10 @@ use crate::document::Document;
 use lsp_types::*;
 use std::sync::Arc;
 use typedlua_core::diagnostics::CollectingDiagnosticHandler;
-use typedlua_core::string_interner::StringInterner;
 use typedlua_core::typechecker::TypeChecker;
-use typedlua_core::{Lexer, Parser};
+use typedlua_parser::lexer::Lexer;
+use typedlua_parser::parser::Parser;
+use typedlua_parser::string_interner::StringInterner;
 
 /// Provides signature help (parameter info while typing function calls)
 pub struct SignatureHelpProvider;
@@ -138,8 +139,8 @@ impl SignatureHelpProvider {
         symbol: &typedlua_core::typechecker::Symbol,
         interner: &StringInterner,
     ) -> Option<SignatureInformation> {
-        use typedlua_core::ast::pattern::Pattern;
-        use typedlua_core::ast::types::TypeKind;
+        use typedlua_parser::ast::pattern::Pattern;
+        use typedlua_parser::ast::types::TypeKind;
 
         // Check if the type is a function
         if let TypeKind::Function(func_type) = &symbol.typ.kind {
@@ -182,10 +183,10 @@ impl SignatureHelpProvider {
     /// Simple type formatting
     fn format_type_simple(
         &self,
-        typ: &typedlua_core::ast::types::Type,
+        typ: &typedlua_parser::ast::types::Type,
         interner: &StringInterner,
     ) -> String {
-        use typedlua_core::ast::types::{PrimitiveType, TypeKind};
+        use typedlua_parser::ast::types::{PrimitiveType, TypeKind};
 
         match &typ.kind {
             TypeKind::Primitive(PrimitiveType::Nil) => "nil".to_string(),

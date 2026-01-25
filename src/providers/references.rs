@@ -2,13 +2,15 @@ use crate::document::{Document, DocumentManager};
 use lsp_types::{Uri, *};
 
 use std::sync::Arc;
-use typedlua_core::ast::{
+use typedlua_core::diagnostics::CollectingDiagnosticHandler;
+use typedlua_parser::ast::{
     expression::{Expression, ExpressionKind},
     statement::Statement,
 };
-use typedlua_core::diagnostics::CollectingDiagnosticHandler;
-use typedlua_core::string_interner::StringInterner;
-use typedlua_core::{Lexer, Parser, Span};
+use typedlua_parser::lexer::Lexer;
+use typedlua_parser::parser::Parser;
+use typedlua_parser::span::Span;
+use typedlua_parser::string_interner::StringInterner;
 
 /// Provides find-references functionality
 pub struct ReferencesProvider;
@@ -129,7 +131,7 @@ impl ReferencesProvider {
         symbol_name: &str,
         interner: &StringInterner,
     ) -> bool {
-        use typedlua_core::ast::statement::ExportKind;
+        use typedlua_parser::ast::statement::ExportKind;
 
         for stmt in statements {
             if let Statement::Export(export_decl) = stmt {
@@ -172,7 +174,7 @@ impl ReferencesProvider {
         name: &str,
         interner: &StringInterner,
     ) -> Option<Span> {
-        use typedlua_core::ast::pattern::Pattern;
+        use typedlua_parser::ast::pattern::Pattern;
 
         match stmt {
             Statement::Variable(var_decl) => {
@@ -279,7 +281,7 @@ impl ReferencesProvider {
         document_manager: &DocumentManager,
         interner: &StringInterner,
     ) -> Option<(Uri, String)> {
-        use typedlua_core::ast::statement::ImportClause;
+        use typedlua_parser::ast::statement::ImportClause;
 
         for stmt in statements {
             if let Statement::Import(import_decl) = stmt {
@@ -501,17 +503,17 @@ impl ReferencesProvider {
             ExpressionKind::Array(elements) => {
                 for elem in elements {
                     match elem {
-                        typedlua_core::ast::expression::ArrayElement::Expression(e) => {
+                        typedlua_parser::ast::expression::ArrayElement::Expression(e) => {
                             self.find_references_in_expression(e, name, refs, interner);
                         }
-                        typedlua_core::ast::expression::ArrayElement::Spread(e) => {
+                        typedlua_parser::ast::expression::ArrayElement::Spread(e) => {
                             self.find_references_in_expression(e, name, refs, interner);
                         }
                     }
                 }
             }
             ExpressionKind::Object(properties) => {
-                use typedlua_core::ast::expression::ObjectProperty;
+                use typedlua_parser::ast::expression::ObjectProperty;
                 for prop in properties {
                     match prop {
                         ObjectProperty::Property { value, .. } => {

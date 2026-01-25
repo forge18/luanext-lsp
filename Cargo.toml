@@ -18,6 +18,7 @@ path = "src/main.rs"
 [dependencies]
 # Core compiler (path relative to submodule location in workspace)
 typedlua-core = { path = "../typedlua-core" }
+typedlua-parser = { path = "../typedlua-parser" }
 
 # LSP
 lsp-server = "0.7"

@@ -1,10 +1,12 @@
 use crate::document::Document;
 use lsp_types::*;
 use std::sync::Arc;
-use typedlua_core::diagnostics::{CollectingDiagnosticHandler, DiagnosticLevel};
-use typedlua_core::string_interner::StringInterner;
+use typedlua_core::diagnostics::{CollectingDiagnosticHandler, DiagnosticHandler, DiagnosticLevel};
 use typedlua_core::typechecker::TypeChecker;
-use typedlua_core::{DiagnosticHandler, Lexer, Parser, Span};
+use typedlua_parser::lexer::Lexer;
+use typedlua_parser::parser::Parser;
+use typedlua_parser::span::Span;
+use typedlua_parser::string_interner::StringInterner;
 
 /// Provides diagnostics (errors and warnings) for documents
 pub struct DiagnosticsProvider;

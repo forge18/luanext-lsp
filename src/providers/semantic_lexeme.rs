@@ -1,16 +1,15 @@
 use crate::document::Document;
-use std::cell::RefCell;
-use typedlua_core::string_interner::StringInterner;
 use lsp_types::*;
 use std::cell::RefCell;
-use typedlua_core::string_interner::StringInterner;
 use std::sync::Arc;
-use typedlua_core::ast::expression::{Expression, ExpressionKind};
-use typedlua_core::ast::pattern::Pattern;
-use typedlua_core::ast::statement::{ClassMember, Statement, VariableKind};
 use typedlua_core::diagnostics::CollectingDiagnosticHandler;
-use typedlua_core::string_interner::StringInterner;
-use typedlua_core::{Lexer, Parser, Span};
+use typedlua_parser::ast::expression::{Expression, ExpressionKind};
+use typedlua_parser::ast::pattern::Pattern;
+use typedlua_parser::ast::statement::{ClassMember, Statement, VariableKind};
+use typedlua_parser::lexer::Lexer;
+use typedlua_parser::parser::Parser;
+use typedlua_parser::span::Span;
+use typedlua_parser::string_interner::StringInterner;
 
 /// Provides semantic tokens for syntax highlighting based on semantic analysis
 pub struct SemanticTokensProvider {
@@ -55,7 +54,7 @@ impl SemanticTokensProvider {
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (_interner, _common_ids) = StringInterner::new_with_common_identifiers();
         let (mut interner, common_ids) =
-            typedlua_core::string_interner::StringInterner::new_with_common_identifiers();
+            typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
         let mut lexer = Lexer::new(&document.text, handler.clone(), &mut interner);
         let tokens = match lexer.tokenize() {
             Ok(t) => t,

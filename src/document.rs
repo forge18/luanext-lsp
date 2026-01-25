@@ -8,18 +8,19 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
-use typedlua_core::ast::Program;
 use typedlua_core::diagnostics::CollectingDiagnosticHandler;
 use typedlua_core::module_resolver::{ModuleId, ModuleRegistry, ModuleResolver};
-use typedlua_core::string_interner::StringInterner;
 use typedlua_core::typechecker::SymbolTable;
-use typedlua_core::{Lexer, Parser};
+use typedlua_parser::ast::Program;
+use typedlua_parser::lexer::Lexer;
+use typedlua_parser::parser::Parser;
+use typedlua_parser::string_interner::StringInterner;
 
 /// Parsed AST along with its string interner for resolving StringId values
 pub type ParsedAst = (
     Arc<Program>,
     Arc<StringInterner>,
-    Arc<typedlua_core::string_interner::CommonIdentifiers>,
+    Arc<typedlua_parser::string_interner::CommonIdentifiers>,
 );
 
 /// Manages open documents and their cached analysis results

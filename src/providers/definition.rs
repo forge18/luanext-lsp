@@ -1,10 +1,12 @@
 use crate::document::{Document, DocumentManager};
 use lsp_types::{GotoDefinitionResponse, Location, Position, Range, Uri};
 use std::sync::Arc;
-use typedlua_core::ast::statement::Statement;
 use typedlua_core::diagnostics::CollectingDiagnosticHandler;
-use typedlua_core::string_interner::StringInterner;
-use typedlua_core::{Lexer, Parser, Span};
+use typedlua_parser::ast::statement::Statement;
+use typedlua_parser::lexer::Lexer;
+use typedlua_parser::parser::Parser;
+use typedlua_parser::span::Span;
+use typedlua_parser::string_interner::StringInterner;
 
 /// Provides go-to-definition functionality
 pub struct DefinitionProvider;
@@ -66,7 +68,7 @@ impl DefinitionProvider {
         document_manager: &DocumentManager,
         interner: &StringInterner,
     ) -> Option<Location> {
-        use typedlua_core::ast::statement::ImportClause;
+        use typedlua_parser::ast::statement::ImportClause;
 
         // Search for import statements that import this symbol
         for stmt in statements {
@@ -171,7 +173,7 @@ impl DefinitionProvider {
         let ast = parser.parse().ok()?;
 
         // Search for the exported declaration
-        use typedlua_core::ast::statement::ExportKind;
+        use typedlua_parser::ast::statement::ExportKind;
 
         for stmt in &ast.statements {
             if let Statement::Export(export_decl) = stmt {
@@ -232,7 +234,7 @@ impl DefinitionProvider {
         name: &str,
         interner: &StringInterner,
     ) -> Option<Span> {
-        use typedlua_core::ast::pattern::Pattern;
+        use typedlua_parser::ast::pattern::Pattern;
 
         match stmt {
             Statement::Variable(var_decl) => {
@@ -279,7 +281,7 @@ impl DefinitionProvider {
         name: &str,
         interner: &StringInterner,
     ) -> Option<Span> {
-        use typedlua_core::ast::pattern::Pattern;
+        use typedlua_parser::ast::pattern::Pattern;
 
         for stmt in statements {
             match stmt {

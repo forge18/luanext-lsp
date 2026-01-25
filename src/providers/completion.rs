@@ -2,9 +2,10 @@ use crate::document::Document;
 use lsp_types::*;
 use std::sync::Arc;
 use typedlua_core::diagnostics::CollectingDiagnosticHandler;
-use typedlua_core::string_interner::StringInterner;
 use typedlua_core::typechecker::{Symbol, SymbolKind, TypeChecker};
-use typedlua_core::{Lexer, Parser};
+use typedlua_parser::lexer::Lexer;
+use typedlua_parser::parser::Parser;
+use typedlua_parser::string_interner::StringInterner;
 
 /// Provides code completion (IntelliSense)
 pub struct CompletionProvider;
@@ -246,7 +247,7 @@ impl CompletionProvider {
 
     /// Format symbol detail for completion
     fn format_symbol_detail(symbol: &Symbol) -> String {
-        use typedlua_core::ast::types::{PrimitiveType, TypeKind};
+        use typedlua_parser::ast::types::{PrimitiveType, TypeKind};
 
         let kind_str = match symbol.kind {
             SymbolKind::Const => "const",

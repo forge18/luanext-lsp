@@ -2,9 +2,10 @@ use crate::document::Document;
 use lsp_types::*;
 use std::sync::Arc;
 use typedlua_core::diagnostics::CollectingDiagnosticHandler;
-use typedlua_core::string_interner::StringInterner;
 use typedlua_core::typechecker::{SymbolKind, TypeChecker};
-use typedlua_core::{Lexer, Parser};
+use typedlua_parser::lexer::Lexer;
+use typedlua_parser::parser::Parser;
+use typedlua_parser::string_interner::StringInterner;
 
 /// Provides hover information (type info, documentation, signatures)
 pub struct HoverProvider;
@@ -77,8 +78,8 @@ impl HoverProvider {
     }
 
     /// Format a type for display
-    fn format_type(typ: &typedlua_core::ast::types::Type, interner: &StringInterner) -> String {
-        use typedlua_core::ast::types::{PrimitiveType, TypeKind};
+    fn format_type(typ: &typedlua_parser::ast::types::Type, interner: &StringInterner) -> String {
+        use typedlua_parser::ast::types::{PrimitiveType, TypeKind};
 
         match &typ.kind {
             TypeKind::Primitive(PrimitiveType::Nil) => "nil".to_string(),

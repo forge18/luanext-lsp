@@ -1,10 +1,10 @@
 use lsp_types::{SymbolInformation, SymbolKind, Uri};
 use std::collections::{HashMap, HashSet};
-use typedlua_core::ast::statement::{ExportKind, ImportClause, OperatorKind, Statement};
-use typedlua_core::ast::Program;
 use typedlua_core::module_resolver::ModuleId;
-use typedlua_core::string_interner::StringInterner;
-use typedlua_core::Span;
+use typedlua_parser::ast::statement::{ExportKind, ImportClause, OperatorKind, Statement};
+use typedlua_parser::ast::Program;
+use typedlua_parser::string_interner::StringInterner;
+use typedlua_parser::Span;
 
 /// Information about an exported symbol
 #[derive(Debug, Clone)]
@@ -298,8 +298,8 @@ impl SymbolIndex {
         container_name: Option<String>,
         interner: &StringInterner,
     ) {
-        use typedlua_core::ast::pattern::Pattern;
-        use typedlua_core::ast::statement::ClassMember;
+        use typedlua_parser::ast::pattern::Pattern;
+        use typedlua_parser::ast::statement::ClassMember;
 
         match stmt {
             Statement::Variable(var_decl) => {
@@ -613,7 +613,7 @@ impl SymbolIndex {
         stmt: &Statement,
         interner: &StringInterner,
     ) -> Option<(String, String)> {
-        use typedlua_core::ast::pattern::Pattern;
+        use typedlua_parser::ast::pattern::Pattern;
 
         match stmt {
             Statement::Variable(var_decl) => {
