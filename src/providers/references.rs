@@ -341,7 +341,7 @@ impl ReferencesProvider {
         name: &str,
         interner: &StringInterner,
     ) -> Option<Span> {
-        use typedlua_core::ast::pattern::Pattern;
+        use typedlua_parser::ast::pattern::Pattern;
 
         for stmt in statements {
             match stmt {

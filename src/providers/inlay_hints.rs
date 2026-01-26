@@ -59,17 +59,21 @@ impl InlayHintsProvider {
     /// Collect hints from a statement
     fn collect_hints_from_statement(
         &self,
-        stmt: &Statement,
-        type_checker: &TypeChecker,
-        range: Range,
-        hints: &mut Vec<InlayHint>,
-        interner: &StringInterner,
+        _stmt: &Statement,
+        _type_checker: &TypeChecker,
+        _range: Range,
+        _hints: &mut Vec<InlayHint>,
+        _interner: &StringInterner,
     ) {
-        use typedlua_parser::ast::pattern::Pattern;
-        use typedlua_parser::ast::statement::ClassMember;
-        use typedlua_parser::ast::types::TypeKind;
-                                    if let typedlua_parser::ast::pattern::Pattern::Identifier(ident) =
+        // TODO: Implement inlay hint collection
+    }
+
+    /// Format a type for display
+    fn format_type_simple(
+        &self,
         typ: &typedlua_parser::ast::types::Type,
+        interner: &StringInterner,
+    ) -> String {
         use typedlua_parser::ast::types::{PrimitiveType, TypeKind};
 
         match &typ.kind {
