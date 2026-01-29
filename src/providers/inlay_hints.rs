@@ -3,7 +3,6 @@ use lsp_types::*;
 use std::sync::Arc;
 use typedlua_core::diagnostics::CollectingDiagnosticHandler;
 use typedlua_core::typechecker::TypeChecker;
-use typedlua_parser::ast::expression::{Expression, ExpressionKind};
 use typedlua_parser::ast::statement::Statement;
 use typedlua_parser::lexer::Lexer;
 use typedlua_parser::parser::Parser;
@@ -69,6 +68,7 @@ impl InlayHintsProvider {
     }
 
     /// Format a type for display
+    #[allow(dead_code)]
     fn format_type_simple(
         &self,
         typ: &typedlua_parser::ast::types::Type,
@@ -96,6 +96,7 @@ impl InlayHintsProvider {
 }
 
 /// Convert a Span to an LSP Position (start)
+#[allow(dead_code)]
 fn span_to_position_start(span: &Span) -> Position {
     Position {
         line: (span.line.saturating_sub(1)) as u32,
@@ -104,6 +105,7 @@ fn span_to_position_start(span: &Span) -> Position {
 }
 
 /// Convert a Span to an LSP Position (end)
+#[allow(dead_code)]
 fn span_to_position_end(span: &Span) -> Position {
     Position {
         line: (span.line.saturating_sub(1)) as u32,
