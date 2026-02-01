@@ -58,13 +58,47 @@ impl InlayHintsProvider {
     /// Collect hints from a statement
     fn collect_hints_from_statement(
         &self,
-        _stmt: &Statement,
-        _type_checker: &TypeChecker,
-        _range: Range,
-        _hints: &mut Vec<InlayHint>,
-        _interner: &StringInterner,
+        stmt: &Statement,
+        type_checker: &TypeChecker,
+        range: Range,
+        hints: &mut Vec<InlayHint>,
+        interner: &StringInterner,
     ) {
-        // TODO: Implement inlay hint collection
+        match stmt {
+            Statement::Variable(decl) => {
+                if decl.type_annotation.is_none() {
+                    let stmt_start = span_to_position_start(&decl.span);
+                    let stmt_end = span_to_position_end(&decl.span);
+
+                    if stmt_start.line >= range.start.line && stmt_end.line <= range.end.line {
+                        let pattern_end = span_to_position_end(&decl.pattern.span());
+
+                        hints.push(InlayHint {
+                            position: pattern_end,
+                            label: InlayHintLabel::String(": unknown".to_string()),
+                            kind: Some(InlayHintKind::TYPE),
+                            text_edits: None,
+                            tooltip: None,
+                            padding_left: Some(true),
+                            padding_right: Some(false),
+                            data: None,
+                        });
+                    }
+                }
+            }
+            Statement::Block(block) => {
+                for inner_stmt in &block.statements {
+                    self.collect_hints_from_statement(
+                        inner_stmt,
+                        type_checker,
+                        range,
+                        hints,
+                        interner,
+                    );
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Format a type for display
