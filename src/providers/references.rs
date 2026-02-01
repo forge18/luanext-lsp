@@ -312,6 +312,22 @@ impl ReferencesProvider {
                         }
                     }
                     ImportClause::TypeOnly(_) => None,
+                    ImportClause::Mixed { default, named } => {
+                        // Check default import first
+                        if interner.resolve(default.node) == symbol_name {
+                            Some("default".to_string())
+                        } else {
+                            // Check named imports
+                            named.iter().find_map(|spec| {
+                                let local_name = spec.local.as_ref().unwrap_or(&spec.imported);
+                                if interner.resolve(local_name.node) == symbol_name {
+                                    Some(interner.resolve(spec.imported.node).to_string())
+                                } else {
+                                    None
+                                }
+                            })
+                        }
+                    }
                 };
 
                 if let Some(exported_name) = exported_name {

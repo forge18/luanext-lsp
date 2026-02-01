@@ -92,6 +92,7 @@ impl HoverProvider {
             TypeKind::Primitive(PrimitiveType::Void) => "void".to_string(),
             TypeKind::Primitive(PrimitiveType::Table) => "table".to_string(),
             TypeKind::Primitive(PrimitiveType::Coroutine) => "coroutine".to_string(),
+            TypeKind::Primitive(PrimitiveType::Thread) => "thread".to_string(),
             TypeKind::Literal(_) => "literal".to_string(),
             TypeKind::Union(_) => "union type".to_string(),
             TypeKind::Intersection(_) => "intersection type".to_string(),

@@ -272,6 +272,53 @@ impl SymbolIndex {
                         ImportClause::TypeOnly(_) => {
                             // Type-only imports could be handled similarly to Named
                         }
+                        ImportClause::Mixed { default, named } => {
+                            // Handle default import
+                            let local_name = interner.resolve(default.node);
+                            let import_info = ImportInfo {
+                                local_name: local_name.clone(),
+                                imported_name: "default".to_string(),
+                                source_uri: source_uri.clone(),
+                                importing_uri: uri.clone(),
+                            };
+
+                            self.imports
+                                .entry((module_id.clone(), local_name))
+                                .or_insert_with(Vec::new)
+                                .push(import_info);
+
+                            self.importers
+                                .entry((source_module_id.clone(), "default".to_string()))
+                                .or_insert_with(HashSet::new)
+                                .insert(uri.clone());
+
+                            // Handle named imports
+                            for spec in named {
+                                let imported_name = interner.resolve(spec.imported.node);
+                                let local_name = spec
+                                    .local
+                                    .as_ref()
+                                    .map(|l| interner.resolve(l.node))
+                                    .unwrap_or_else(|| imported_name.clone());
+
+                                let import_info = ImportInfo {
+                                    local_name: local_name.clone(),
+                                    imported_name: imported_name.clone(),
+                                    source_uri: source_uri.clone(),
+                                    importing_uri: uri.clone(),
+                                };
+
+                                self.imports
+                                    .entry((module_id.clone(), local_name))
+                                    .or_insert_with(Vec::new)
+                                    .push(import_info);
+
+                                self.importers
+                                    .entry((source_module_id.clone(), imported_name))
+                                    .or_insert_with(HashSet::new)
+                                    .insert(uri.clone());
+                            }
+                        }
                     }
                 }
             }
