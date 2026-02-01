@@ -1,3 +1,20 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# CLAUDE.md at all levels
+**/CLAUDE.md
 CLAUDE.md
-/*/CLAUDE.md
-/**/CLAUDE.md
