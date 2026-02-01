@@ -18,7 +18,8 @@ required-features = ["compiler"]
 
 [dependencies]
 # Core compiler (optional - enabled with "compiler" feature)
-typedlua-core = { path = "../typedlua-core", optional = true }
+# Path relative to submodule location in workspace
+typedlua-core = { path = "typedlua-core", optional = true }
 typedlua-parser = { path = "../typedlua-parser", optional = true }
 
 # LSP
