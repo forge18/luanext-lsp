@@ -1,11 +1,15 @@
 use crate::document::DocumentManager;
+#[cfg(feature = "compiler")]
 use crate::providers::*;
 use anyhow::Result;
-use lsp_server::{Notification, Request, RequestId, Response};
+use lsp_server::{Notification, Response};
+#[cfg(feature = "compiler")]
+use lsp_server::{Request, RequestId};
 use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
     PublishDiagnostics,
 };
+#[cfg(feature = "compiler")]
 use lsp_types::request::{
     CodeActionRequest, CodeActionResolveRequest, Completion, DocumentSymbolRequest,
     FoldingRangeRequest, Formatting, GotoDefinition, HoverRequest, InlayHintRequest,
@@ -22,7 +26,145 @@ pub trait LspConnection {
     fn send_notification(&self, notification: Notification) -> Result<()>;
 }
 
-/// Message handler containing all LSP request/notification handling logic
+/// Basic message handler for document lifecycle and diagnostics (no type-aware features)
+///
+/// This handler provides core LSP functionality without requiring typedlua-core:
+/// - Document lifecycle (open, change, save, close)
+/// - Publishing diagnostics
+///
+/// Use this when you need LSP document management without full type checking capabilities.
+/// For complete IDE features (completion, hover, goto-definition, etc.), use `MessageHandler`.
+pub struct BasicMessageHandler;
+
+impl BasicMessageHandler {
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// Handle LSP notifications (document lifecycle events)
+    pub fn handle_notification<C: LspConnection>(
+        &self,
+        connection: &C,
+        not: Notification,
+        document_manager: &mut DocumentManager,
+    ) -> Result<()> {
+        match Self::cast_notification::<DidOpenTextDocument>(not.clone()) {
+            Ok(params) => {
+                document_manager.open(params);
+                return Ok(());
+            }
+            Err(not) => not,
+        };
+
+        match Self::cast_notification::<DidChangeTextDocument>(not.clone()) {
+            Ok(params) => {
+                document_manager.change(params);
+                return Ok(());
+            }
+            Err(not) => not,
+        };
+
+        match Self::cast_notification::<DidSaveTextDocument>(not.clone()) {
+            Ok(params) => {
+                document_manager.save(params);
+                return Ok(());
+            }
+            Err(not) => not,
+        };
+
+        match Self::cast_notification::<DidCloseTextDocument>(not.clone()) {
+            Ok(params) => {
+                let uri = params.text_document.uri.clone();
+                document_manager.close(params);
+                // Clear diagnostics on close
+                Self::send_notification::<PublishDiagnostics>(
+                    connection,
+                    PublishDiagnosticsParams {
+                        uri,
+                        diagnostics: vec![],
+                        version: None,
+                    },
+                )?;
+                return Ok(());
+            }
+            Err(_not) => {
+                // Unknown notification, ignore
+            }
+        };
+
+        Ok(())
+    }
+
+    /// Publish diagnostics for a document
+    ///
+    /// This allows external diagnostic providers (like linters) to publish their diagnostics
+    /// through the LSP connection without needing type checking functionality.
+    pub fn publish_diagnostics<C: LspConnection>(
+        &self,
+        connection: &C,
+        uri: &Uri,
+        diagnostics: Vec<lsp_types::Diagnostic>,
+    ) -> Result<()> {
+        Self::send_notification::<PublishDiagnostics>(
+            connection,
+            PublishDiagnosticsParams {
+                uri: uri.clone(),
+                diagnostics,
+                version: None,
+            },
+        )?;
+        Ok(())
+    }
+
+    fn cast_notification<N>(not: Notification) -> std::result::Result<N::Params, Notification>
+    where
+        N: lsp_types::notification::Notification,
+        N::Params: DeserializeOwned,
+    {
+        match not.extract(N::METHOD) {
+            Ok(params) => Ok(params),
+            Err(lsp_server::ExtractError::MethodMismatch(not)) => Err(not),
+            Err(lsp_server::ExtractError::JsonError { method, error }) => {
+                tracing::error!("Failed to deserialize notification {}: {}", method, error);
+                Err(Notification::new(
+                    method.to_string(),
+                    serde_json::Value::Null,
+                ))
+            }
+        }
+    }
+
+    fn send_notification<N>(connection: &impl LspConnection, params: N::Params) -> Result<()>
+    where
+        N: lsp_types::notification::Notification,
+        N::Params: Serialize,
+    {
+        let not = Notification::new(N::METHOD.to_string(), params);
+        connection.send_notification(not)?;
+        Ok(())
+    }
+}
+
+impl Default for BasicMessageHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Full-featured message handler with type-aware LSP capabilities (requires compiler feature)
+///
+/// This handler provides complete IDE functionality including:
+/// - All features from `BasicMessageHandler`
+/// - Type-aware completion
+/// - Hover information
+/// - Go to definition
+/// - Find references
+/// - Rename
+/// - Document symbols
+/// - And more...
+///
+/// Requires the `compiler` feature flag and pulls in typedlua-core as a dependency.
+#[cfg(feature = "compiler")]
 pub struct MessageHandler {
     diagnostics_provider: DiagnosticsProvider,
     completion_provider: CompletionProvider,
@@ -40,6 +182,7 @@ pub struct MessageHandler {
     folding_range_provider: FoldingRangeProvider,
 }
 
+#[cfg(feature = "compiler")]
 impl MessageHandler {
     pub fn new() -> Self {
         Self {
@@ -540,6 +683,7 @@ impl MessageHandler {
     }
 }
 
+#[cfg(feature = "compiler")]
 impl Default for MessageHandler {
     fn default() -> Self {
         Self::new()

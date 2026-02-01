@@ -1,3 +1,5 @@
+#![cfg(feature = "compiler")]
+
 use lsp_server::{Notification, Request, RequestId, Response};
 use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,

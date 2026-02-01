@@ -1,3 +1,5 @@
+#![cfg(feature = "compiler")]
+
 #[cfg(test)]
 mod provider_tests {
 

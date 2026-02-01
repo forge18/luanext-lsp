@@ -1,6 +1,8 @@
 // Integration tests for LSP providers
 // These tests verify that LSP features work end-to-end
 
+#![cfg(feature = "compiler")]
+
 use lsp_types::*;
 use typedlua_lsp::document::{Document, DocumentManager};
 use typedlua_lsp::providers::{
