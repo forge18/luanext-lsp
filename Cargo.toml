@@ -14,11 +14,12 @@ path = "src/lib.rs"
 [[bin]]
 name = "typedlua-lsp"
 path = "src/main.rs"
+required-features = ["compiler"]
 
 [dependencies]
-# Core compiler (path relative to submodule location in workspace)
-typedlua-core = { path = "../typedlua-core" }
-typedlua-parser = { path = "../typedlua-parser" }
+# Core compiler (optional - enabled with "compiler" feature)
+typedlua-core = { path = "../typedlua-core", optional = true }
+typedlua-parser = { path = "../typedlua-parser", optional = true }
 
 # LSP
 lsp-server = "0.7"
@@ -35,3 +36,10 @@ serde_json = "1.0"
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[features]
+# Default feature includes full compiler functionality
+default = ["compiler"]
+
+# Compiler feature enables type checking and full LSP capabilities
+compiler = ["typedlua-core", "typedlua-parser"]

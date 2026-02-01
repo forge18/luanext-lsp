@@ -217,7 +217,7 @@ impl ReferencesProvider {
     /// Search for references in files that import from the current module
     fn search_references_in_importing_files(
         &self,
-        module_id: &typedlua_core::module_resolver::ModuleId,
+        module_id: &str,
         symbol_name: &str,
         document_manager: &DocumentManager,
         locations: &mut Vec<Location>,
@@ -333,14 +333,16 @@ impl ReferencesProvider {
                 if let Some(exported_name) = exported_name {
                     // Resolve the import path
                     if let Some(module_id) = &current_document.module_id {
-                        if let Ok(target_module_id) = document_manager
-                            .module_resolver()
-                            .resolve(import_source, module_id.path())
-                        {
-                            if let Some(target_uri) =
-                                document_manager.module_id_to_uri(&target_module_id)
-                            {
-                                return Some((target_uri.clone(), exported_name));
+                        if let Some(resolver) = document_manager.module_resolver() {
+                            if let Ok(target_module_id) = resolver.resolve(
+                                import_source,
+                                std::path::Path::new(module_id.as_str()),
+                            ) {
+                                if let Some(target_uri) =
+                                    document_manager.module_id_to_uri(&target_module_id)
+                                {
+                                    return Some((target_uri.clone(), exported_name));
+                                }
                             }
                         }
                     }

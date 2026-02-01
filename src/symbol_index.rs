@@ -1,10 +1,31 @@
 use lsp_types::{SymbolInformation, SymbolKind, Uri};
 use std::collections::{HashMap, HashSet};
-use typedlua_core::module_resolver::ModuleId;
+
+#[cfg(feature = "compiler")]
 use typedlua_parser::ast::statement::{ExportKind, ImportClause, OperatorKind, Statement};
+#[cfg(feature = "compiler")]
 use typedlua_parser::ast::Program;
+#[cfg(feature = "compiler")]
 use typedlua_parser::string_interner::StringInterner;
+#[cfg(feature = "compiler")]
 use typedlua_parser::Span;
+
+// Simple Span type for non-compiler mode
+#[cfg(not(feature = "compiler"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct Span {
+    pub start: u32,
+    pub end: u32,
+    pub line: u32,
+    pub column: u32,
+}
+
+#[cfg(not(feature = "compiler"))]
+impl Span {
+    pub fn len(&self) -> u32 {
+        self.end - self.start
+    }
+}
 
 /// Information about an exported symbol
 #[derive(Debug, Clone)]
@@ -64,18 +85,18 @@ pub struct WorkspaceSymbolInfo {
 #[derive(Debug, Default)]
 pub struct SymbolIndex {
     /// Map from (module_id, exported_symbol_name) -> ExportInfo
-    exports: HashMap<(ModuleId, String), ExportInfo>,
+    exports: HashMap<(String, String), ExportInfo>,
 
     /// Map from (module_id, local_symbol_name) -> Vec<ImportInfo>
     /// Multiple imports because a symbol might be imported from different modules with different names
-    imports: HashMap<(ModuleId, String), Vec<ImportInfo>>,
+    imports: HashMap<(String, String), Vec<ImportInfo>>,
 
     /// Reverse index: Map from exported (source_module_id, exported_name) -> Set of importing URIs
     /// This answers: "Which files import this symbol?"
-    importers: HashMap<(ModuleId, String), HashSet<Uri>>,
+    importers: HashMap<(String, String), HashSet<Uri>>,
 
-    /// Map from URI to ModuleId for quick lookups
-    uri_to_module: HashMap<Uri, ModuleId>,
+    /// Map from URI to module_id (String) for quick lookups
+    uri_to_module: HashMap<Uri, String>,
 
     /// Workspace-wide symbol index: Map from lowercase symbol name -> Vec<WorkspaceSymbolInfo>
     /// Lowercase keys enable case-insensitive fuzzy matching
@@ -90,19 +111,20 @@ impl SymbolIndex {
     /// Update the index for a specific document
     ///
     /// This should be called whenever a document is opened, changed, or saved.
+    #[cfg(feature = "compiler")]
     pub fn update_document(
         &mut self,
         uri: &Uri,
-        module_id: &ModuleId,
+        module_id: &str,
         ast: &Program,
         interner: &StringInterner,
-        resolve_import: impl Fn(&str, &ModuleId) -> Option<(ModuleId, Uri)>,
+        resolve_import: impl Fn(&str, &str) -> Option<(String, Uri)>,
     ) {
         // Clear old entries for this document
         self.clear_document(uri, module_id);
 
-        // Register URI -> ModuleId mapping
-        self.uri_to_module.insert(uri.clone(), module_id.clone());
+        // Register URI -> module_id mapping
+        self.uri_to_module.insert(uri.clone(), module_id.to_string());
 
         // Index exports
         self.index_exports(uri, module_id, &ast.statements, interner);
@@ -115,7 +137,7 @@ impl SymbolIndex {
     }
 
     /// Clear index entries for a document
-    pub fn clear_document(&mut self, uri: &Uri, module_id: &ModuleId) {
+    pub fn clear_document(&mut self, uri: &Uri, module_id: &str) {
         // Remove exports
         self.exports.retain(|(mid, _), _| mid != module_id);
 
@@ -139,10 +161,11 @@ impl SymbolIndex {
     }
 
     /// Index all exports in a module
+    #[cfg(feature = "compiler")]
     fn index_exports(
         &mut self,
         uri: &Uri,
-        module_id: &ModuleId,
+        module_id: &str,
         statements: &[Statement],
         interner: &StringInterner,
     ) {
@@ -160,7 +183,7 @@ impl SymbolIndex {
                                 is_default: false,
                             };
                             self.exports
-                                .insert((module_id.clone(), exported_name), export_info);
+                                .insert((module_id.to_string(), exported_name), export_info);
                         }
                     }
                     ExportKind::Named {
@@ -182,7 +205,7 @@ impl SymbolIndex {
                                 is_default: false,
                             };
                             self.exports
-                                .insert((module_id.clone(), exported_name), export_info);
+                                .insert((module_id.to_string(), exported_name), export_info);
                         }
                     }
                     ExportKind::Default(_) => {
@@ -193,7 +216,7 @@ impl SymbolIndex {
                             is_default: true,
                         };
                         self.exports
-                            .insert((module_id.clone(), "default".to_string()), export_info);
+                            .insert((module_id.to_string(), "default".to_string()), export_info);
                     }
                 }
             }
@@ -201,13 +224,14 @@ impl SymbolIndex {
     }
 
     /// Index all imports in a module
+    #[cfg(feature = "compiler")]
     fn index_imports(
         &mut self,
         uri: &Uri,
-        module_id: &ModuleId,
+        module_id: &str,
         statements: &[Statement],
         interner: &StringInterner,
-        resolve_import: impl Fn(&str, &ModuleId) -> Option<(ModuleId, Uri)>,
+        resolve_import: impl Fn(&str, &str) -> Option<(String, Uri)>,
     ) {
         for stmt in statements {
             if let Statement::Import(import_decl) = stmt {
@@ -236,7 +260,7 @@ impl SymbolIndex {
 
                                 // Add to imports index
                                 self.imports
-                                    .entry((module_id.clone(), local_name))
+                                    .entry((module_id.to_string(), local_name))
                                     .or_insert_with(Vec::new)
                                     .push(import_info);
 
@@ -257,7 +281,7 @@ impl SymbolIndex {
                             };
 
                             self.imports
-                                .entry((module_id.clone(), local_name))
+                                .entry((module_id.to_string(), local_name))
                                 .or_insert_with(Vec::new)
                                 .push(import_info);
 
@@ -283,7 +307,7 @@ impl SymbolIndex {
                             };
 
                             self.imports
-                                .entry((module_id.clone(), local_name))
+                                .entry((module_id.to_string(), local_name))
                                 .or_insert_with(Vec::new)
                                 .push(import_info);
 
@@ -309,7 +333,7 @@ impl SymbolIndex {
                                 };
 
                                 self.imports
-                                    .entry((module_id.clone(), local_name))
+                                    .entry((module_id.to_string(), local_name))
                                     .or_insert_with(Vec::new)
                                     .push(import_info);
 
@@ -326,6 +350,7 @@ impl SymbolIndex {
     }
 
     /// Index all workspace symbols in a module
+    #[cfg(feature = "compiler")]
     fn index_workspace_symbols(
         &mut self,
         uri: &Uri,
@@ -338,6 +363,7 @@ impl SymbolIndex {
     }
 
     /// Recursively index symbols from a statement
+    #[cfg(feature = "compiler")]
     fn index_statement_symbols(
         &mut self,
         uri: &Uri,
@@ -556,23 +582,23 @@ impl SymbolIndex {
 
     /// Get export information for a symbol
     #[allow(dead_code)] // Used in tests for symbol index validation
-    pub fn get_export(&self, module_id: &ModuleId, symbol_name: &str) -> Option<&ExportInfo> {
+    pub fn get_export(&self, module_id: &str, symbol_name: &str) -> Option<&ExportInfo> {
         self.exports
-            .get(&(module_id.clone(), symbol_name.to_string()))
+            .get(&(module_id.to_string(), symbol_name.to_string()))
     }
 
     /// Get all files that import a specific symbol from a module
-    pub fn get_importers(&self, module_id: &ModuleId, symbol_name: &str) -> Vec<Uri> {
+    pub fn get_importers(&self, module_id: &str, symbol_name: &str) -> Vec<Uri> {
         self.importers
-            .get(&(module_id.clone(), symbol_name.to_string()))
+            .get(&(module_id.to_string(), symbol_name.to_string()))
             .map(|set| set.iter().cloned().collect())
             .unwrap_or_default()
     }
 
     /// Get import information for a local symbol in a module
-    pub fn get_imports(&self, module_id: &ModuleId, local_name: &str) -> Option<&Vec<ImportInfo>> {
+    pub fn get_imports(&self, module_id: &str, local_name: &str) -> Option<&Vec<ImportInfo>> {
         self.imports
-            .get(&(module_id.clone(), local_name.to_string()))
+            .get(&(module_id.to_string(), local_name.to_string()))
     }
 
     /// Search workspace symbols by query string
@@ -656,6 +682,7 @@ impl SymbolIndex {
     }
 
     /// Helper to extract export name from a declaration
+    #[cfg(feature = "compiler")]
     fn get_declaration_export_name(
         stmt: &Statement,
         interner: &StringInterner,
@@ -705,20 +732,16 @@ mod tests {
         Uri::from_str(&format!("file://{}", path)).unwrap()
     }
 
-    fn make_module_id(path: &str) -> ModuleId {
-        ModuleId::new(std::path::PathBuf::from(path))
-    }
-
     #[test]
     fn test_symbol_index_basic() {
         let index = SymbolIndex::new();
 
         let _uri = make_uri("/test/module.tl");
-        let module_id = make_module_id("/test/module.tl");
+        let module_id = "/test/module.tl";
 
         // Test that index starts empty
-        assert!(index.get_export(&module_id, "foo").is_none());
-        assert!(index.get_importers(&module_id, "foo").is_empty());
+        assert!(index.get_export(module_id, "foo").is_none());
+        assert!(index.get_importers(module_id, "foo").is_empty());
     }
 
     #[test]

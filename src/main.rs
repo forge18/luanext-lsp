@@ -1,13 +1,17 @@
 #![allow(clippy::all)]
 #![allow(deprecated)]
 
+mod traits;
+mod impls;
 mod document;
 mod message_handler;
+#[cfg(feature = "compiler")]
 mod providers;
 mod symbol_index;
 
 use anyhow::Result;
 use document::DocumentManager;
+use impls::{CoreModuleRegistry, CoreModuleResolver};
 use lsp_server::{Connection, Message, Notification, Response};
 use lsp_types::*;
 use message_handler::{LspConnection, MessageHandler};
@@ -17,7 +21,10 @@ use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
 use typedlua_core::config::CompilerOptions;
 use typedlua_core::fs::RealFileSystem;
-use typedlua_core::module_resolver::{ModuleConfig, ModuleRegistry, ModuleResolver};
+use typedlua_core::module_resolver::{
+    ModuleConfig, ModuleRegistry as CoreModuleRegistryType,
+    ModuleResolver as CoreModuleResolverType,
+};
 
 // Implement LspConnection for the real lsp_server::Connection
 struct ConnectionWrapper<'a>(&'a Connection);
@@ -162,12 +169,16 @@ fn main_loop(connection: Connection, params: InitializeParams) -> Result<()> {
     let fs = Arc::new(RealFileSystem);
     let compiler_options = CompilerOptions::default();
     let module_config = ModuleConfig::from_compiler_options(&compiler_options, &workspace_root);
-    let module_registry = Arc::new(ModuleRegistry::new());
-    let module_resolver = Arc::new(ModuleResolver::new(
+    let core_module_registry = Arc::new(CoreModuleRegistryType::new());
+    let core_module_resolver = Arc::new(CoreModuleResolverType::new(
         fs,
         module_config,
         workspace_root.clone(),
     ));
+
+    // Wrap core types in bridge implementations
+    let module_registry = Arc::new(CoreModuleRegistry::new(core_module_registry)) as Arc<dyn traits::ModuleRegistry>;
+    let module_resolver = Arc::new(CoreModuleResolver::new(core_module_resolver)) as Arc<dyn traits::ModuleResolver>;
 
     // Create document manager with module system support
     let mut document_manager =

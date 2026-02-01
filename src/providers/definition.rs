@@ -127,26 +127,27 @@ impl DefinitionProvider {
                 };
 
                 if let Some(exported_name) = exported_name {
-                    // Resolve the import path to a ModuleId
+                    // Resolve the import path to a module ID
                     if let Some(module_id) = &current_document.module_id {
-                        if let Ok(target_module_id) = document_manager
-                            .module_resolver()
-                            .resolve(import_source, module_id.path())
-                        {
-                            // Convert ModuleId to URI
-                            if let Some(target_uri) =
-                                document_manager.module_id_to_uri(&target_module_id)
-                            {
-                                // Try to get the target document if it's open
-                                if let Some(target_doc) = document_manager.get(target_uri) {
-                                    // Parse the target document and find the export
-                                    return self.find_export_in_document(
-                                        target_doc,
-                                        &exported_name,
-                                        target_uri,
-                                    );
-                                } else {
-                                    // Document not open - we could potentially read it from disk
+                        if let Some(resolver) = document_manager.module_resolver() {
+                            if let Ok(target_module_id) = resolver.resolve(
+                                import_source,
+                                std::path::Path::new(module_id.as_str()),
+                            ) {
+                                // Convert module ID to URI
+                                if let Some(target_uri) =
+                                    document_manager.module_id_to_uri(&target_module_id)
+                                {
+                                    // Try to get the target document if it's open
+                                    if let Some(target_doc) = document_manager.get(target_uri) {
+                                        // Parse the target document and find the export
+                                        return self.find_export_in_document(
+                                            target_doc,
+                                            &exported_name,
+                                            target_uri,
+                                        );
+                                    } else {
+                                        // Document not open - we could potentially read it from disk
                                     // For now, just return the file location
                                     return Some(Location {
                                         uri: target_uri.clone(),
@@ -161,6 +162,7 @@ impl DefinitionProvider {
                                             },
                                         },
                                     });
+                                    }
                                 }
                             }
                         }
