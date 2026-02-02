@@ -90,7 +90,6 @@ impl SymbolIndex {
     /// Update the index for a specific document
     ///
     /// This should be called whenever a document is opened, changed, or saved.
-    #[cfg(feature = "compiler")]
     pub fn update_document(
         &mut self,
         uri: &Uri,
@@ -140,7 +139,6 @@ impl SymbolIndex {
     }
 
     /// Index all exports in a module
-    #[cfg(feature = "compiler")]
     fn index_exports(
         &mut self,
         uri: &Uri,
@@ -203,7 +201,6 @@ impl SymbolIndex {
     }
 
     /// Index all imports in a module
-    #[cfg(feature = "compiler")]
     fn index_imports(
         &mut self,
         uri: &Uri,
@@ -329,7 +326,6 @@ impl SymbolIndex {
     }
 
     /// Index all workspace symbols in a module
-    #[cfg(feature = "compiler")]
     fn index_workspace_symbols(
         &mut self,
         uri: &Uri,
@@ -342,7 +338,6 @@ impl SymbolIndex {
     }
 
     /// Recursively index symbols from a statement
-    #[cfg(feature = "compiler")]
     fn index_statement_symbols(
         &mut self,
         uri: &Uri,
@@ -661,7 +656,6 @@ impl SymbolIndex {
     }
 
     /// Helper to extract export name from a declaration
-    #[cfg(feature = "compiler")]
     fn get_declaration_export_name(
         stmt: &Statement,
         interner: &StringInterner,

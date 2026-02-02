@@ -145,7 +145,7 @@ impl DocumentManager {
             .strip_prefix("file://")
             .map(PathBuf::from)
             .and_then(|path| path.canonicalize().ok())
-            .map(ModuleId::from_path);
+            .map(ModuleId::from);
 
         let document = Document {
             text: params.text_document.text,
@@ -156,8 +156,8 @@ impl DocumentManager {
         };
 
         if let Some(ref mid) = module_id {
-            self.uri_to_module_id.insert(uri.clone(), mid.clone());
-            self.module_id_to_uri.insert(mid.clone(), uri.clone());
+            self.uri_to_module_id.insert(uri.clone(), mid.clone() as ModuleId);
+            self.module_id_to_uri.insert(mid.clone() as ModuleId, uri.clone());
         }
 
         self.documents.insert(uri, document);
@@ -189,17 +189,17 @@ impl DocumentManager {
                 if let Some((ast, interner, _common_ids)) = doc.get_or_parse_ast() {
                     self.symbol_index.update_document(
                         &uri,
-                        module_id,
+                        module_id.as_str(),
                         &ast,
                         &interner,
-                        |import_path, from_module_id| {
+                        |import_path, from_module_id: &str| {
                             self.module_resolver
-                                .resolve(import_path, from_module_id.path())
+                                .resolve(import_path, std::path::Path::new(from_module_id))
                                 .ok()
                                 .and_then(|resolved_module_id| {
                                     self.module_id_to_uri
                                         .get(&resolved_module_id)
-                                        .map(|uri| (resolved_module_id, uri.clone()))
+                                        .map(|uri| (resolved_module_id.as_str().to_string(), uri.clone()))
                                 })
                         },
                     );
@@ -214,7 +214,7 @@ impl DocumentManager {
         let uri = &params.text_document.uri;
 
         if let Some(module_id) = self.uri_to_module_id.get(uri) {
-            self.symbol_index.clear_document(uri, module_id);
+            self.symbol_index.clear_document(uri, module_id.as_str());
         }
 
         if let Some(module_id) = self.uri_to_module_id.remove(uri) {
