@@ -1,4 +1,6 @@
-//! Bridge implementations connecting typedlua-core types to LSP traits
+//! Bridge implementations connecting typedlua-typechecker types to LSP traits
+
+#![allow(dead_code)]
 
 use crate::traits::{
     diagnostics::RelatedInformation,
@@ -8,12 +10,12 @@ use crate::traits::{
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use typedlua_core::diagnostics::CollectingDiagnosticHandler;
-use typedlua_core::module_resolver::{
+use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
+use typedlua_typechecker::module_resolver::{
     ModuleId as CoreModuleId, ModuleRegistry as CoreModuleRegistryType,
     ModuleResolver as CoreModuleResolverType,
 };
-use typedlua_core::typechecker::{Symbol, SymbolTable, TypeChecker as CoreTypeCheckerType};
+use typedlua_typechecker::{Symbol, SymbolTable, TypeChecker as CoreTypeCheckerType};
 use typedlua_parser::lexer::Lexer;
 use typedlua_parser::parser::Parser;
 use typedlua_parser::string_interner::StringInterner;
@@ -22,7 +24,7 @@ use typedlua_parser::string_interner::StringInterner;
 // Module Resolution Bridges
 // ============================================================================
 
-/// Bridge implementation wrapping typedlua_core::ModuleId
+/// Bridge implementation wrapping typedlua_typechecker::module_resolver::ModuleId
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct CoreModuleIdentifier {
     inner: CoreModuleId,
@@ -75,7 +77,7 @@ impl ModuleResolver for CoreModuleResolver {
         self.inner
             .resolve(source, from_file)
             .map(|module_id| module_id.as_str().to_string())
-            .map_err(|e: typedlua_core::module_resolver::ModuleError| e.to_string())
+            .map_err(|e: typedlua_typechecker::module_resolver::ModuleError| e.to_string())
     }
 }
 
@@ -202,7 +204,7 @@ impl TypeChecker for CoreTypeChecker {
             Ok(tokens) => tokens,
             Err(_) => {
                 // Lex failed, return diagnostics
-                use typedlua_core::diagnostics::DiagnosticHandler;
+                use typedlua_typechecker::diagnostics::DiagnosticHandler;
                 let diagnostics = diagnostic_handler
                     .get_diagnostics()
                     .iter()
@@ -223,7 +225,7 @@ impl TypeChecker for CoreTypeChecker {
             Ok(ast) => ast,
             Err(_) => {
                 // Parse failed, return diagnostics
-                use typedlua_core::diagnostics::DiagnosticHandler;
+                use typedlua_typechecker::diagnostics::DiagnosticHandler;
                 let diagnostics = diagnostic_handler
                     .get_diagnostics()
                     .iter()
@@ -238,10 +240,10 @@ impl TypeChecker for CoreTypeChecker {
         };
 
         // Type check the AST
-        let mut type_checker = CoreTypeCheckerType::new(diagnostic_handler.clone() as Arc<dyn typedlua_core::diagnostics::DiagnosticHandler>, &interner, &common);
+        let mut type_checker = CoreTypeCheckerType::new(diagnostic_handler.clone() as Arc<dyn typedlua_typechecker::diagnostics::DiagnosticHandler>, &interner, &common);
         match type_checker.check_program(&mut ast) {
             Ok(_) => {
-                use typedlua_core::diagnostics::DiagnosticHandler;
+                use typedlua_typechecker::diagnostics::DiagnosticHandler;
                 let diagnostics = diagnostic_handler
                     .get_diagnostics()
                     .iter()
@@ -256,7 +258,7 @@ impl TypeChecker for CoreTypeChecker {
                 }
             }
             Err(_) => {
-                use typedlua_core::diagnostics::DiagnosticHandler;
+                use typedlua_typechecker::diagnostics::DiagnosticHandler;
                 let diagnostics = diagnostic_handler
                     .get_diagnostics()
                     .iter()
@@ -305,7 +307,7 @@ impl DiagnosticCollector for CoreDiagnosticCollector {
             Ok(tokens) => tokens,
             Err(_) => {
                 // Return lex diagnostics
-                use typedlua_core::diagnostics::DiagnosticHandler;
+                use typedlua_typechecker::diagnostics::DiagnosticHandler;
                 return diagnostic_handler
                     .get_diagnostics()
                     .iter()
@@ -317,7 +319,7 @@ impl DiagnosticCollector for CoreDiagnosticCollector {
         let mut parser = Parser::new(tokens, diagnostic_handler.clone() as Arc<dyn typedlua_parser::DiagnosticHandler>, &interner, &common);
         let _ast = parser.parse();
 
-        use typedlua_core::diagnostics::DiagnosticHandler;
+        use typedlua_typechecker::diagnostics::DiagnosticHandler;
         diagnostic_handler
             .get_diagnostics()
             .iter()
@@ -339,8 +341,8 @@ fn convert_span(span: &typedlua_parser::Span) -> Span {
     }
 }
 
-fn convert_symbol_kind(kind: &typedlua_core::typechecker::SymbolKind) -> SymbolKind {
-    use typedlua_core::typechecker::SymbolKind as CoreKind;
+fn convert_symbol_kind(kind: &typedlua_typechecker::SymbolKind) -> SymbolKind {
+    use typedlua_typechecker::SymbolKind as CoreKind;
     match kind {
         CoreKind::Variable => SymbolKind::Variable,
         CoreKind::Const => SymbolKind::Const,
@@ -354,8 +356,8 @@ fn convert_symbol_kind(kind: &typedlua_core::typechecker::SymbolKind) -> SymbolK
     }
 }
 
-fn convert_diagnostic(diag: &typedlua_core::diagnostics::Diagnostic) -> Diagnostic {
-    use typedlua_core::diagnostics::DiagnosticLevel as CoreLevel;
+fn convert_diagnostic(diag: &typedlua_typechecker::diagnostics::Diagnostic) -> Diagnostic {
+    use typedlua_typechecker::diagnostics::DiagnosticLevel as CoreLevel;
 
     let level = match diag.level {
         CoreLevel::Error => DiagnosticLevel::Error,

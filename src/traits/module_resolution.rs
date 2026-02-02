@@ -1,5 +1,7 @@
 //! Module resolution traits for decoupling from typedlua-core module system
 
+#![allow(dead_code)]
+
 use std::fmt;
 use std::hash::Hash;
 use std::path::{Path, PathBuf};

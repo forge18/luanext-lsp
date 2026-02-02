@@ -2,7 +2,6 @@ use lsp_types::{SymbolInformation, SymbolKind, Uri};
 use std::collections::{HashMap, HashSet};
 use typedlua_parser::ast::statement::{ExportKind, ImportClause, OperatorKind, Statement};
 use typedlua_parser::ast::Program;
-use typedlua_typechecker::module_resolver::ModuleId;
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::Span;
 

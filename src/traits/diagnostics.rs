@@ -1,5 +1,7 @@
 //! Diagnostic traits for decoupling from typedlua-core diagnostics
 
+#![allow(dead_code)]
+
 use super::type_analysis::Span;
 
 /// Trait for collecting diagnostics during parsing/type checking

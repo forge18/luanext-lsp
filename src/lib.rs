@@ -4,9 +4,11 @@
 #![allow(clippy::all)]
 #![allow(deprecated)]
 
-// Trait abstractions for decoupling from typedlua-core
+// Trait abstractions for type system components
+pub mod traits;
 
-// Bridge implementations for typedlua-core types (feature-gated)
+// Bridge implementations for typedlua-typechecker types
+pub mod impls;
 
 pub mod document;
 pub mod message_handler;

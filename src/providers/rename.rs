@@ -258,13 +258,13 @@ impl RenameProvider {
         // Use symbol index to quickly find all files that import this symbol
         let importing_uris = document_manager
             .symbol_index()
-            .get_importers(module_id, symbol_name);
+            .get_importers(module_id.as_str(), symbol_name);
 
         // For each importing file, find and rename all occurrences of the local name
         for uri in importing_uris {
             if let Some(doc) = document_manager.get(&uri) {
                 // Get the document's module ID
-                if let Some(doc_module_id.as_str()) = &doc.module_id {
+                if let Some(doc_module_id) = &doc.module_id {
                     // Use symbol index to get import info
                     if let Some(imports) = document_manager
                         .symbol_index()

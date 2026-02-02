@@ -236,11 +236,11 @@ impl DocumentManager {
     }
 
     pub fn symbol_index(&self) -> &SymbolIndex {
+        &self.symbol_index
+    }
 
     pub fn uri_to_module_id(&self, uri: &Uri) -> Option<&ModuleId> {
         self.uri_to_module_id.get(uri)
-    }
-        &self.symbol_index
     }
 
     fn position_to_offset(text: &str, position: Position) -> usize {

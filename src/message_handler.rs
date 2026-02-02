@@ -1,15 +1,15 @@
 use crate::document::DocumentManager;
-#[cfg(feature = "compiler")]
+
 use crate::providers::*;
 use anyhow::Result;
 use lsp_server::{Notification, Response};
-#[cfg(feature = "compiler")]
+
 use lsp_server::{Request, RequestId};
 use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
     PublishDiagnostics,
 };
-#[cfg(feature = "compiler")]
+
 use lsp_types::request::{
     CodeActionRequest, CodeActionResolveRequest, Completion, DocumentSymbolRequest,
     FoldingRangeRequest, Formatting, GotoDefinition, HoverRequest, InlayHintRequest,
@@ -164,7 +164,7 @@ impl Default for BasicMessageHandler {
 /// - And more...
 ///
 /// Requires the `compiler` feature flag and pulls in typedlua-core as a dependency.
-#[cfg(feature = "compiler")]
+
 pub struct MessageHandler {
     diagnostics_provider: DiagnosticsProvider,
     completion_provider: CompletionProvider,
@@ -182,7 +182,7 @@ pub struct MessageHandler {
     folding_range_provider: FoldingRangeProvider,
 }
 
-#[cfg(feature = "compiler")]
+
 impl MessageHandler {
     pub fn new() -> Self {
         Self {
@@ -683,7 +683,7 @@ impl MessageHandler {
     }
 }
 
-#[cfg(feature = "compiler")]
+
 impl Default for MessageHandler {
     fn default() -> Self {
         Self::new()

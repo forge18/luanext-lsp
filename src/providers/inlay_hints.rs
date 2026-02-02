@@ -63,8 +63,6 @@ impl InlayHintsProvider {
         hints: &mut Vec<InlayHint>,
         interner: &StringInterner,
     ) {
-        use typedlua_parser::ast::pattern::Pattern;
-
         match stmt {
             Statement::Variable(decl) => {
                 if decl.type_annotation.is_none() {
