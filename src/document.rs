@@ -26,6 +26,7 @@ pub type ParsedAst = (
 pub struct DocumentManager {
     documents: HashMap<Uri, Document>,
     /// Module registry for cross-file symbol tracking
+    #[allow(dead_code)]
     module_registry: Arc<ModuleRegistry>,
     /// Module resolver for import path resolution
     module_resolver: Arc<ModuleResolver>,
@@ -33,6 +34,7 @@ pub struct DocumentManager {
     uri_to_module_id: HashMap<Uri, ModuleId>,
     module_id_to_uri: HashMap<ModuleId, Uri>,
     /// Workspace root path
+    #[allow(dead_code)]
     workspace_root: PathBuf,
     /// Reverse index for fast cross-file symbol lookups
     symbol_index: SymbolIndex,
@@ -63,6 +65,7 @@ impl std::fmt::Debug for Document {
 }
 
 impl Document {
+    #[cfg(test)]
     pub fn new_test(text: String, version: i32) -> Self {
         Self {
             text,
@@ -117,6 +120,7 @@ impl DocumentManager {
     }
 
     /// Create a test document manager with mock module system
+    #[cfg(test)]
     pub fn new_test() -> Self {
         use typedlua_typechecker::config::CompilerOptions;
         use typedlua_typechecker::fs::MockFileSystem;

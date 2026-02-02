@@ -101,6 +101,7 @@ impl InlayHintsProvider {
     }
 
     /// Collect parameter name hints from function calls
+    #[allow(dead_code)]
     fn collect_hints_from_expression(
         &self,
         expr: &Expression,
@@ -192,6 +193,7 @@ impl InlayHintsProvider {
     }
 
     /// Check if a span is within the requested range
+    #[allow(dead_code)]
     fn span_in_range(&self, span: &Span, range: Range) -> bool {
         let span_line = (span.line.saturating_sub(1)) as u32;
         span_line >= range.start.line && span_line <= range.end.line

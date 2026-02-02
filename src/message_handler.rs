@@ -34,8 +34,10 @@ pub trait LspConnection {
 ///
 /// Use this when you need LSP document management without full type checking capabilities.
 /// For complete IDE features (completion, hover, goto-definition, etc.), use `MessageHandler`.
+#[allow(dead_code)]
 pub struct BasicMessageHandler;
 
+#[allow(dead_code)]
 impl BasicMessageHandler {
     pub fn new() -> Self {
         Self
