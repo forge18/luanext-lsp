@@ -229,11 +229,11 @@ impl ReferencesProvider {
         for uri in importing_uris {
             if let Some(doc) = document_manager.get(&uri) {
                 // Get the document's module ID
-                if let Some(doc_module_id) = &doc.module_id {
+                if let Some(doc_module_id.as_str()) = &doc.module_id {
                     // Use symbol index to get import info
                     if let Some(imports) = document_manager
                         .symbol_index()
-                        .get_imports(doc_module_id, symbol_name)
+                        .get_imports(doc_module_id.as_str(), symbol_name)
                     {
                         for import_info in imports {
                             // Check if this import is from our source module
@@ -331,7 +331,7 @@ impl ReferencesProvider {
                 if let Some(exported_name) = exported_name {
                     // Resolve the import path
                     if let Some(module_id) = &current_document.module_id {
-                        let resolver = document_manager.module_resolver(); { {
+                        let resolver = document_manager.module_resolver(); {
                             if let Ok(target_module_id) = resolver.resolve(
                                 import_source,
                                 std::path::Path::new(module_id.as_str()),

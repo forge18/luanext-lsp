@@ -127,7 +127,7 @@ impl DefinitionProvider {
                 if let Some(exported_name) = exported_name {
                     // Resolve the import path to a module ID
                     if let Some(module_id) = &current_document.module_id {
-                        let resolver = document_manager.module_resolver(); { {
+                        let resolver = document_manager.module_resolver(); {
                             if let Ok(target_module_id) = resolver.resolve(
                                 import_source,
                                 std::path::Path::new(module_id.as_str()),
