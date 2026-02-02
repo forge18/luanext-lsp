@@ -2,16 +2,13 @@
 #![allow(deprecated)]
 
 mod traits;
-mod impls;
 mod document;
 mod message_handler;
-#[cfg(feature = "compiler")]
 mod providers;
 mod symbol_index;
 
 use anyhow::Result;
 use document::DocumentManager;
-use impls::{CoreModuleRegistry, CoreModuleResolver};
 use lsp_server::{Connection, Message, Notification, Response};
 use lsp_types::*;
 use message_handler::{LspConnection, MessageHandler};
@@ -166,16 +163,16 @@ fn main_loop(connection: Connection, params: InitializeParams) -> Result<()> {
     let fs = Arc::new(RealFileSystem);
     let compiler_options = CompilerOptions::default();
     let module_config = ModuleConfig::from_compiler_options(&compiler_options, &workspace_root);
-    let core_module_registry = Arc::new(CoreModuleRegistryType::new());
-    let core_module_resolver = Arc::new(CoreModuleResolverType::new(
+    let core_module_registry = Arc::new(ModuleRegistry::new());
+    let core_module_resolver = Arc::new(ModuleResolver::new(
         fs,
         module_config,
         workspace_root.clone(),
     ));
 
     // Wrap core types in bridge implementations
-    let module_registry = Arc::new(CoreModuleRegistry::new(core_module_registry)) as Arc<dyn traits::ModuleRegistry>;
-    let module_resolver = Arc::new(CoreModuleResolver::new(core_module_resolver)) as Arc<dyn traits::ModuleResolver>;
+    let module_registry = Arc::new(ModuleRegistry::new(core_module_registry)) as Arc<dyn traits::ModuleRegistry>;
+    let module_resolver = Arc::new(ModuleResolver::new(core_module_resolver)) as Arc<dyn traits::ModuleResolver>;
 
     // Create document manager with module system support
     let mut document_manager =

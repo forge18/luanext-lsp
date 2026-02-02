@@ -262,3 +262,8 @@ impl DocumentManager {
         text.len()
     }
 }
+
+    pub fn uri_to_module_id(&self, uri: &Uri) -> Option<&ModuleId> {
+        self.uri_to_module_id.get(uri)
+    }
+

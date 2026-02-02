@@ -3,7 +3,7 @@ use lsp_types::*;
 
 use std::sync::Arc;
 use typedlua_parser::ast::statement::{ClassMember, OperatorKind, Statement};
-use typedlua_parser::diagnostics::CollectingDiagnosticHandler;
+use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::{Lexer, Parser, Span};
 
