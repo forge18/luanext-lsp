@@ -1,5 +1,7 @@
 //! Type analysis traits for decoupling from typedlua-core type checker
 
+#![allow(dead_code)]
+
 use super::diagnostics::Diagnostic;
 
 /// Trait for type checking documents
