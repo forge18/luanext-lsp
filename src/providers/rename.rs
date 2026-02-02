@@ -3,21 +3,11 @@ use lsp_types::{Uri, *};
 
 use std::collections::HashMap;
 use std::sync::Arc;
-<<<<<<< HEAD
-use typedlua_core::diagnostics::CollectingDiagnosticHandler;
-use typedlua_parser::ast::expression::{Expression, ExpressionKind};
-use typedlua_parser::ast::statement::Statement;
-use typedlua_parser::lexer::Lexer;
-use typedlua_parser::parser::Parser;
-use typedlua_parser::span::Span;
-use typedlua_parser::string_interner::StringInterner;
-=======
 use typedlua_parser::ast::expression::{Expression, ExpressionKind};
 use typedlua_parser::ast::statement::Statement;
 use typedlua_parser::diagnostics::CollectingDiagnosticHandler;
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::{Lexer, Parser, Span};
->>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
 
 /// Provides rename functionality
 pub struct RenameProvider;
@@ -259,11 +249,7 @@ impl RenameProvider {
     /// Collect rename edits in files that import from the current module
     fn collect_renames_in_importing_files(
         &self,
-<<<<<<< HEAD
-        module_id: &str,
-=======
         module_id: &typedlua_typechecker::module_resolver::ModuleId,
->>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
         symbol_name: &str,
         new_name: &str,
         document_manager: &DocumentManager,

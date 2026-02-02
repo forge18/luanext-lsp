@@ -1,22 +1,12 @@
 use crate::document::Document;
 use lsp_types::*;
 use std::sync::Arc;
-<<<<<<< HEAD
-use typedlua_core::diagnostics::CollectingDiagnosticHandler;
-use typedlua_core::typechecker::TypeChecker;
-use typedlua_parser::ast::statement::Statement;
-use typedlua_parser::lexer::Lexer;
-use typedlua_parser::parser::Parser;
-use typedlua_parser::span::Span;
-use typedlua_parser::string_interner::StringInterner;
-=======
 use typedlua_parser::ast::expression::{Expression, ExpressionKind};
 use typedlua_parser::ast::statement::Statement;
 use typedlua_parser::diagnostics::CollectingDiagnosticHandler;
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_typechecker::TypeChecker;
 use typedlua_parser::{Lexer, Parser, Span};
->>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
 
 /// Provides inlay hints (inline type annotations and parameter names)
 pub struct InlayHintsProvider;
@@ -73,11 +63,8 @@ impl InlayHintsProvider {
         hints: &mut Vec<InlayHint>,
         interner: &StringInterner,
     ) {
-<<<<<<< HEAD
-=======
         use typedlua_parser::ast::pattern::Pattern;
 
->>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
         match stmt {
             Statement::Variable(decl) => {
                 if decl.type_annotation.is_none() {
@@ -115,8 +102,6 @@ impl InlayHintsProvider {
         }
     }
 
-<<<<<<< HEAD
-=======
     /// Collect parameter name hints from function calls
     fn collect_hints_from_expression(
         &self,
@@ -214,7 +199,6 @@ impl InlayHintsProvider {
         span_line >= range.start.line && span_line <= range.end.line
     }
 
->>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
     /// Format a type for display
     #[allow(dead_code)]
     fn format_type_simple(

@@ -3,20 +3,11 @@ use lsp_types::*;
 
 use std::collections::HashMap;
 use std::sync::Arc;
-<<<<<<< HEAD
-use typedlua_core::diagnostics::CollectingDiagnosticHandler;
-use typedlua_parser::ast::pattern::Pattern;
-use typedlua_parser::ast::statement::Statement;
-use typedlua_parser::lexer::Lexer;
-use typedlua_parser::parser::Parser;
-use typedlua_parser::string_interner::StringInterner;
-=======
 use typedlua_parser::ast::pattern::Pattern;
 use typedlua_parser::ast::statement::Statement;
 use typedlua_parser::diagnostics::CollectingDiagnosticHandler;
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::{Lexer, Parser};
->>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
 
 /// Provides code actions (quick fixes, refactorings, source actions)
 pub struct CodeActionsProvider;

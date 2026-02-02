@@ -1,5 +1,4 @@
 use crate::symbol_index::SymbolIndex;
-use crate::traits::{ModuleRegistry, ModuleResolver, SymbolStore};
 use lsp_types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DidSaveTextDocumentParams, Position, Uri,
@@ -22,19 +21,17 @@ pub type ParsedAst = (
     Arc<typedlua_parser::string_interner::CommonIdentifiers>,
 );
 
-pub type ParsedAst = ();
-
 /// Manages open documents and their cached analysis results
 #[derive(Debug)]
 pub struct DocumentManager {
     documents: HashMap<Uri, Document>,
-    /// Module registry for cross-file symbol tracking (optional)
-    module_registry: Option<Arc<dyn ModuleRegistry>>,
-    /// Module resolver for import path resolution (optional)
-    module_resolver: Option<Arc<dyn ModuleResolver>>,
+    /// Module registry for cross-file symbol tracking
+    module_registry: Arc<ModuleRegistry>,
+    /// Module resolver for import path resolution
+    module_resolver: Arc<ModuleResolver>,
     /// Bidirectional mapping between URIs and ModuleIds
-    uri_to_module_id: HashMap<Uri, String>,
-    module_id_to_uri: HashMap<String, Uri>,
+    uri_to_module_id: HashMap<Uri, ModuleId>,
+    module_id_to_uri: HashMap<ModuleId, Uri>,
     /// Workspace root path
     workspace_root: PathBuf,
     /// Reverse index for fast cross-file symbol lookups
@@ -47,10 +44,10 @@ pub struct Document {
     pub version: i32,
     /// Cached parsed AST with its interner (invalidated on change)
     ast: RefCell<Option<ParsedAst>>,
-    /// Cached symbol store (invalidated on change)
-    symbol_store: Option<Box<dyn SymbolStore>>,
+    /// Cached symbol table (invalidated on change)
+    pub symbol_table: Option<Arc<SymbolTable>>,
     /// Module ID for this document (used for cross-file symbol resolution)
-    pub module_id: Option<String>,
+    pub module_id: Option<ModuleId>,
 }
 
 impl std::fmt::Debug for Document {
@@ -59,7 +56,7 @@ impl std::fmt::Debug for Document {
             .field("text", &format!("{}...", &self.text.chars().take(50).collect::<String>()))
             .field("version", &self.version)
             .field("ast", &"<cached>")
-            .field("symbol_store", &self.symbol_store.as_ref().map(|_| "<cached>"))
+            .field("symbol_table", &self.symbol_table.as_ref().map(|_| "<cached>"))
             .field("module_id", &self.module_id)
             .finish()
     }
@@ -71,7 +68,7 @@ impl Document {
             text,
             version,
             ast: RefCell::new(None),
-            symbol_store: None,
+            symbol_table: None,
             module_id: None,
         }
     }
@@ -97,10 +94,6 @@ impl Document {
         Some((ast_arc, interner_arc, common_ids_arc))
     }
 
-    pub fn get_or_parse_ast(&self) -> Option<ParsedAst> {
-        None
-    }
-
     pub(crate) fn clear_cache(&self) {
         *self.ast.borrow_mut() = None;
     }
@@ -114,8 +107,8 @@ impl DocumentManager {
     ) -> Self {
         Self {
             documents: HashMap::new(),
-            module_registry: Some(module_registry),
-            module_resolver: Some(module_resolver),
+            module_registry,
+            module_resolver,
             uri_to_module_id: HashMap::new(),
             module_id_to_uri: HashMap::new(),
             workspace_root,
@@ -145,57 +138,20 @@ impl DocumentManager {
         Self::new(workspace_root, module_registry, module_resolver)
     }
 
-    /// Create a document manager with compiler support
-    pub fn new(
-        workspace_root: PathBuf,
-        module_registry: Arc<dyn ModuleRegistry>,
-        module_resolver: Arc<dyn ModuleResolver>,
-    ) -> Self {
-        Self {
-            documents: HashMap::new(),
-            module_registry: Some(module_registry),
-            module_resolver: Some(module_resolver),
-            uri_to_module_id: HashMap::new(),
-            module_id_to_uri: HashMap::new(),
-            workspace_root,
-            symbol_index: SymbolIndex::new(),
-        }
-    }
-
-    pub fn new_test() -> Self {
-        use crate::impls::{CoreModuleRegistry, CoreModuleResolver};
-        use typedlua_core::config::CompilerOptions;
-        use typedlua_core::fs::MockFileSystem;
-        use typedlua_core::module_resolver::{ModuleRegistry as CoreModuleRegistryType, ModuleResolver as CoreModuleResolverType};
-
-        let workspace_root = PathBuf::from("/test");
-        let fs = Arc::new(MockFileSystem::new());
-        let compiler_options = CompilerOptions::default();
-        let module_config = typedlua_core::module_resolver::ModuleConfig::from_compiler_options(&compiler_options, &workspace_root);
-        let core_registry = Arc::new(CoreModuleRegistryType::new());
-        let core_resolver = Arc::new(CoreModuleResolverType::new(fs, module_config, workspace_root.clone()));
-
-        let module_registry = Arc::new(CoreModuleRegistry::new(core_registry)) as Arc<dyn ModuleRegistry>;
-        let module_resolver = Arc::new(CoreModuleResolver::new(core_resolver)) as Arc<dyn ModuleResolver>;
-
-        Self::new(workspace_root, module_registry, module_resolver)
-    }
-
     pub fn open(&mut self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri.clone();
 
-        let module_id = uri.as_str().strip_prefix("file://")
+        let module_id = uri.as_str()
+            .strip_prefix("file://")
             .map(PathBuf::from)
             .and_then(|path| path.canonicalize().ok())
-            .map(|path| path.to_string_lossy().into_owned());
-
-        let module_id: Option<String> = None;
+            .map(ModuleId::from_path);
 
         let document = Document {
             text: params.text_document.text,
             version: params.text_document.version,
             ast: RefCell::new(None),
-            symbol_store: None,
+            symbol_table: None,
             module_id: module_id.clone(),
         };
 
@@ -228,7 +184,27 @@ impl DocumentManager {
             }
 
             doc.clear_cache();
-            doc.symbol_store = None;
+
+            if let Some(module_id) = &doc.module_id {
+                if let Some((ast, interner, _common_ids)) = doc.get_or_parse_ast() {
+                    self.symbol_index.update_document(
+                        &uri,
+                        module_id,
+                        &ast,
+                        &interner,
+                        |import_path, from_module_id| {
+                            self.module_resolver
+                                .resolve(import_path, from_module_id.path())
+                                .ok()
+                                .and_then(|resolved_module_id| {
+                                    self.module_id_to_uri
+                                        .get(&resolved_module_id)
+                                        .map(|uri| (resolved_module_id, uri.clone()))
+                                })
+                        },
+                    );
+                }
+            }
         }
     }
 
@@ -251,83 +227,38 @@ impl DocumentManager {
         self.documents.get(uri)
     }
 
-    pub fn get_mut(&mut self, uri: &Uri) -> Option<&mut Document> {
-        self.documents.get_mut(uri)
+    pub fn module_id_to_uri(&self, module_id: &ModuleId) -> Option<&Uri> {
+        self.module_id_to_uri.get(module_id)
     }
 
-    pub fn module_registry(&self) -> Option<&Arc<dyn ModuleRegistry>> {
-        self.module_registry.as_ref()
-    }
-
-    pub fn module_resolver(&self) -> Option<&Arc<dyn ModuleResolver>> {
-        self.module_resolver.as_ref()
-    }
-
-    pub fn workspace_root(&self) -> &PathBuf {
-        &self.workspace_root
+    pub fn module_resolver(&self) -> &Arc<ModuleResolver> {
+        &self.module_resolver
     }
 
     pub fn symbol_index(&self) -> &SymbolIndex {
         &self.symbol_index
     }
 
-    pub fn uri_to_module_id(&self, uri: &Uri) -> Option<&String> {
-        self.uri_to_module_id.get(uri)
-    }
-
-    pub fn module_id_to_uri(&self, module_id: &str) -> Option<&Uri> {
-        self.module_id_to_uri.get(module_id)
-    }
-
-    pub fn all_documents(&self) -> impl Iterator<Item = (&Uri, &Document)> {
-        self.documents.iter()
-    }
-
-    pub fn get_or_parse_ast(&self, uri: &Uri) -> Option<ParsedAst> {
-        self.get(uri).and_then(|doc| doc.get_or_parse_ast())
-    }
-
     fn position_to_offset(text: &str, position: Position) -> usize {
         let mut offset = 0;
         let mut current_line = 0;
-        let mut current_char = 0;
 
-        for ch in text.chars() {
-            if current_line == position.line && current_char == position.character {
-                return offset;
+        for (idx, ch) in text.char_indices() {
+            if current_line == position.line {
+                if offset == position.character as usize {
+                    return idx;
+                }
+                if ch != '\n' && ch != '\r' {
+                    offset += 1;
+                }
             }
+
             if ch == '\n' {
                 current_line += 1;
-                current_char = 0;
-            } else {
-                current_char += 1;
+                offset = 0;
             }
-            offset += ch.len_utf8();
-        }
-        offset
-    }
-
-    pub fn offset_to_position(text: &str, offset: usize) -> Position {
-        let mut current_line = 0;
-        let mut current_char = 0;
-        let mut current_offset = 0;
-
-        for ch in text.chars() {
-            if current_offset >= offset {
-                break;
-            }
-            if ch == '\n' {
-                current_line += 1;
-                current_char = 0;
-            } else {
-                current_char += 1;
-            }
-            current_offset += ch.len_utf8();
         }
 
-        Position {
-            line: current_line,
-            character: current_char,
-        }
+        text.len()
     }
 }
