@@ -1,12 +1,10 @@
 use crate::document::{Document, DocumentManager};
 use lsp_types::{GotoDefinitionResponse, Location, Position, Range, Uri};
 use std::sync::Arc;
-use typedlua_core::diagnostics::CollectingDiagnosticHandler;
 use typedlua_parser::ast::statement::Statement;
-use typedlua_parser::lexer::Lexer;
-use typedlua_parser::parser::Parser;
-use typedlua_parser::span::Span;
+use typedlua_parser::diagnostics::CollectingDiagnosticHandler;
 use typedlua_parser::string_interner::StringInterner;
+use typedlua_parser::{Lexer, Parser, Span};
 
 /// Provides go-to-definition functionality
 pub struct DefinitionProvider;

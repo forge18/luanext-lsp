@@ -1,5 +1,6 @@
 use lsp_types::{SymbolInformation, SymbolKind, Uri};
 use std::collections::{HashMap, HashSet};
+<<<<<<< HEAD
 
 #[cfg(feature = "compiler")]
 use typedlua_parser::ast::statement::{ExportKind, ImportClause, OperatorKind, Statement};
@@ -26,6 +27,13 @@ impl Span {
         self.end - self.start
     }
 }
+=======
+use typedlua_parser::ast::statement::{ExportKind, ImportClause, OperatorKind, Statement};
+use typedlua_parser::ast::Program;
+use typedlua_typechecker::module_resolver::ModuleId;
+use typedlua_parser::string_interner::StringInterner;
+use typedlua_parser::Span;
+>>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
 
 /// Information about an exported symbol
 #[derive(Debug, Clone)]

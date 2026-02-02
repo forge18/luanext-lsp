@@ -14,12 +14,13 @@ path = "src/lib.rs"
 [[bin]]
 name = "typedlua-lsp"
 path = "src/main.rs"
-required-features = ["compiler"]
 
 [dependencies]
-# Core compiler (optional - enabled with "compiler" feature)
-typedlua-core = { path = "../typedlua-core", optional = true }
-typedlua-parser = { path = "../typedlua-parser", optional = true }
+# Parser and AST
+typedlua-parser = { git = "https://github.com/forge18/typed-lua.git" }
+
+# Type checker
+typedlua-typechecker = { git = "https://github.com/forge18/typedlua-typechecker.git" }
 
 # LSP
 lsp-server = "0.7"
@@ -37,9 +38,3 @@ serde_json = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
-[features]
-# Default feature includes full compiler functionality
-default = ["compiler"]
-
-# Compiler feature enables type checking and full LSP capabilities
-compiler = ["typedlua-core", "typedlua-parser"]

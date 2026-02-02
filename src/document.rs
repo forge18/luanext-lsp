@@ -8,6 +8,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+<<<<<<< HEAD
 
 #[cfg(feature = "compiler")]
 use typedlua_core::diagnostics::CollectingDiagnosticHandler;
@@ -19,6 +20,14 @@ use typedlua_parser::lexer::Lexer;
 use typedlua_parser::parser::Parser;
 #[cfg(feature = "compiler")]
 use typedlua_parser::string_interner::StringInterner;
+=======
+use typedlua_parser::ast::Program;
+use typedlua_parser::diagnostics::CollectingDiagnosticHandler;
+use typedlua_typechecker::module_resolver::{ModuleId, ModuleRegistry, ModuleResolver};
+use typedlua_parser::string_interner::StringInterner;
+use typedlua_typechecker::SymbolTable;
+use typedlua_parser::{Lexer, Parser};
+>>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
 
 /// Parsed AST along with its string interner for resolving StringId values
 #[cfg(feature = "compiler")]
@@ -116,8 +125,41 @@ impl Document {
 }
 
 impl DocumentManager {
+<<<<<<< HEAD
     /// Create a basic document manager without compiler features
     pub fn new_basic(workspace_root: PathBuf) -> Self {
+=======
+    /// Create a test document manager with mock module system
+    /// This is exposed for testing purposes
+    pub fn new_test() -> Self {
+        use typedlua_typechecker::config::CompilerOptions;
+        use typedlua_typechecker::fs::MockFileSystem;
+
+        let workspace_root = PathBuf::from("/test");
+        let fs = Arc::new(MockFileSystem::new());
+        let compiler_options = CompilerOptions::default();
+        let module_config = typedlua_typechecker::module_resolver::ModuleConfig::from_compiler_options(
+            &compiler_options,
+            &workspace_root,
+        );
+        let module_registry = Arc::new(ModuleRegistry::new());
+        let module_resolver = Arc::new(ModuleResolver::new(
+            fs,
+            module_config,
+            workspace_root.clone(),
+        ));
+
+        Self::new(workspace_root, module_registry, module_resolver)
+    }
+}
+
+impl DocumentManager {
+    pub fn new(
+        workspace_root: PathBuf,
+        module_registry: Arc<ModuleRegistry>,
+        module_resolver: Arc<ModuleResolver>,
+    ) -> Self {
+>>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
         Self {
             documents: HashMap::new(),
             module_registry: None,

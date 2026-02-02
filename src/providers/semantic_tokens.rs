@@ -2,6 +2,7 @@ use crate::document::Document;
 use lsp_types::*;
 
 use std::sync::Arc;
+<<<<<<< HEAD
 use typedlua_core::diagnostics::CollectingDiagnosticHandler;
 use typedlua_parser::ast::expression::{Expression, ExpressionKind};
 use typedlua_parser::ast::pattern::Pattern;
@@ -10,6 +11,14 @@ use typedlua_parser::lexer::Lexer;
 use typedlua_parser::parser::Parser;
 use typedlua_parser::span::Span;
 use typedlua_parser::string_interner::StringInterner;
+=======
+use typedlua_parser::ast::expression::{Expression, ExpressionKind};
+use typedlua_parser::ast::pattern::Pattern;
+use typedlua_parser::ast::statement::{ClassMember, Statement, VariableKind};
+use typedlua_parser::diagnostics::CollectingDiagnosticHandler;
+use typedlua_parser::string_interner::StringInterner;
+use typedlua_parser::{Lexer, Parser, Span};
+>>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
 
 /// Provides semantic tokens for syntax highlighting based on semantic analysis
 pub struct SemanticTokensProvider {

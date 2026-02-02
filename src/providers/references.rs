@@ -2,15 +2,24 @@ use crate::document::{Document, DocumentManager};
 use lsp_types::{Uri, *};
 
 use std::sync::Arc;
+<<<<<<< HEAD
 use typedlua_core::diagnostics::CollectingDiagnosticHandler;
+=======
+>>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
 use typedlua_parser::ast::{
     expression::{Expression, ExpressionKind},
     statement::Statement,
 };
+<<<<<<< HEAD
 use typedlua_parser::lexer::Lexer;
 use typedlua_parser::parser::Parser;
 use typedlua_parser::span::Span;
 use typedlua_parser::string_interner::StringInterner;
+=======
+use typedlua_parser::diagnostics::CollectingDiagnosticHandler;
+use typedlua_parser::string_interner::StringInterner;
+use typedlua_parser::{Lexer, Parser, Span};
+>>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
 
 /// Provides find-references functionality
 pub struct ReferencesProvider;
@@ -217,7 +226,11 @@ impl ReferencesProvider {
     /// Search for references in files that import from the current module
     fn search_references_in_importing_files(
         &self,
+<<<<<<< HEAD
         module_id: &str,
+=======
+        module_id: &typedlua_typechecker::module_resolver::ModuleId,
+>>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
         symbol_name: &str,
         document_manager: &DocumentManager,
         locations: &mut Vec<Location>,

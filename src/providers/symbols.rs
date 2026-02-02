@@ -2,12 +2,19 @@ use crate::document::Document;
 use lsp_types::*;
 
 use std::sync::Arc;
+<<<<<<< HEAD
 use typedlua_core::diagnostics::CollectingDiagnosticHandler;
 use typedlua_parser::ast::statement::{ClassMember, OperatorKind, Statement};
 use typedlua_parser::lexer::Lexer;
 use typedlua_parser::parser::Parser;
 use typedlua_parser::span::Span;
 use typedlua_parser::string_interner::StringInterner;
+=======
+use typedlua_parser::ast::statement::{ClassMember, OperatorKind, Statement};
+use typedlua_parser::diagnostics::CollectingDiagnosticHandler;
+use typedlua_parser::string_interner::StringInterner;
+use typedlua_parser::{Lexer, Parser, Span};
+>>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
 
 /// Provides document symbols (outline view)
 pub struct SymbolsProvider;
@@ -58,12 +65,17 @@ impl SymbolsProvider {
             Statement::Variable(var_decl) => {
                 if let Pattern::Identifier(ident) = &var_decl.pattern {
                     let kind = match var_decl.kind {
+<<<<<<< HEAD
                         typedlua_parser::ast::statement::VariableKind::Const => {
                             SymbolKind::CONSTANT
                         }
                         typedlua_parser::ast::statement::VariableKind::Local => {
                             SymbolKind::VARIABLE
                         }
+=======
+                        typedlua_parser::ast::statement::VariableKind::Const => SymbolKind::CONSTANT,
+                        typedlua_parser::ast::statement::VariableKind::Local => SymbolKind::VARIABLE,
+>>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
                     };
 
                     Some(DocumentSymbol {

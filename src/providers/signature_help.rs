@@ -1,11 +1,18 @@
 use crate::document::Document;
 use lsp_types::*;
 use std::sync::Arc;
+<<<<<<< HEAD
 use typedlua_core::diagnostics::CollectingDiagnosticHandler;
 use typedlua_core::typechecker::TypeChecker;
 use typedlua_parser::lexer::Lexer;
 use typedlua_parser::parser::Parser;
 use typedlua_parser::string_interner::StringInterner;
+=======
+use typedlua_parser::diagnostics::CollectingDiagnosticHandler;
+use typedlua_parser::string_interner::StringInterner;
+use typedlua_typechecker::TypeChecker;
+use typedlua_parser::{Lexer, Parser};
+>>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
 
 /// Provides signature help (parameter info while typing function calls)
 pub struct SignatureHelpProvider;
@@ -136,7 +143,7 @@ impl SignatureHelpProvider {
     fn format_signature(
         &self,
         name: &str,
-        symbol: &typedlua_core::typechecker::Symbol,
+        symbol: &typedlua_typechecker::Symbol,
         interner: &StringInterner,
     ) -> Option<SignatureInformation> {
         use typedlua_parser::ast::pattern::Pattern;

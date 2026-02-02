@@ -1,6 +1,7 @@
 use crate::document::Document;
 use lsp_types::*;
 use std::sync::Arc;
+<<<<<<< HEAD
 use typedlua_core::diagnostics::CollectingDiagnosticHandler;
 use typedlua_core::typechecker::TypeChecker;
 use typedlua_parser::ast::statement::Statement;
@@ -8,6 +9,14 @@ use typedlua_parser::lexer::Lexer;
 use typedlua_parser::parser::Parser;
 use typedlua_parser::span::Span;
 use typedlua_parser::string_interner::StringInterner;
+=======
+use typedlua_parser::ast::expression::{Expression, ExpressionKind};
+use typedlua_parser::ast::statement::Statement;
+use typedlua_parser::diagnostics::CollectingDiagnosticHandler;
+use typedlua_parser::string_interner::StringInterner;
+use typedlua_typechecker::TypeChecker;
+use typedlua_parser::{Lexer, Parser, Span};
+>>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
 
 /// Provides inlay hints (inline type annotations and parameter names)
 pub struct InlayHintsProvider;
@@ -64,6 +73,11 @@ impl InlayHintsProvider {
         hints: &mut Vec<InlayHint>,
         interner: &StringInterner,
     ) {
+<<<<<<< HEAD
+=======
+        use typedlua_parser::ast::pattern::Pattern;
+
+>>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
         match stmt {
             Statement::Variable(decl) => {
                 if decl.type_annotation.is_none() {
@@ -101,6 +115,106 @@ impl InlayHintsProvider {
         }
     }
 
+<<<<<<< HEAD
+=======
+    /// Collect parameter name hints from function calls
+    fn collect_hints_from_expression(
+        &self,
+        expr: &Expression,
+        type_checker: &TypeChecker,
+        range: Range,
+        hints: &mut Vec<InlayHint>,
+        interner: &StringInterner,
+    ) {
+        match &expr.kind {
+            ExpressionKind::Call(callee, args, _type_args) => {
+                // Try to get the function name for parameter hints
+                if let ExpressionKind::Identifier(func_name) = &callee.kind {
+                    let func_name_str = interner.resolve(*func_name);
+                    if let Some(symbol) = type_checker.lookup_symbol(&func_name_str) {
+                        // Get function type parameters
+                        use typedlua_parser::ast::types::TypeKind;
+                        if let TypeKind::Function(func_type) = &symbol.typ.kind {
+                            // Show parameter name hints for function arguments
+                            for (i, arg) in args.iter().enumerate() {
+                                if i < func_type.parameters.len() {
+                                    let param = &func_type.parameters[i];
+                                    if let typedlua_parser::ast::pattern::Pattern::Identifier(ident) =
+                                        &param.pattern
+                                    {
+                                        if self.span_in_range(&arg.span, range) {
+                                            let position = span_to_position_start(&arg.span);
+
+                                            hints.push(InlayHint {
+                                                position,
+                                                label: InlayHintLabel::String(format!(
+                                                    "{}: ",
+                                                    ident.node
+                                                )),
+                                                kind: Some(InlayHintKind::PARAMETER),
+                                                text_edits: None,
+                                                tooltip: None,
+                                                padding_left: Some(false),
+                                                padding_right: Some(false),
+                                                data: None,
+                                            });
+                                        }
+                                    }
+                                }
+
+                                // Recursively check nested expressions
+                                self.collect_hints_from_expression(
+                                    &arg.value,
+                                    type_checker,
+                                    range,
+                                    hints,
+                                    interner,
+                                );
+                            }
+                        }
+                    }
+                }
+
+                // Also check the callee for nested calls
+                self.collect_hints_from_expression(callee, type_checker, range, hints, interner);
+            }
+            ExpressionKind::Binary(_, left, right) => {
+                self.collect_hints_from_expression(left, type_checker, range, hints, interner);
+                self.collect_hints_from_expression(right, type_checker, range, hints, interner);
+            }
+            ExpressionKind::Unary(_, operand) => {
+                self.collect_hints_from_expression(operand, type_checker, range, hints, interner);
+            }
+            ExpressionKind::Member(object, _) => {
+                self.collect_hints_from_expression(object, type_checker, range, hints, interner);
+            }
+            ExpressionKind::Index(object, index) => {
+                self.collect_hints_from_expression(object, type_checker, range, hints, interner);
+                self.collect_hints_from_expression(index, type_checker, range, hints, interner);
+            }
+            ExpressionKind::Assignment(target, _, value) => {
+                self.collect_hints_from_expression(target, type_checker, range, hints, interner);
+                self.collect_hints_from_expression(value, type_checker, range, hints, interner);
+            }
+            ExpressionKind::Conditional(condition, then_expr, else_expr) => {
+                self.collect_hints_from_expression(condition, type_checker, range, hints, interner);
+                self.collect_hints_from_expression(then_expr, type_checker, range, hints, interner);
+                self.collect_hints_from_expression(else_expr, type_checker, range, hints, interner);
+            }
+            ExpressionKind::Parenthesized(inner) => {
+                self.collect_hints_from_expression(inner, type_checker, range, hints, interner);
+            }
+            _ => {}
+        }
+    }
+
+    /// Check if a span is within the requested range
+    fn span_in_range(&self, span: &Span, range: Range) -> bool {
+        let span_line = (span.line.saturating_sub(1)) as u32;
+        span_line >= range.start.line && span_line <= range.end.line
+    }
+
+>>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
     /// Format a type for display
     #[allow(dead_code)]
     fn format_type_simple(

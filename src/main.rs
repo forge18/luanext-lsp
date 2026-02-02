@@ -19,12 +19,18 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
+<<<<<<< HEAD
 use typedlua_core::config::CompilerOptions;
 use typedlua_core::fs::RealFileSystem;
 use typedlua_core::module_resolver::{
     ModuleConfig, ModuleRegistry as CoreModuleRegistryType,
     ModuleResolver as CoreModuleResolverType,
 };
+=======
+use typedlua_typechecker::config::CompilerOptions;
+use typedlua_typechecker::fs::RealFileSystem;
+use typedlua_typechecker::module_resolver::{ModuleConfig, ModuleRegistry, ModuleResolver};
+>>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
 
 // Implement LspConnection for the real lsp_server::Connection
 struct ConnectionWrapper<'a>(&'a Connection);
