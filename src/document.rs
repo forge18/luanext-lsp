@@ -8,36 +8,20 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-<<<<<<< HEAD
-
-#[cfg(feature = "compiler")]
-use typedlua_core::diagnostics::CollectingDiagnosticHandler;
-#[cfg(feature = "compiler")]
-use typedlua_parser::ast::Program;
-#[cfg(feature = "compiler")]
-use typedlua_parser::lexer::Lexer;
-#[cfg(feature = "compiler")]
-use typedlua_parser::parser::Parser;
-#[cfg(feature = "compiler")]
-use typedlua_parser::string_interner::StringInterner;
-=======
 use typedlua_parser::ast::Program;
 use typedlua_parser::diagnostics::CollectingDiagnosticHandler;
 use typedlua_typechecker::module_resolver::{ModuleId, ModuleRegistry, ModuleResolver};
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_typechecker::SymbolTable;
 use typedlua_parser::{Lexer, Parser};
->>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
 
 /// Parsed AST along with its string interner for resolving StringId values
-#[cfg(feature = "compiler")]
 pub type ParsedAst = (
     Arc<Program>,
     Arc<StringInterner>,
     Arc<typedlua_parser::string_interner::CommonIdentifiers>,
 );
 
-#[cfg(not(feature = "compiler"))]
 pub type ParsedAst = ();
 
 /// Manages open documents and their cached analysis results
@@ -92,7 +76,6 @@ impl Document {
         }
     }
 
-    #[cfg(feature = "compiler")]
     pub fn get_or_parse_ast(&self) -> Option<ParsedAst> {
         if let Some(cached) = self.ast.borrow().as_ref() {
             return Some((Arc::clone(&cached.0), Arc::clone(&cached.1), Arc::clone(&cached.2)));
@@ -114,7 +97,6 @@ impl Document {
         Some((ast_arc, interner_arc, common_ids_arc))
     }
 
-    #[cfg(not(feature = "compiler"))]
     pub fn get_or_parse_ast(&self) -> Option<ParsedAst> {
         None
     }
@@ -125,12 +107,23 @@ impl Document {
 }
 
 impl DocumentManager {
-<<<<<<< HEAD
-    /// Create a basic document manager without compiler features
-    pub fn new_basic(workspace_root: PathBuf) -> Self {
-=======
+    pub fn new(
+        workspace_root: PathBuf,
+        module_registry: Arc<ModuleRegistry>,
+        module_resolver: Arc<ModuleResolver>,
+    ) -> Self {
+        Self {
+            documents: HashMap::new(),
+            module_registry: Some(module_registry),
+            module_resolver: Some(module_resolver),
+            uri_to_module_id: HashMap::new(),
+            module_id_to_uri: HashMap::new(),
+            workspace_root,
+            symbol_index: SymbolIndex::new(),
+        }
+    }
+
     /// Create a test document manager with mock module system
-    /// This is exposed for testing purposes
     pub fn new_test() -> Self {
         use typedlua_typechecker::config::CompilerOptions;
         use typedlua_typechecker::fs::MockFileSystem;
@@ -151,28 +144,8 @@ impl DocumentManager {
 
         Self::new(workspace_root, module_registry, module_resolver)
     }
-}
-
-impl DocumentManager {
-    pub fn new(
-        workspace_root: PathBuf,
-        module_registry: Arc<ModuleRegistry>,
-        module_resolver: Arc<ModuleResolver>,
-    ) -> Self {
->>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
-        Self {
-            documents: HashMap::new(),
-            module_registry: None,
-            module_resolver: None,
-            uri_to_module_id: HashMap::new(),
-            module_id_to_uri: HashMap::new(),
-            workspace_root,
-            symbol_index: SymbolIndex::new(),
-        }
-    }
 
     /// Create a document manager with compiler support
-    #[cfg(feature = "compiler")]
     pub fn new(
         workspace_root: PathBuf,
         module_registry: Arc<dyn ModuleRegistry>,
@@ -189,7 +162,6 @@ impl DocumentManager {
         }
     }
 
-    #[cfg(feature = "compiler")]
     pub fn new_test() -> Self {
         use crate::impls::{CoreModuleRegistry, CoreModuleResolver};
         use typedlua_core::config::CompilerOptions;
@@ -212,13 +184,11 @@ impl DocumentManager {
     pub fn open(&mut self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri.clone();
 
-        #[cfg(feature = "compiler")]
         let module_id = uri.as_str().strip_prefix("file://")
             .map(PathBuf::from)
             .and_then(|path| path.canonicalize().ok())
             .map(|path| path.to_string_lossy().into_owned());
 
-        #[cfg(not(feature = "compiler"))]
         let module_id: Option<String> = None;
 
         let document = Document {
@@ -267,7 +237,6 @@ impl DocumentManager {
     pub fn close(&mut self, params: DidCloseTextDocumentParams) {
         let uri = &params.text_document.uri;
 
-        #[cfg(feature = "compiler")]
         if let Some(module_id) = self.uri_to_module_id.get(uri) {
             self.symbol_index.clear_document(uri, module_id);
         }

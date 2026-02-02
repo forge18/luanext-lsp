@@ -1,39 +1,10 @@
 use lsp_types::{SymbolInformation, SymbolKind, Uri};
 use std::collections::{HashMap, HashSet};
-<<<<<<< HEAD
-
-#[cfg(feature = "compiler")]
-use typedlua_parser::ast::statement::{ExportKind, ImportClause, OperatorKind, Statement};
-#[cfg(feature = "compiler")]
-use typedlua_parser::ast::Program;
-#[cfg(feature = "compiler")]
-use typedlua_parser::string_interner::StringInterner;
-#[cfg(feature = "compiler")]
-use typedlua_parser::Span;
-
-// Simple Span type for non-compiler mode
-#[cfg(not(feature = "compiler"))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub struct Span {
-    pub start: u32,
-    pub end: u32,
-    pub line: u32,
-    pub column: u32,
-}
-
-#[cfg(not(feature = "compiler"))]
-impl Span {
-    pub fn len(&self) -> u32 {
-        self.end - self.start
-    }
-}
-=======
 use typedlua_parser::ast::statement::{ExportKind, ImportClause, OperatorKind, Statement};
 use typedlua_parser::ast::Program;
 use typedlua_typechecker::module_resolver::ModuleId;
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::Span;
->>>>>>> b9886cd (Refactor dependencies and update imports to use typedlua_parser and typedlua_typechecker)
 
 /// Information about an exported symbol
 #[derive(Debug, Clone)]
