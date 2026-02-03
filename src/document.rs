@@ -9,10 +9,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use typedlua_parser::ast::Program;
 use typedlua_parser::diagnostics::CollectingDiagnosticHandler;
-use typedlua_typechecker::module_resolver::{ModuleId, ModuleRegistry, ModuleResolver};
 use typedlua_parser::string_interner::StringInterner;
-use typedlua_typechecker::SymbolTable;
 use typedlua_parser::{Lexer, Parser};
+use typedlua_typechecker::module_resolver::{ModuleId, ModuleRegistry, ModuleResolver};
+use typedlua_typechecker::SymbolTable;
 
 /// Parsed AST along with its string interner for resolving StringId values
 pub type ParsedAst = (
@@ -55,17 +55,23 @@ pub struct Document {
 impl std::fmt::Debug for Document {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Document")
-            .field("text", &format!("{}...", &self.text.chars().take(50).collect::<String>()))
+            .field(
+                "text",
+                &format!("{}...", &self.text.chars().take(50).collect::<String>()),
+            )
             .field("version", &self.version)
             .field("ast", &"<cached>")
-            .field("symbol_table", &self.symbol_table.as_ref().map(|_| "<cached>"))
+            .field(
+                "symbol_table",
+                &self.symbol_table.as_ref().map(|_| "<cached>"),
+            )
             .field("module_id", &self.module_id)
             .finish()
     }
 }
 
 impl Document {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "compiler"))]
     pub fn new_test(text: String, version: i32) -> Self {
         Self {
             text,
@@ -78,7 +84,11 @@ impl Document {
 
     pub fn get_or_parse_ast(&self) -> Option<ParsedAst> {
         if let Some(cached) = self.ast.borrow().as_ref() {
-            return Some((Arc::clone(&cached.0), Arc::clone(&cached.1), Arc::clone(&cached.2)));
+            return Some((
+                Arc::clone(&cached.0),
+                Arc::clone(&cached.1),
+                Arc::clone(&cached.2),
+            ));
         }
 
         let handler = Arc::new(CollectingDiagnosticHandler::new());
@@ -92,7 +102,11 @@ impl Document {
         let ast_arc = Arc::new(program);
         let interner_arc = Arc::new(interner);
         let common_ids_arc = Arc::new(common_ids);
-        *self.ast.borrow_mut() = Some((Arc::clone(&ast_arc), Arc::clone(&interner_arc), Arc::clone(&common_ids_arc)));
+        *self.ast.borrow_mut() = Some((
+            Arc::clone(&ast_arc),
+            Arc::clone(&interner_arc),
+            Arc::clone(&common_ids_arc),
+        ));
 
         Some((ast_arc, interner_arc, common_ids_arc))
     }
@@ -120,7 +134,7 @@ impl DocumentManager {
     }
 
     /// Create a test document manager with mock module system
-    #[cfg(test)]
+    #[cfg(any(test, feature = "compiler"))]
     pub fn new_test() -> Self {
         use typedlua_typechecker::config::CompilerOptions;
         use typedlua_typechecker::fs::MockFileSystem;
@@ -128,10 +142,11 @@ impl DocumentManager {
         let workspace_root = PathBuf::from("/test");
         let fs = Arc::new(MockFileSystem::new());
         let compiler_options = CompilerOptions::default();
-        let module_config = typedlua_typechecker::module_resolver::ModuleConfig::from_compiler_options(
-            &compiler_options,
-            &workspace_root,
-        );
+        let module_config =
+            typedlua_typechecker::module_resolver::ModuleConfig::from_compiler_options(
+                &compiler_options,
+                &workspace_root,
+            );
         let module_registry = Arc::new(ModuleRegistry::new());
         let module_resolver = Arc::new(ModuleResolver::new(
             fs,
@@ -145,7 +160,8 @@ impl DocumentManager {
     pub fn open(&mut self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri.clone();
 
-        let module_id = uri.as_str()
+        let module_id = uri
+            .as_str()
             .strip_prefix("file://")
             .map(PathBuf::from)
             .and_then(|path| path.canonicalize().ok())
@@ -160,8 +176,10 @@ impl DocumentManager {
         };
 
         if let Some(ref mid) = module_id {
-            self.uri_to_module_id.insert(uri.clone(), mid.clone() as ModuleId);
-            self.module_id_to_uri.insert(mid.clone() as ModuleId, uri.clone());
+            self.uri_to_module_id
+                .insert(uri.clone(), mid.clone() as ModuleId);
+            self.module_id_to_uri
+                .insert(mid.clone() as ModuleId, uri.clone());
         }
 
         self.documents.insert(uri, document);
@@ -201,9 +219,9 @@ impl DocumentManager {
                                 .resolve(import_path, std::path::Path::new(from_module_id))
                                 .ok()
                                 .and_then(|resolved_module_id| {
-                                    self.module_id_to_uri
-                                        .get(&resolved_module_id)
-                                        .map(|uri| (resolved_module_id.as_str().to_string(), uri.clone()))
+                                    self.module_id_to_uri.get(&resolved_module_id).map(|uri| {
+                                        (resolved_module_id.as_str().to_string(), uri.clone())
+                                    })
                                 })
                         },
                     );
@@ -270,5 +288,3 @@ impl DocumentManager {
         text.len()
     }
 }
-
-
