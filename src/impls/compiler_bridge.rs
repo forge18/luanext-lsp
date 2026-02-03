@@ -10,15 +10,15 @@ use crate::traits::{
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use typedlua_parser::lexer::Lexer;
+use typedlua_parser::parser::Parser;
+use typedlua_parser::string_interner::StringInterner;
 use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
 use typedlua_typechecker::module_resolver::{
     ModuleId as CoreModuleId, ModuleRegistry as CoreModuleRegistryType,
     ModuleResolver as CoreModuleResolverType,
 };
 use typedlua_typechecker::{Symbol, SymbolTable, TypeChecker as CoreTypeCheckerType};
-use typedlua_parser::lexer::Lexer;
-use typedlua_parser::parser::Parser;
-use typedlua_parser::string_interner::StringInterner;
 
 // ============================================================================
 // Module Resolution Bridges
@@ -155,9 +155,7 @@ impl SymbolStore for CoreSymbolStore {
             .iter()
             .find(|symbol| {
                 let span = &symbol.span;
-                span.line == line
-                    && span.column <= column
-                    && column < span.column + span.len()
+                span.line == line && span.column <= column && column < span.column + span.len()
             })
             .cloned()
     }
@@ -199,7 +197,11 @@ impl TypeChecker for CoreTypeChecker {
         let diagnostic_handler = Arc::new(CollectingDiagnosticHandler::new());
 
         // Lex the source
-        let mut lexer = Lexer::new(text, diagnostic_handler.clone() as Arc<dyn typedlua_parser::DiagnosticHandler>, &interner);
+        let mut lexer = Lexer::new(
+            text,
+            diagnostic_handler.clone() as Arc<dyn typedlua_parser::DiagnosticHandler>,
+            &interner,
+        );
         let tokens = match lexer.tokenize() {
             Ok(tokens) => tokens,
             Err(_) => {
@@ -219,7 +221,12 @@ impl TypeChecker for CoreTypeChecker {
         };
 
         // Parse the tokens
-        let mut parser = Parser::new(tokens, diagnostic_handler.clone() as Arc<dyn typedlua_parser::DiagnosticHandler>, &interner, &common);
+        let mut parser = Parser::new(
+            tokens,
+            diagnostic_handler.clone() as Arc<dyn typedlua_parser::DiagnosticHandler>,
+            &interner,
+            &common,
+        );
 
         let mut ast = match parser.parse() {
             Ok(ast) => ast,
@@ -240,7 +247,12 @@ impl TypeChecker for CoreTypeChecker {
         };
 
         // Type check the AST
-        let mut type_checker = CoreTypeCheckerType::new(diagnostic_handler.clone() as Arc<dyn typedlua_typechecker::diagnostics::DiagnosticHandler>, &interner, &common);
+        let mut type_checker = CoreTypeCheckerType::new(
+            diagnostic_handler.clone()
+                as Arc<dyn typedlua_typechecker::diagnostics::DiagnosticHandler>,
+            &interner,
+            &common,
+        );
         match type_checker.check_program(&mut ast) {
             Ok(_) => {
                 use typedlua_typechecker::diagnostics::DiagnosticHandler;
@@ -250,7 +262,8 @@ impl TypeChecker for CoreTypeChecker {
                     .map(convert_diagnostic)
                     .collect();
 
-                let symbol_store = Box::new(CoreSymbolStore::new(type_checker.symbol_table(), &interner));
+                let symbol_store =
+                    Box::new(CoreSymbolStore::new(type_checker.symbol_table(), &interner));
 
                 TypeCheckResult {
                     diagnostics,
@@ -302,7 +315,11 @@ impl DiagnosticCollector for CoreDiagnosticCollector {
         let (interner, common) = StringInterner::new_with_common_identifiers();
         let diagnostic_handler = Arc::new(CollectingDiagnosticHandler::new());
 
-        let mut lexer = Lexer::new(text, diagnostic_handler.clone() as Arc<dyn typedlua_parser::DiagnosticHandler>, &interner);
+        let mut lexer = Lexer::new(
+            text,
+            diagnostic_handler.clone() as Arc<dyn typedlua_parser::DiagnosticHandler>,
+            &interner,
+        );
         let tokens = match lexer.tokenize() {
             Ok(tokens) => tokens,
             Err(_) => {
@@ -316,7 +333,12 @@ impl DiagnosticCollector for CoreDiagnosticCollector {
             }
         };
 
-        let mut parser = Parser::new(tokens, diagnostic_handler.clone() as Arc<dyn typedlua_parser::DiagnosticHandler>, &interner, &common);
+        let mut parser = Parser::new(
+            tokens,
+            diagnostic_handler.clone() as Arc<dyn typedlua_parser::DiagnosticHandler>,
+            &interner,
+            &common,
+        );
         let _ast = parser.parse();
 
         use typedlua_typechecker::diagnostics::DiagnosticHandler;

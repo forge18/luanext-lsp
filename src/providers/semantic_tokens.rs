@@ -5,9 +5,9 @@ use std::sync::Arc;
 use typedlua_parser::ast::expression::{Expression, ExpressionKind};
 use typedlua_parser::ast::pattern::Pattern;
 use typedlua_parser::ast::statement::{ClassMember, Statement, VariableKind};
-use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::{Lexer, Parser, Span};
+use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
 
 /// Provides semantic tokens for syntax highlighting based on semantic analysis
 pub struct SemanticTokensProvider {

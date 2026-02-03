@@ -1,10 +1,10 @@
 use crate::document::Document;
 use lsp_types::*;
 use std::sync::Arc;
-use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
 use typedlua_parser::string_interner::StringInterner;
-use typedlua_typechecker::{SymbolKind, TypeChecker};
 use typedlua_parser::{Lexer, Parser};
+use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
+use typedlua_typechecker::{SymbolKind, TypeChecker};
 
 /// Provides hover information (type info, documentation, signatures)
 pub struct HoverProvider;

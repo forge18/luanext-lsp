@@ -101,7 +101,8 @@ impl SymbolIndex {
         self.clear_document(uri, module_id);
 
         // Register URI -> module_id mapping
-        self.uri_to_module.insert(uri.clone(), module_id.to_string());
+        self.uri_to_module
+            .insert(uri.clone(), module_id.to_string());
 
         // Index exports
         self.index_exports(uri, module_id, &ast.statements, interner);

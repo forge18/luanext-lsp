@@ -2,9 +2,9 @@ use crate::document::{Document, DocumentManager};
 use lsp_types::{GotoDefinitionResponse, Location, Position, Range, Uri};
 use std::sync::Arc;
 use typedlua_parser::ast::statement::Statement;
-use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::{Lexer, Parser, Span};
+use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
 
 /// Provides go-to-definition functionality
 pub struct DefinitionProvider;
@@ -127,11 +127,11 @@ impl DefinitionProvider {
                 if let Some(exported_name) = exported_name {
                     // Resolve the import path to a module ID
                     if let Some(module_id) = &current_document.module_id {
-                        let resolver = document_manager.module_resolver(); {
-                            if let Ok(target_module_id) = resolver.resolve(
-                                import_source,
-                                std::path::Path::new(module_id.as_str()),
-                            ) {
+                        let resolver = document_manager.module_resolver();
+                        {
+                            if let Ok(target_module_id) = resolver
+                                .resolve(import_source, std::path::Path::new(module_id.as_str()))
+                            {
                                 // Convert module ID to URI
                                 if let Some(target_uri) =
                                     document_manager.module_id_to_uri(&target_module_id)
@@ -146,20 +146,20 @@ impl DefinitionProvider {
                                         );
                                     } else {
                                         // Document not open - we could potentially read it from disk
-                                    // For now, just return the file location
-                                    return Some(Location {
-                                        uri: target_uri.clone(),
-                                        range: Range {
-                                            start: Position {
-                                                line: 0,
-                                                character: 0,
+                                        // For now, just return the file location
+                                        return Some(Location {
+                                            uri: target_uri.clone(),
+                                            range: Range {
+                                                start: Position {
+                                                    line: 0,
+                                                    character: 0,
+                                                },
+                                                end: Position {
+                                                    line: 0,
+                                                    character: 0,
+                                                },
                                             },
-                                            end: Position {
-                                                line: 0,
-                                                character: 0,
-                                            },
-                                        },
-                                    });
+                                        });
                                     }
                                 }
                             }
