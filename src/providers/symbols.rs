@@ -284,37 +284,44 @@ mod tests {
     fn test_symbol_kinds() {
         let provider = SymbolsProvider::new();
 
+        fn extract_symbols(response: DocumentSymbolResponse) -> Vec<DocumentSymbol> {
+            match response {
+                DocumentSymbolResponse::Nested(vec) => vec,
+                DocumentSymbolResponse::Flat(_) => Vec::new(),
+            }
+        }
+
         // Test function symbol
         let doc = Document::new_test("function foo() end".to_string(), 1);
-        let symbols = provider.provide(&doc);
+        let symbols = extract_symbols(provider.provide(&doc));
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].name, "foo");
         assert_eq!(symbols[0].kind, SymbolKind::FUNCTION);
 
         // Test variable symbol (local)
         let doc = Document::new_test("local x = 10".to_string(), 1);
-        let symbols = provider.provide(&doc);
+        let symbols = extract_symbols(provider.provide(&doc));
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].name, "x");
         assert_eq!(symbols[0].kind, SymbolKind::VARIABLE);
 
         // Test constant symbol
         let doc = Document::new_test("const PI = 3.14".to_string(), 1);
-        let symbols = provider.provide(&doc);
+        let symbols = extract_symbols(provider.provide(&doc));
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].name, "PI");
         assert_eq!(symbols[0].kind, SymbolKind::CONSTANT);
 
         // Test class symbol
         let doc = Document::new_test("class Point end".to_string(), 1);
-        let symbols = provider.provide(&doc);
+        let symbols = extract_symbols(provider.provide(&doc));
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].name, "Point");
         assert_eq!(symbols[0].kind, SymbolKind::CLASS);
 
         // Test interface symbol
         let doc = Document::new_test("interface Drawable end".to_string(), 1);
-        let symbols = provider.provide(&doc);
+        let symbols = extract_symbols(provider.provide(&doc));
         // Parser might not recognize 'interface' keyword yet
         if symbols.len() > 0 {
             assert_eq!(symbols[0].name, "Drawable");
@@ -323,14 +330,14 @@ mod tests {
 
         // Test enum symbol
         let doc = Document::new_test("enum Color { Red, Green, Blue }".to_string(), 1);
-        let symbols = provider.provide(&doc);
+        let symbols = extract_symbols(provider.provide(&doc));
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].name, "Color");
         assert_eq!(symbols[0].kind, SymbolKind::ENUM);
 
         // Test type alias symbol
         let doc = Document::new_test("type Point = { x: number, y: number }".to_string(), 1);
-        let symbols = provider.provide(&doc);
+        let symbols = extract_symbols(provider.provide(&doc));
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].name, "Point");
         assert_eq!(symbols[0].kind, SymbolKind::TYPE_PARAMETER);

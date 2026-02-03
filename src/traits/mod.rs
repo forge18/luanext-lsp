@@ -28,7 +28,12 @@ pub trait HoverProviderTrait {
 }
 
 pub trait DefinitionProviderTrait {
-    fn provide(&self, uri: &Uri, document: &Document, position: Position) -> Option<Location>;
+    fn provide(
+        &self,
+        uri: &Uri,
+        document: &Document,
+        position: Position,
+    ) -> Option<GotoDefinitionResponse>;
 }
 
 pub trait ReferencesProviderTrait {

@@ -2,10 +2,8 @@ use crate::document::DocumentManager;
 
 use crate::providers::*;
 use crate::traits::{
-    CodeActionsProviderTrait, CompletionProviderTrait, DefinitionProviderTrait,
-    DiagnosticsProviderTrait, FormattingProviderTrait, HoverProviderTrait, InlayHintsProviderTrait,
-    ReferencesProviderTrait, RenameProviderTrait, SelectionRangeProviderTrait,
-    SemanticTokensProviderTrait, SignatureHelpProviderTrait, SymbolsProviderTrait,
+    DefinitionProviderTrait, DiagnosticsProviderTrait, HoverProviderTrait, ReferencesProviderTrait,
+    SymbolsProviderTrait,
 };
 use anyhow::Result;
 use lsp_server::{Notification, Response};

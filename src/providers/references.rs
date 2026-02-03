@@ -27,7 +27,7 @@ impl ReferencesProvider {
         position: Position,
         include_declaration: bool,
         document_manager: &DocumentManager,
-    ) -> Vec<Location> {
+    ) -> Option<Vec<Location>> {
         // Get the word at the current position
         let word = self.get_word_at_position(document, position)?;
 
@@ -664,7 +664,26 @@ impl ReferencesProviderTrait for ReferencesProvider {
         position: Position,
         include_declaration: bool,
     ) -> Vec<Location> {
-        let manager = DocumentManager::new_test();
+        use typedlua_typechecker::config::CompilerOptions;
+        use typedlua_typechecker::fs::MockFileSystem;
+        use typedlua_typechecker::module_resolver::{ModuleRegistry, ModuleResolver};
+
+        let workspace_root = std::path::PathBuf::from("/test");
+        let fs = std::sync::Arc::new(MockFileSystem::new());
+        let compiler_options = CompilerOptions::default();
+        let module_config =
+            typedlua_typechecker::module_resolver::ModuleConfig::from_compiler_options(
+                &compiler_options,
+                &workspace_root,
+            );
+        let module_registry = std::sync::Arc::new(ModuleRegistry::new());
+        let module_resolver = std::sync::Arc::new(ModuleResolver::new(
+            fs,
+            module_config,
+            workspace_root.clone(),
+        ));
+        let manager = DocumentManager::new(workspace_root, module_registry, module_resolver);
         self.provide_impl(uri, document, position, include_declaration, &manager)
+            .unwrap_or_default()
     }
 }
