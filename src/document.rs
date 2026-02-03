@@ -71,7 +71,7 @@ impl std::fmt::Debug for Document {
 }
 
 impl Document {
-    #[cfg(any(test, feature = "compiler"))]
+    #[cfg(test)]
     pub fn new_test(text: String, version: i32) -> Self {
         Self {
             text,
@@ -134,7 +134,7 @@ impl DocumentManager {
     }
 
     /// Create a test document manager with mock module system
-    #[cfg(any(test, feature = "compiler"))]
+    #[cfg(test)]
     pub fn new_test() -> Self {
         use typedlua_typechecker::config::CompilerOptions;
         use typedlua_typechecker::fs::MockFileSystem;
