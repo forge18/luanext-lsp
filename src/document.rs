@@ -14,6 +14,31 @@ use typedlua_parser::{Lexer, Parser};
 use typedlua_typechecker::module_resolver::{ModuleId, ModuleRegistry, ModuleResolver};
 use typedlua_typechecker::SymbolTable;
 
+pub trait DocumentManagerTrait {
+    fn get(&self, uri: &Uri) -> Option<&Document>;
+    fn symbol_index(&self) -> &SymbolIndex;
+    fn module_id_to_uri(&self, module_id: &ModuleId) -> Option<&Uri>;
+    fn uri_to_module_id(&self, uri: &Uri) -> Option<&ModuleId>;
+}
+
+impl DocumentManagerTrait for DocumentManager {
+    fn get(&self, uri: &Uri) -> Option<&Document> {
+        self.documents.get(uri)
+    }
+
+    fn symbol_index(&self) -> &SymbolIndex {
+        &self.symbol_index
+    }
+
+    fn module_id_to_uri(&self, module_id: &ModuleId) -> Option<&Uri> {
+        self.module_id_to_uri.get(module_id)
+    }
+
+    fn uri_to_module_id(&self, uri: &Uri) -> Option<&ModuleId> {
+        self.uri_to_module_id.get(uri)
+    }
+}
+
 /// Parsed AST along with its string interner for resolving StringId values
 pub type ParsedAst = (
     Arc<Program>,

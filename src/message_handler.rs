@@ -1,6 +1,12 @@
 use crate::document::DocumentManager;
 
 use crate::providers::*;
+use crate::traits::{
+    CodeActionsProviderTrait, CompletionProviderTrait, DefinitionProviderTrait,
+    DiagnosticsProviderTrait, FormattingProviderTrait, HoverProviderTrait, InlayHintsProviderTrait,
+    ReferencesProviderTrait, RenameProviderTrait, SelectionRangeProviderTrait,
+    SemanticTokensProviderTrait, SignatureHelpProviderTrait, SymbolsProviderTrait,
+};
 use anyhow::Result;
 use lsp_server::{Notification, Response};
 use tracing;
@@ -250,10 +256,9 @@ impl MessageHandler {
                 let uri = &params.text_document_position_params.text_document.uri;
                 let position = params.text_document_position_params.position;
 
-                let result = document_manager.get(uri).and_then(|doc| {
-                    self.definition_provider
-                        .provide(uri, doc, position, document_manager)
-                });
+                let result = document_manager
+                    .get(uri)
+                    .and_then(|doc| self.definition_provider.provide(uri, doc, position));
 
                 let response = Response::new_ok(id, result);
                 connection.send_response(response)?;
@@ -268,14 +273,9 @@ impl MessageHandler {
                 let position = params.text_document_position.position;
                 let include_declaration = params.context.include_declaration;
 
-                let result = document_manager.get(uri).and_then(|doc| {
-                    self.references_provider.provide(
-                        uri,
-                        doc,
-                        position,
-                        include_declaration,
-                        document_manager,
-                    )
+                let result = document_manager.get(uri).map(|doc| {
+                    self.references_provider
+                        .provide(uri, doc, position, include_declaration)
                 });
 
                 let response = Response::new_ok(id, result);
@@ -325,8 +325,7 @@ impl MessageHandler {
 
                 let result = document_manager
                     .get(uri)
-                    .map(|doc| self.symbols_provider.provide(doc))
-                    .map(DocumentSymbolResponse::Nested);
+                    .map(|doc| self.symbols_provider.provide(doc));
 
                 let response = Response::new_ok(id, result);
                 connection.send_response(response)?;

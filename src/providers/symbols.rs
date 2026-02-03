@@ -1,4 +1,5 @@
 use crate::document::Document;
+use crate::traits::SymbolsProviderTrait;
 use lsp_types::*;
 
 use std::sync::Arc;
@@ -15,8 +16,8 @@ impl SymbolsProvider {
         Self
     }
 
-    /// Provide all symbols in the document
-    pub fn provide(&self, document: &Document) -> Vec<DocumentSymbol> {
+    /// Provide all symbols in the document (internal method)
+    pub fn provide_impl(&self, document: &Document) -> Vec<DocumentSymbol> {
         // Parse the document
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
@@ -333,5 +334,11 @@ mod tests {
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].name, "Point");
         assert_eq!(symbols[0].kind, SymbolKind::TYPE_PARAMETER);
+    }
+}
+
+impl SymbolsProviderTrait for SymbolsProvider {
+    fn provide(&self, document: &Document) -> DocumentSymbolResponse {
+        DocumentSymbolResponse::Nested(self.provide_impl(document))
     }
 }

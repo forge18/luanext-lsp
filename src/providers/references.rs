@@ -1,4 +1,5 @@
 use crate::document::{Document, DocumentManager};
+use crate::traits::ReferencesProviderTrait;
 use lsp_types::{Uri, *};
 
 use std::sync::Arc;
@@ -18,15 +19,15 @@ impl ReferencesProvider {
         Self
     }
 
-    /// Find all references to the symbol at the given position
-    pub fn provide(
+    /// Find all references to the symbol at the given position (internal method)
+    pub fn provide_impl(
         &self,
         uri: &Uri,
         document: &Document,
         position: Position,
         include_declaration: bool,
         document_manager: &DocumentManager,
-    ) -> Option<Vec<Location>> {
+    ) -> Vec<Location> {
         // Get the word at the current position
         let word = self.get_word_at_position(document, position)?;
 
@@ -652,5 +653,18 @@ fn span_to_range(span: &Span) -> Range {
             line: (span.line.saturating_sub(1)) as u32,
             character: ((span.column + span.len()).saturating_sub(1)) as u32,
         },
+    }
+}
+
+impl ReferencesProviderTrait for ReferencesProvider {
+    fn provide(
+        &self,
+        uri: &Uri,
+        document: &Document,
+        position: Position,
+        include_declaration: bool,
+    ) -> Vec<Location> {
+        let manager = DocumentManager::new_test();
+        self.provide_impl(uri, document, position, include_declaration, &manager)
     }
 }

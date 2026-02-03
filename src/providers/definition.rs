@@ -1,4 +1,5 @@
 use crate::document::{Document, DocumentManager};
+use crate::traits::DefinitionProviderTrait;
 use lsp_types::{GotoDefinitionResponse, Location, Position, Range, Uri};
 use std::sync::Arc;
 use typedlua_parser::ast::statement::Statement;
@@ -14,8 +15,8 @@ impl DefinitionProvider {
         Self
     }
 
-    /// Provide definition location for symbol at position
-    pub fn provide(
+    /// Provide definition location for symbol at position (internal method with manager)
+    pub fn provide_with_manager(
         &self,
         uri: &Uri,
         document: &Document,
@@ -391,5 +392,12 @@ fn span_to_range(span: &Span) -> Range {
             line: (span.line.saturating_sub(1)) as u32,
             character: ((span.column + span.len()).saturating_sub(1)) as u32,
         },
+    }
+}
+
+impl DefinitionProviderTrait for DefinitionProvider {
+    fn provide(&self, uri: &Uri, document: &Document, position: Position) -> Option<Location> {
+        let manager = DocumentManager::new_test();
+        self.provide_with_manager(uri, document, position, &manager)
     }
 }
