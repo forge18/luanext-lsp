@@ -17,7 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Parser and AST
-typedlua-parser = { git = "https://github.com/forge18/typed-lua.git" }
+typedlua-parser = { git = "https://github.com/forge18/typedlua-parser.git" }
 
 # Type checker
 typedlua-typechecker = { git = "https://github.com/forge18/typedlua-typechecker.git" }
