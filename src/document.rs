@@ -14,6 +14,13 @@ use typedlua_parser::{Lexer, Parser};
 use typedlua_typechecker::module_resolver::{ModuleId, ModuleRegistry, ModuleResolver};
 use typedlua_typechecker::SymbolTable;
 
+/// Abstraction for document management operations.
+///
+/// This trait allows for injecting mock document managers in tests
+/// and potential future substitution of different document storage backends.
+/// Currently implemented by [`DocumentManager`] but used directly
+/// rather than via trait objects.
+#[allow(dead_code)]
 pub trait DocumentManagerTrait {
     fn get(&self, uri: &Uri) -> Option<&Document>;
     fn symbol_index(&self) -> &SymbolIndex;
