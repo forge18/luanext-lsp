@@ -3,6 +3,7 @@ use crate::document::DocumentManager;
 use crate::providers::*;
 use anyhow::Result;
 use lsp_server::{Notification, Response};
+use tracing;
 
 use lsp_server::{Request, RequestId};
 use lsp_types::notification::{
@@ -183,7 +184,6 @@ pub struct MessageHandler {
     semantic_tokens_provider: SemanticTokensProvider,
     folding_range_provider: FoldingRangeProvider,
 }
-
 
 impl MessageHandler {
     pub fn new() -> Self {
@@ -684,7 +684,6 @@ impl MessageHandler {
         Ok(())
     }
 }
-
 
 impl Default for MessageHandler {
     fn default() -> Self {
