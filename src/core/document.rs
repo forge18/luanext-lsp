@@ -103,7 +103,8 @@ impl std::fmt::Debug for Document {
 }
 
 impl Document {
-    #[cfg(test)]
+    /// Create a test document with minimal setup
+    /// Available in both test and non-test builds for integration testing
     pub fn new_test(text: String, version: i32) -> Self {
         Self {
             text,
