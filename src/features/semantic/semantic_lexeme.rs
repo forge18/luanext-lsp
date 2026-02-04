@@ -1,6 +1,5 @@
 use crate::core::document::Document;
 use lsp_types::*;
-use std::cell::RefCell;
 use std::sync::Arc;
 use typedlua_parser::ast::expression::{Expression, ExpressionKind};
 use typedlua_parser::ast::pattern::Pattern;
@@ -17,6 +16,7 @@ pub struct SemanticTokensProvider {
     token_modifiers: Vec<SemanticTokenModifier>,
 }
 
+#[allow(dead_code)]
 impl SemanticTokensProvider {
     pub fn new() -> Self {
         Self {
@@ -416,7 +416,7 @@ impl SemanticTokensProvider {
                     last_char,
                 );
             }
-            ExpressionKind::Call(callee, args) => {
+            ExpressionKind::Call(callee, args, _types) => {
                 // Mark function calls
                 if let ExpressionKind::Identifier(_) = &callee.kind {
                     self.add_token(

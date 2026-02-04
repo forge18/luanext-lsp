@@ -9,12 +9,12 @@ mod message_handler;
 mod protocol;
 mod traits;
 
+use crate::protocol::LspConnection;
 use anyhow::Result;
 use core::DocumentManager;
 use lsp_server::{Connection, Message, Notification, Response};
 use lsp_types::*;
-use message_handler::{LspConnection, MessageHandler};
-use protocol::LspConnection as _;
+use message_handler::MessageHandler;
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;

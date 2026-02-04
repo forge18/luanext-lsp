@@ -29,5 +29,6 @@ pub mod di;
 pub mod message_handler;
 
 // Re-export commonly used types
+pub use crate::protocol::LspConnection;
 pub use core::{DiagnosticsProvider, Document, DocumentManager};
-pub use message_handler::{BasicMessageHandler, LspConnection};
+pub use message_handler::BasicMessageHandler;

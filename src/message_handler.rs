@@ -1,3 +1,4 @@
+use crate::core::diagnostics::DiagnosticsProvider;
 use crate::core::DocumentManager;
 use crate::di::{DiContainer, ServiceLifetime};
 use crate::features::*;
@@ -178,6 +179,7 @@ impl MessageHandler {
         Self { container }
     }
 
+    #[allow(dead_code)]
     pub fn with_container(container: DiContainer) -> Self {
         Self { container }
     }
@@ -324,8 +326,7 @@ impl MessageHandler {
                 let symbols_provider = self.container.resolve::<SymbolsProvider>().unwrap();
                 let result = document_manager
                     .get(uri)
-                    .map(|doc| symbols_provider.provide(doc))
-                    .map(DocumentSymbolResponse::Nested);
+                    .map(|doc| symbols_provider.provide(doc));
 
                 let response = Response::new_ok(id, result);
                 connection.send_response(response)?;

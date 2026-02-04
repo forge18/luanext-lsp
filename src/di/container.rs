@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 pub enum ServiceLifetime {
     Transient,
     Singleton,
@@ -42,6 +43,7 @@ impl DiContainer {
         self.lifetimes.insert(type_id, lifetime);
     }
 
+    #[allow(dead_code)]
     pub fn register_with_factory<T>(
         &mut self,
         factory: impl Fn(&mut DiContainer) -> T + 'static + Send + Sync,
@@ -86,6 +88,7 @@ impl DiContainer {
         None
     }
 
+    #[allow(dead_code)]
     pub fn is_registered<T>(&self) -> bool
     where
         T: 'static,
@@ -93,14 +96,17 @@ impl DiContainer {
         self.factories.contains_key(&TypeId::of::<T>())
     }
 
+    #[allow(dead_code)]
     pub fn service_count(&self) -> usize {
         self.factories.len()
     }
 
+    #[allow(dead_code)]
     pub fn singleton_count(&self) -> usize {
         self.singletons.len()
     }
 
+    #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.factories.clear();
         self.lifetimes.clear();

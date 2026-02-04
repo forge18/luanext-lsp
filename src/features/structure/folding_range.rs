@@ -133,15 +133,15 @@ impl FoldingRangeProvider {
 
     fn get_block_kind(&self, line: &str) -> FoldingRangeKind {
         if line.starts_with("function") {
-            FoldingRangeKind::Function
+            FoldingRangeKind::Region
         } else if line.starts_with("if") || line.starts_with("else") {
-            FoldingRangeKind::Annotation
+            FoldingRangeKind::Region
         } else if line.starts_with("while") || line.starts_with("for") {
-            FoldingRangeKind::Iteration
+            FoldingRangeKind::Region
         } else if line.starts_with("class") {
-            FoldingRangeKind::Class
+            FoldingRangeKind::Region
         } else if line.starts_with("interface") {
-            FoldingRangeKind::Interface
+            FoldingRangeKind::Region
         } else {
             FoldingRangeKind::Region
         }

@@ -2,10 +2,12 @@ use crate::core::document::{Document, DocumentManager};
 use crate::traits::ReferencesProviderTrait;
 use lsp_types::{Uri, *};
 
+use std::str::FromStr;
 use std::sync::Arc;
+use typedlua_parser::ast::statement::{Block, Statement};
 use typedlua_parser::ast::{
-    expression::{Expression, ExpressionKind},
-    statement::Statement,
+    expression::{Argument, Expression, ExpressionKind, ObjectProperty},
+    pattern::Pattern,
 };
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::{Lexer, Parser, Span};
@@ -27,12 +29,10 @@ impl ReferencesProvider {
         document: &Document,
         position: Position,
         include_declaration: bool,
-        document_manager: &DocumentManager,
+        _document_manager: Option<&DocumentManager>,
     ) -> Option<Vec<Location>> {
-        // Get the word at the current position
         let word = self.get_word_at_position(document, position)?;
 
-        // Parse the document
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
@@ -41,11 +41,9 @@ impl ReferencesProvider {
         let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
         let ast = parser.parse().ok()?;
 
-        // Find all references in the current file
         let mut references = Vec::new();
         self.find_references_in_statements(&ast.statements, &word, &mut references, &interner);
 
-        // Optionally include the declaration
         if include_declaration {
             if let Some(decl_span) = self.find_declaration(&ast.statements, &word, &interner) {
                 references.insert(
@@ -80,8 +78,6 @@ impl ReferencesProvider {
         references: &mut Vec<Location>,
         interner: &StringInterner,
     ) {
-        use typedlua_parser::ast::pattern::Pattern;
-
         match stmt {
             Statement::Variable(var_decl) => {
                 if let Pattern::Identifier(ident) = &var_decl.pattern {
@@ -102,26 +98,8 @@ impl ReferencesProvider {
                 }
                 self.find_references_in_function(func_decl, word, references, interner);
             }
-            Statement::LocalAssignment(assignment) => {
-                for pattern in &assignment.patterns {
-                    if let Pattern::Identifier(ident) = pattern {
-                        if interner.resolve(ident.node) == word {
-                            references.push(Location {
-                                uri: Uri::from_str("file://current").unwrap(),
-                                range: span_to_range(&ident.span),
-                            });
-                        }
-                    }
-                }
-                self.find_references_in_expressions(
-                    &assignment.expressions,
-                    word,
-                    references,
-                    interner,
-                );
-            }
-            Statement::Call(call) => {
-                self.find_references_in_expression(call, word, references, interner);
+            Statement::Expression(expr) => {
+                self.find_references_in_expression(expr, word, references, interner);
             }
             _ => {}
         }
@@ -134,8 +112,8 @@ impl ReferencesProvider {
         references: &mut Vec<Location>,
         interner: &StringInterner,
     ) {
-        for param in &func.signature.params {
-            if let Pattern::Identifier(ident) = param {
+        for param in &func.parameters {
+            if let Pattern::Identifier(ident) = &param.pattern {
                 if interner.resolve(ident.node) == word {
                     references.push(Location {
                         uri: Uri::from_str("file://current").unwrap(),
@@ -149,7 +127,7 @@ impl ReferencesProvider {
 
     fn find_references_in_block(
         &self,
-        block: &typedlua_parser::ast::Block,
+        block: &Block,
         word: &str,
         references: &mut Vec<Location>,
         interner: &StringInterner,
@@ -159,15 +137,15 @@ impl ReferencesProvider {
         }
     }
 
-    fn find_references_in_expressions(
+    fn find_references_in_arguments(
         &self,
-        expressions: &[Expression],
+        arguments: &[Argument],
         word: &str,
         references: &mut Vec<Location>,
         interner: &StringInterner,
     ) {
-        for expr in expressions {
-            self.find_references_in_expression(expr, word, references, interner);
+        for arg in arguments {
+            self.find_references_in_expression(&arg.value, word, references, interner);
         }
     }
 
@@ -180,29 +158,25 @@ impl ReferencesProvider {
     ) {
         match &expr.kind {
             ExpressionKind::Identifier(ident) => {
-                if interner.resolve(ident.node) == word {
+                if interner.resolve(*ident) == word {
                     references.push(Location {
                         uri: Uri::from_str("file://current").unwrap(),
-                        range: span_to_range(&ident.span),
+                        range: span_to_range(&expr.span),
                     });
                 }
             }
-            ExpressionKind::FunctionCall(call) => {
-                self.find_references_in_expression(&call.expr, word, references, interner);
-                self.find_references_in_expressions(&call.args, word, references, interner);
+            ExpressionKind::Call(callee, args, _types) => {
+                self.find_references_in_expression(callee, word, references, interner);
+                self.find_references_in_arguments(args, word, references, interner);
             }
-            ExpressionKind::MethodCall(call) => {
-                self.find_references_in_expression(&call.expr, word, references, interner);
-                self.find_references_in_expressions(&call.args, word, references, interner);
+            ExpressionKind::MethodCall(expr, _name, args, _types) => {
+                self.find_references_in_expression(expr, word, references, interner);
+                self.find_references_in_arguments(args, word, references, interner);
             }
-            ExpressionKind::TableConstructor(table) => {
-                for field in &table.fields {
-                    match field {
-                        typedlua_parser::ast::expression::TableField::ExpressionKey(key, value) => {
-                            self.find_references_in_expression(key, word, references, interner);
-                            self.find_references_in_expression(value, word, references, interner);
-                        }
-                        typedlua_parser::ast::expression::TableField::IdentifierKey(key, value) => {
+            ExpressionKind::Object(properties) => {
+                for prop in properties {
+                    match prop {
+                        ObjectProperty::Property { key, value, .. } => {
                             if interner.resolve(key.node) == word {
                                 references.push(Location {
                                     uri: Uri::from_str("file://current").unwrap(),
@@ -211,21 +185,27 @@ impl ReferencesProvider {
                             }
                             self.find_references_in_expression(value, word, references, interner);
                         }
+                        ObjectProperty::Computed { key, value, .. } => {
+                            self.find_references_in_expression(key, word, references, interner);
+                            self.find_references_in_expression(value, word, references, interner);
+                        }
+                        ObjectProperty::Spread { value, .. } => {
+                            self.find_references_in_expression(value, word, references, interner);
+                        }
                     }
                 }
             }
-            ExpressionKind::BinaryOp(binop) => {
-                self.find_references_in_expression(&binop.left, word, references, interner);
-                self.find_references_in_expression(&binop.right, word, references, interner);
+            ExpressionKind::Binary(_binop, left, right) => {
+                self.find_references_in_expression(left, word, references, interner);
+                self.find_references_in_expression(right, word, references, interner);
             }
-            ExpressionKind::UnaryOp(unop) => {
-                self.find_references_in_expression(&unop.expr, word, references, interner);
+            ExpressionKind::Unary(_unop, operand) => {
+                self.find_references_in_expression(operand, word, references, interner);
             }
             _ => {}
         }
     }
 
-    /// Get the word at the cursor position
     fn get_word_at_position(&self, document: &Document, position: Position) -> Option<String> {
         let lines: Vec<&str> = document.text.lines().collect();
         if position.line as usize >= lines.len() {
@@ -260,15 +240,12 @@ impl ReferencesProvider {
         Some(chars[start..end].iter().collect())
     }
 
-    /// Find the declaration span for a given symbol name
     fn find_declaration(
         &self,
         statements: &[Statement],
         name: &str,
         interner: &StringInterner,
     ) -> Option<Span> {
-        use typedlua_parser::ast::pattern::Pattern;
-
         for stmt in statements {
             match stmt {
                 Statement::Variable(var_decl) => {
@@ -281,15 +258,6 @@ impl ReferencesProvider {
                 Statement::Function(func_decl) => {
                     if interner.resolve(func_decl.name.node) == name {
                         return Some(func_decl.name.span);
-                    }
-                }
-                Statement::LocalAssignment(assignment) => {
-                    for pattern in &assignment.patterns {
-                        if let Pattern::Identifier(ident) = pattern {
-                            if interner.resolve(ident.node) == name {
-                                return Some(ident.span);
-                            }
-                        }
                     }
                 }
                 _ => {}
@@ -321,12 +289,13 @@ impl ReferencesProviderTrait for ReferencesProvider {
         position: Position,
         include_declaration: bool,
     ) -> Vec<Location> {
+        let _document_manager = None;
         self.provide_impl(
             uri,
             document,
             position,
             include_declaration,
-            &DocumentManager::new_test(),
+            _document_manager,
         )
         .unwrap_or_default()
     }
