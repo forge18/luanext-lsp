@@ -1,4 +1,5 @@
 use crate::document::Document;
+use crate::traits::DiagnosticsProviderTrait;
 use lsp_types::*;
 use std::sync::Arc;
 use typedlua_parser::string_interner::StringInterner;
@@ -17,8 +18,8 @@ impl DiagnosticsProvider {
         Self
     }
 
-    /// Analyze a document and return diagnostics
-    pub fn provide(&self, document: &Document) -> Vec<Diagnostic> {
+    /// Analyze a document and return diagnostics (internal method)
+    pub fn provide_impl(&self, document: &Document) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
 
         // Create a diagnostic handler to collect errors
@@ -94,5 +95,11 @@ fn span_to_range(span: &Span) -> Range {
             line: (span.line.saturating_sub(1)) as u32,
             character: ((span.column + span.len()).saturating_sub(1)) as u32,
         },
+    }
+}
+
+impl DiagnosticsProviderTrait for DiagnosticsProvider {
+    fn provide(&self, document: &Document) -> Vec<Diagnostic> {
+        self.provide_impl(document)
     }
 }

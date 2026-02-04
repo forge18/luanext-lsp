@@ -1,4 +1,5 @@
 use crate::document::{Document, DocumentManager};
+use crate::traits::DefinitionProviderTrait;
 use lsp_types::{GotoDefinitionResponse, Location, Position, Range, Uri};
 use std::sync::Arc;
 use typedlua_parser::ast::statement::Statement;
@@ -15,8 +16,8 @@ impl DefinitionProvider {
         Self
     }
 
-    /// Provide definition location for symbol at position
-    pub fn provide(
+    /// Provide definition location for symbol at position (internal method with manager)
+    pub fn provide_with_manager(
         &self,
         uri: &Uri,
         document: &Document,
@@ -392,5 +393,35 @@ fn span_to_range(span: &Span) -> Range {
             line: (span.line.saturating_sub(1)) as u32,
             character: ((span.column + span.len()).saturating_sub(1)) as u32,
         },
+    }
+}
+
+impl DefinitionProviderTrait for DefinitionProvider {
+    fn provide(
+        &self,
+        uri: &Uri,
+        document: &Document,
+        position: Position,
+    ) -> Option<GotoDefinitionResponse> {
+        use typedlua_typechecker::config::CompilerOptions;
+        use typedlua_typechecker::fs::MockFileSystem;
+        use typedlua_typechecker::module_resolver::{ModuleRegistry, ModuleResolver};
+
+        let workspace_root = std::path::PathBuf::from("/test");
+        let fs = std::sync::Arc::new(MockFileSystem::new());
+        let compiler_options = CompilerOptions::default();
+        let module_config =
+            typedlua_typechecker::module_resolver::ModuleConfig::from_compiler_options(
+                &compiler_options,
+                &workspace_root,
+            );
+        let module_registry = std::sync::Arc::new(ModuleRegistry::new());
+        let module_resolver = std::sync::Arc::new(ModuleResolver::new(
+            fs,
+            module_config,
+            workspace_root.clone(),
+        ));
+        let manager = DocumentManager::new(workspace_root, module_registry, module_resolver);
+        self.provide_with_manager(uri, document, position, &manager)
     }
 }

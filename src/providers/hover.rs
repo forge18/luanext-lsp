@@ -1,4 +1,5 @@
 use crate::document::Document;
+use crate::traits::HoverProviderTrait;
 use lsp_types::*;
 use std::sync::Arc;
 use typedlua_parser::string_interner::StringInterner;
@@ -15,8 +16,8 @@ impl HoverProvider {
         Self
     }
 
-    /// Provide hover information at a given position
-    pub fn provide(&self, document: &Document, position: Position) -> Option<Hover> {
+    /// Provide hover information at a given position (internal method)
+    pub fn provide_impl(&self, document: &Document, position: Position) -> Option<Hover> {
         // Get the word at the current position
         let word = self.get_word_at_position(document, position)?;
 
@@ -240,5 +241,11 @@ impl HoverProvider {
             }),
             range: None,
         })
+    }
+}
+
+impl HoverProviderTrait for HoverProvider {
+    fn provide(&self, document: &Document, position: Position) -> Option<Hover> {
+        self.provide_impl(document, position)
     }
 }

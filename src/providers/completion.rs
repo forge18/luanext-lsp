@@ -1,4 +1,5 @@
 use crate::document::Document;
+use crate::traits::CompletionProviderTrait;
 use lsp_types::*;
 use std::sync::Arc;
 use typedlua_parser::string_interner::StringInterner;
@@ -366,4 +367,14 @@ enum CompletionContext {
     Import,
     /// General statement context (keywords, identifiers)
     Statement,
+}
+
+impl CompletionProviderTrait for CompletionProvider {
+    fn provide(&self, document: &Document, position: Position) -> Vec<CompletionItem> {
+        Self::provide(self, document, position)
+    }
+
+    fn resolve(&self, item: CompletionItem) -> CompletionItem {
+        item
+    }
 }

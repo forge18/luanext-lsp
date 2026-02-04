@@ -1,4 +1,5 @@
 use crate::document::{Document, DocumentManager};
+use crate::traits::ReferencesProviderTrait;
 use lsp_types::{Uri, *};
 
 use std::sync::Arc;
@@ -19,8 +20,8 @@ impl ReferencesProvider {
         Self
     }
 
-    /// Find all references to the symbol at the given position
-    pub fn provide(
+    /// Find all references to the symbol at the given position (internal method)
+    pub fn provide_impl(
         &self,
         uri: &Uri,
         document: &Document,
@@ -653,5 +654,37 @@ fn span_to_range(span: &Span) -> Range {
             line: (span.line.saturating_sub(1)) as u32,
             character: ((span.column + span.len()).saturating_sub(1)) as u32,
         },
+    }
+}
+
+impl ReferencesProviderTrait for ReferencesProvider {
+    fn provide(
+        &self,
+        uri: &Uri,
+        document: &Document,
+        position: Position,
+        include_declaration: bool,
+    ) -> Vec<Location> {
+        use typedlua_typechecker::config::CompilerOptions;
+        use typedlua_typechecker::fs::MockFileSystem;
+        use typedlua_typechecker::module_resolver::{ModuleRegistry, ModuleResolver};
+
+        let workspace_root = std::path::PathBuf::from("/test");
+        let fs = std::sync::Arc::new(MockFileSystem::new());
+        let compiler_options = CompilerOptions::default();
+        let module_config =
+            typedlua_typechecker::module_resolver::ModuleConfig::from_compiler_options(
+                &compiler_options,
+                &workspace_root,
+            );
+        let module_registry = std::sync::Arc::new(ModuleRegistry::new());
+        let module_resolver = std::sync::Arc::new(ModuleResolver::new(
+            fs,
+            module_config,
+            workspace_root.clone(),
+        ));
+        let manager = DocumentManager::new(workspace_root, module_registry, module_resolver);
+        self.provide_impl(uri, document, position, include_declaration, &manager)
+            .unwrap_or_default()
     }
 }

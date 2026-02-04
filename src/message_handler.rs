@@ -2,8 +2,13 @@ use crate::di::{DiContainer, ServiceLifetime};
 use crate::document::DocumentManager;
 
 use crate::providers::*;
+use crate::traits::{
+    DefinitionProviderTrait, DiagnosticsProviderTrait, HoverProviderTrait, ReferencesProviderTrait,
+    SymbolsProviderTrait,
+};
 use anyhow::Result;
 use lsp_server::{Notification, Response};
+use tracing;
 
 use lsp_server::{Request, RequestId};
 use lsp_types::notification::{
@@ -254,9 +259,9 @@ impl MessageHandler {
                 let position = params.text_document_position_params.position;
 
                 let definition_provider = self.container.resolve::<DefinitionProvider>().unwrap();
-                let result = document_manager.get(uri).and_then(|doc| {
-                    definition_provider.provide(uri, doc, position, document_manager)
-                });
+                let result = document_manager
+                    .get(uri)
+                    .and_then(|doc| definition_provider.provide(uri, doc, position));
 
                 let response = Response::new_ok(id, result);
                 connection.send_response(response)?;
@@ -272,14 +277,8 @@ impl MessageHandler {
                 let include_declaration = params.context.include_declaration;
 
                 let references_provider = self.container.resolve::<ReferencesProvider>().unwrap();
-                let result = document_manager.get(uri).and_then(|doc| {
-                    references_provider.provide(
-                        uri,
-                        doc,
-                        position,
-                        include_declaration,
-                        document_manager,
-                    )
+                let result = document_manager.get(uri).map(|doc| {
+                    references_provider.provide(uri, doc, position, include_declaration)
                 });
 
                 let response = Response::new_ok(id, result);
