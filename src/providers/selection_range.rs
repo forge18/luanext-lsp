@@ -2,6 +2,7 @@ use crate::document::Document;
 use lsp_types::*;
 
 /// Provides smart selection ranges (expand/shrink selection)
+#[derive(Clone)]
 pub struct SelectionRangeProvider;
 
 impl SelectionRangeProvider {

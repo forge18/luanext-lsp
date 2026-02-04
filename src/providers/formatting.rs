@@ -2,11 +2,12 @@ use crate::document::Document;
 use lsp_types::*;
 
 use std::sync::Arc;
-use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::{Lexer, Parser};
+use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
 
 /// Provides code formatting functionality
+#[derive(Clone)]
 pub struct FormattingProvider;
 
 impl FormattingProvider {

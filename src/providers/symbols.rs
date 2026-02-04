@@ -3,11 +3,12 @@ use lsp_types::*;
 
 use std::sync::Arc;
 use typedlua_parser::ast::statement::{ClassMember, OperatorKind, Statement};
-use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::{Lexer, Parser, Span};
+use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
 
 /// Provides document symbols (outline view)
+#[derive(Clone)]
 pub struct SymbolsProvider;
 
 impl SymbolsProvider {
@@ -56,8 +57,12 @@ impl SymbolsProvider {
             Statement::Variable(var_decl) => {
                 if let Pattern::Identifier(ident) = &var_decl.pattern {
                     let kind = match var_decl.kind {
-                        typedlua_parser::ast::statement::VariableKind::Const => SymbolKind::CONSTANT,
-                        typedlua_parser::ast::statement::VariableKind::Local => SymbolKind::VARIABLE,
+                        typedlua_parser::ast::statement::VariableKind::Const => {
+                            SymbolKind::CONSTANT
+                        }
+                        typedlua_parser::ast::statement::VariableKind::Local => {
+                            SymbolKind::VARIABLE
+                        }
                     };
 
                     Some(DocumentSymbol {

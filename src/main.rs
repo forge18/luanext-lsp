@@ -1,6 +1,7 @@
 #![allow(clippy::all)]
 #![allow(deprecated)]
 
+mod di;
 mod document;
 mod impls;
 mod message_handler;
@@ -176,7 +177,7 @@ fn main_loop(connection: Connection, params: InitializeParams) -> Result<()> {
     // Create document manager with module system support
     let mut document_manager =
         DocumentManager::new(workspace_root, module_registry, module_resolver);
-    let message_handler = MessageHandler::new();
+    let mut message_handler = MessageHandler::new();
     let connection_wrapper = ConnectionWrapper(&connection);
 
     for msg in &connection.receiver {

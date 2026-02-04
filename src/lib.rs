@@ -10,6 +10,7 @@ pub mod traits;
 // Bridge implementations for typedlua-typechecker types
 pub mod impls;
 
+pub mod di;
 pub mod document;
 pub mod message_handler;
 pub mod providers;

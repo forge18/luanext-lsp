@@ -1,3 +1,4 @@
+use crate::di::{DiContainer, ServiceLifetime};
 use crate::document::DocumentManager;
 
 use crate::providers::*;
@@ -168,46 +169,46 @@ impl Default for BasicMessageHandler {
 /// Requires the `compiler` feature flag and pulls in typedlua-core as a dependency.
 
 pub struct MessageHandler {
-    diagnostics_provider: DiagnosticsProvider,
-    completion_provider: CompletionProvider,
-    hover_provider: HoverProvider,
-    definition_provider: DefinitionProvider,
-    references_provider: ReferencesProvider,
-    rename_provider: RenameProvider,
-    symbols_provider: SymbolsProvider,
-    formatting_provider: FormattingProvider,
-    code_actions_provider: CodeActionsProvider,
-    signature_help_provider: SignatureHelpProvider,
-    inlay_hints_provider: InlayHintsProvider,
-    selection_range_provider: SelectionRangeProvider,
-    semantic_tokens_provider: SemanticTokensProvider,
-    folding_range_provider: FoldingRangeProvider,
+    container: DiContainer,
 }
-
 
 impl MessageHandler {
     pub fn new() -> Self {
-        Self {
-            diagnostics_provider: DiagnosticsProvider::new(),
-            completion_provider: CompletionProvider::new(),
-            hover_provider: HoverProvider::new(),
-            definition_provider: DefinitionProvider::new(),
-            references_provider: ReferencesProvider::new(),
-            rename_provider: RenameProvider::new(),
-            symbols_provider: SymbolsProvider::new(),
-            formatting_provider: FormattingProvider::new(),
-            code_actions_provider: CodeActionsProvider::new(),
-            signature_help_provider: SignatureHelpProvider::new(),
-            inlay_hints_provider: InlayHintsProvider::new(),
-            selection_range_provider: SelectionRangeProvider::new(),
-            semantic_tokens_provider: SemanticTokensProvider::new(),
-            folding_range_provider: FoldingRangeProvider::new(),
-        }
+        let mut container = DiContainer::new();
+        Self::register_services(&mut container);
+        Self { container }
+    }
+
+    pub fn with_container(container: DiContainer) -> Self {
+        Self { container }
+    }
+
+    fn register_services(container: &mut DiContainer) {
+        container.register(|_| DiagnosticsProvider::new(), ServiceLifetime::Transient);
+        container.register(|_| CompletionProvider::new(), ServiceLifetime::Transient);
+        container.register(|_| HoverProvider::new(), ServiceLifetime::Transient);
+        container.register(|_| DefinitionProvider::new(), ServiceLifetime::Transient);
+        container.register(|_| ReferencesProvider::new(), ServiceLifetime::Transient);
+        container.register(|_| RenameProvider::new(), ServiceLifetime::Transient);
+        container.register(|_| SymbolsProvider::new(), ServiceLifetime::Transient);
+        container.register(|_| FormattingProvider::new(), ServiceLifetime::Transient);
+        container.register(|_| CodeActionsProvider::new(), ServiceLifetime::Transient);
+        container.register(|_| SignatureHelpProvider::new(), ServiceLifetime::Transient);
+        container.register(|_| InlayHintsProvider::new(), ServiceLifetime::Transient);
+        container.register(
+            |_| SelectionRangeProvider::new(),
+            ServiceLifetime::Transient,
+        );
+        container.register(
+            |_| SemanticTokensProvider::new(),
+            ServiceLifetime::Transient,
+        );
+        container.register(|_| FoldingRangeProvider::new(), ServiceLifetime::Transient);
     }
 
     #[allow(clippy::too_many_arguments)]
     pub fn handle_request<C: LspConnection>(
-        &self,
+        &mut self,
         connection: &C,
         req: Request,
         document_manager: &DocumentManager,
@@ -217,9 +218,10 @@ impl MessageHandler {
                 let uri = &params.text_document_position.text_document.uri;
                 let position = params.text_document_position.position;
 
+                let completion_provider = self.container.resolve::<CompletionProvider>().unwrap();
                 let result = document_manager
                     .get(uri)
-                    .map(|doc| self.completion_provider.provide(doc, position))
+                    .map(|doc| completion_provider.provide(doc, position))
                     .map(CompletionResponse::Array);
 
                 let response = Response::new_ok(id, result);
@@ -234,9 +236,10 @@ impl MessageHandler {
                 let uri = &params.text_document_position_params.text_document.uri;
                 let position = params.text_document_position_params.position;
 
+                let hover_provider = self.container.resolve::<HoverProvider>().unwrap();
                 let result = document_manager
                     .get(uri)
-                    .and_then(|doc| self.hover_provider.provide(doc, position));
+                    .and_then(|doc| hover_provider.provide(doc, position));
 
                 let response = Response::new_ok(id, result);
                 connection.send_response(response)?;
@@ -250,9 +253,9 @@ impl MessageHandler {
                 let uri = &params.text_document_position_params.text_document.uri;
                 let position = params.text_document_position_params.position;
 
+                let definition_provider = self.container.resolve::<DefinitionProvider>().unwrap();
                 let result = document_manager.get(uri).and_then(|doc| {
-                    self.definition_provider
-                        .provide(uri, doc, position, document_manager)
+                    definition_provider.provide(uri, doc, position, document_manager)
                 });
 
                 let response = Response::new_ok(id, result);
@@ -268,8 +271,9 @@ impl MessageHandler {
                 let position = params.text_document_position.position;
                 let include_declaration = params.context.include_declaration;
 
+                let references_provider = self.container.resolve::<ReferencesProvider>().unwrap();
                 let result = document_manager.get(uri).and_then(|doc| {
-                    self.references_provider.provide(
+                    references_provider.provide(
                         uri,
                         doc,
                         position,
@@ -290,9 +294,10 @@ impl MessageHandler {
                 let uri = &params.text_document.uri;
                 let position = params.position;
 
+                let rename_provider = self.container.resolve::<RenameProvider>().unwrap();
                 let result = document_manager
                     .get(uri)
-                    .and_then(|doc| self.rename_provider.prepare(doc, position));
+                    .and_then(|doc| rename_provider.prepare(doc, position));
 
                 let response = Response::new_ok(id, result);
                 connection.send_response(response)?;
@@ -307,9 +312,9 @@ impl MessageHandler {
                 let position = params.text_document_position.position;
                 let new_name = &params.new_name;
 
+                let rename_provider = self.container.resolve::<RenameProvider>().unwrap();
                 let result = document_manager.get(uri).and_then(|doc| {
-                    self.rename_provider
-                        .rename(uri, doc, position, new_name, document_manager)
+                    rename_provider.rename(uri, doc, position, new_name, document_manager)
                 });
 
                 let response = Response::new_ok(id, result);
@@ -323,9 +328,10 @@ impl MessageHandler {
             Ok((id, params)) => {
                 let uri = &params.text_document.uri;
 
+                let symbols_provider = self.container.resolve::<SymbolsProvider>().unwrap();
                 let result = document_manager
                     .get(uri)
-                    .map(|doc| self.symbols_provider.provide(doc))
+                    .map(|doc| symbols_provider.provide(doc))
                     .map(DocumentSymbolResponse::Nested);
 
                 let response = Response::new_ok(id, result);
@@ -337,7 +343,6 @@ impl MessageHandler {
 
         match Self::cast_request::<WorkspaceSymbolRequest>(req.clone()) {
             Ok((id, params)) => {
-                // Use the symbol index for workspace-wide symbol search
                 let symbols = document_manager
                     .symbol_index()
                     .search_workspace_symbols(&params.query);
@@ -353,9 +358,10 @@ impl MessageHandler {
                 let uri = &params.text_document.uri;
                 let options = params.options;
 
+                let formatting_provider = self.container.resolve::<FormattingProvider>().unwrap();
                 let result = document_manager
                     .get(uri)
-                    .map(|doc| self.formatting_provider.format_document(doc, options));
+                    .map(|doc| formatting_provider.format_document(doc, options));
 
                 let response = Response::new_ok(id, result);
                 connection.send_response(response)?;
@@ -370,9 +376,10 @@ impl MessageHandler {
                 let range = params.range;
                 let options = params.options;
 
+                let formatting_provider = self.container.resolve::<FormattingProvider>().unwrap();
                 let result = document_manager
                     .get(uri)
-                    .map(|doc| self.formatting_provider.format_range(doc, range, options));
+                    .map(|doc| formatting_provider.format_range(doc, range, options));
 
                 let response = Response::new_ok(id, result);
                 connection.send_response(response)?;
@@ -387,9 +394,11 @@ impl MessageHandler {
                 let range = params.range;
                 let context = params.context;
 
+                let code_actions_provider =
+                    self.container.resolve::<CodeActionsProvider>().unwrap();
                 let result = document_manager
                     .get(uri)
-                    .map(|doc| self.code_actions_provider.provide(uri, doc, range, context));
+                    .map(|doc| code_actions_provider.provide(uri, doc, range, context));
 
                 let response = Response::new_ok(id, result);
                 connection.send_response(response)?;
@@ -403,9 +412,11 @@ impl MessageHandler {
                 let uri = &params.text_document_position_params.text_document.uri;
                 let position = params.text_document_position_params.position;
 
+                let signature_help_provider =
+                    self.container.resolve::<SignatureHelpProvider>().unwrap();
                 let result = document_manager
                     .get(uri)
-                    .and_then(|doc| self.signature_help_provider.provide(doc, position));
+                    .and_then(|doc| signature_help_provider.provide(doc, position));
 
                 let response = Response::new_ok(id, result);
                 connection.send_response(response)?;
@@ -419,9 +430,10 @@ impl MessageHandler {
                 let uri = &params.text_document.uri;
                 let range = params.range;
 
+                let inlay_hints_provider = self.container.resolve::<InlayHintsProvider>().unwrap();
                 let result = document_manager
                     .get(uri)
-                    .map(|doc| self.inlay_hints_provider.provide(doc, range));
+                    .map(|doc| inlay_hints_provider.provide(doc, range));
 
                 let response = Response::new_ok(id, result);
                 connection.send_response(response)?;
@@ -435,9 +447,11 @@ impl MessageHandler {
                 let uri = &params.text_document.uri;
                 let positions = params.positions;
 
+                let selection_range_provider =
+                    self.container.resolve::<SelectionRangeProvider>().unwrap();
                 let result = document_manager
                     .get(uri)
-                    .map(|doc| self.selection_range_provider.provide(doc, positions));
+                    .map(|doc| selection_range_provider.provide(doc, positions));
 
                 let response = Response::new_ok(id, result);
                 connection.send_response(response)?;
@@ -450,9 +464,11 @@ impl MessageHandler {
             Ok((id, params)) => {
                 let uri = &params.text_document.uri;
 
+                let folding_range_provider =
+                    self.container.resolve::<FoldingRangeProvider>().unwrap();
                 let result = document_manager
                     .get(uri)
-                    .map(|doc| self.folding_range_provider.provide(doc));
+                    .map(|doc| folding_range_provider.provide(doc));
 
                 let response = Response::new_ok(id, result);
                 connection.send_response(response)?;
@@ -465,9 +481,11 @@ impl MessageHandler {
             Ok((id, params)) => {
                 let uri = &params.text_document.uri;
 
+                let semantic_tokens_provider =
+                    self.container.resolve::<SemanticTokensProvider>().unwrap();
                 let result = document_manager
                     .get(uri)
-                    .map(|doc| self.semantic_tokens_provider.provide_full(doc))
+                    .map(|doc| semantic_tokens_provider.provide_full(doc))
                     .map(SemanticTokensResult::Tokens);
 
                 let response = Response::new_ok(id, result);
@@ -482,9 +500,11 @@ impl MessageHandler {
                 let uri = &params.text_document.uri;
                 let range = params.range;
 
+                let semantic_tokens_provider =
+                    self.container.resolve::<SemanticTokensProvider>().unwrap();
                 let result = document_manager
                     .get(uri)
-                    .map(|doc| self.semantic_tokens_provider.provide_range(doc, range))
+                    .map(|doc| semantic_tokens_provider.provide_range(doc, range))
                     .map(SemanticTokensRangeResult::Tokens);
 
                 let response = Response::new_ok(id, result);
@@ -499,12 +519,11 @@ impl MessageHandler {
                 let uri = &params.text_document.uri;
                 let previous_result_id = params.previous_result_id;
 
+                let semantic_tokens_provider =
+                    self.container.resolve::<SemanticTokensProvider>().unwrap();
                 let result = document_manager
                     .get(uri)
-                    .map(|doc| {
-                        self.semantic_tokens_provider
-                            .provide_full_delta(doc, previous_result_id)
-                    })
+                    .map(|doc| semantic_tokens_provider.provide_full_delta(doc, previous_result_id))
                     .map(SemanticTokensFullDeltaResult::TokensDelta);
 
                 let response = Response::new_ok(id, result);
@@ -516,7 +535,9 @@ impl MessageHandler {
 
         match Self::cast_request::<CodeActionResolveRequest>(req.clone()) {
             Ok((id, params)) => {
-                let result = self.code_actions_provider.resolve(params);
+                let code_actions_provider =
+                    self.container.resolve::<CodeActionsProvider>().unwrap();
+                let result = code_actions_provider.resolve(params);
                 let response = Response::new_ok(id, result);
                 connection.send_response(response)?;
                 return Ok(());
@@ -526,7 +547,8 @@ impl MessageHandler {
 
         match Self::cast_request::<InlayHintResolveRequest>(req.clone()) {
             Ok((id, params)) => {
-                let result = self.inlay_hints_provider.resolve(params);
+                let inlay_hints_provider = self.container.resolve::<InlayHintsProvider>().unwrap();
+                let result = inlay_hints_provider.resolve(params);
                 let response = Response::new_ok(id, result);
                 connection.send_response(response)?;
                 return Ok(());
@@ -541,10 +563,10 @@ impl MessageHandler {
                 let ch = &params.ch;
                 let options = params.options;
 
-                let result = document_manager.get(uri).map(|doc| {
-                    self.formatting_provider
-                        .format_on_type(doc, position, ch, options)
-                });
+                let formatting_provider = self.container.resolve::<FormattingProvider>().unwrap();
+                let result = document_manager
+                    .get(uri)
+                    .map(|doc| formatting_provider.format_on_type(doc, position, ch, options));
 
                 let response = Response::new_ok(id, result);
                 connection.send_response(response)?;
@@ -559,7 +581,7 @@ impl MessageHandler {
     }
 
     pub fn handle_notification<C: LspConnection>(
-        &self,
+        &mut self,
         connection: &C,
         not: Notification,
         document_manager: &mut DocumentManager,
@@ -618,13 +640,14 @@ impl MessageHandler {
     }
 
     fn publish_diagnostics<C: LspConnection>(
-        &self,
+        &mut self,
         connection: &C,
         uri: &Uri,
         document_manager: &DocumentManager,
     ) -> Result<()> {
         if let Some(document) = document_manager.get(uri) {
-            let diagnostics = self.diagnostics_provider.provide(document);
+            let diagnostics_provider = self.container.resolve::<DiagnosticsProvider>().unwrap();
+            let diagnostics = diagnostics_provider.provide(document);
             Self::send_notification::<PublishDiagnostics>(
                 connection,
                 PublishDiagnosticsParams {
@@ -684,7 +707,6 @@ impl MessageHandler {
         Ok(())
     }
 }
-
 
 impl Default for MessageHandler {
     fn default() -> Self {

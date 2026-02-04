@@ -5,11 +5,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use typedlua_parser::ast::expression::{Expression, ExpressionKind};
 use typedlua_parser::ast::statement::Statement;
-use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::{Lexer, Parser, Span};
+use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
 
 /// Provides rename functionality
+#[derive(Clone)]
 pub struct RenameProvider;
 
 impl RenameProvider {
@@ -371,11 +372,11 @@ impl RenameProvider {
                 if let Some(exported_name) = exported_name {
                     // Resolve the import path
                     if let Some(module_id) = &current_document.module_id {
-                        let resolver = document_manager.module_resolver(); {
-                            if let Ok(target_module_id) = resolver.resolve(
-                                import_source,
-                                std::path::Path::new(module_id.as_str()),
-                            ) {
+                        let resolver = document_manager.module_resolver();
+                        {
+                            if let Ok(target_module_id) = resolver
+                                .resolve(import_source, std::path::Path::new(module_id.as_str()))
+                            {
                                 if let Some(target_uri) =
                                     document_manager.module_id_to_uri(&target_module_id)
                                 {

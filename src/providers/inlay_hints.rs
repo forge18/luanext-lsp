@@ -3,12 +3,13 @@ use lsp_types::*;
 use std::sync::Arc;
 use typedlua_parser::ast::expression::{Expression, ExpressionKind};
 use typedlua_parser::ast::statement::Statement;
-use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
 use typedlua_parser::string_interner::StringInterner;
-use typedlua_typechecker::TypeChecker;
 use typedlua_parser::{Lexer, Parser, Span};
+use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
+use typedlua_typechecker::TypeChecker;
 
 /// Provides inlay hints (inline type annotations and parameter names)
+#[derive(Clone)]
 pub struct InlayHintsProvider;
 
 impl InlayHintsProvider {
@@ -123,8 +124,9 @@ impl InlayHintsProvider {
                             for (i, arg) in args.iter().enumerate() {
                                 if i < func_type.parameters.len() {
                                     let param = &func_type.parameters[i];
-                                    if let typedlua_parser::ast::pattern::Pattern::Identifier(ident) =
-                                        &param.pattern
+                                    if let typedlua_parser::ast::pattern::Pattern::Identifier(
+                                        ident,
+                                    ) = &param.pattern
                                     {
                                         if self.span_in_range(&arg.span, range) {
                                             let position = span_to_position_start(&arg.span);

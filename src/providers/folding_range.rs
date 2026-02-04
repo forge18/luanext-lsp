@@ -2,6 +2,7 @@ use crate::document::Document;
 use lsp_types::*;
 
 /// Provides folding ranges for code sections (functions, blocks, comments)
+#[derive(Clone)]
 pub struct FoldingRangeProvider;
 
 impl FoldingRangeProvider {
