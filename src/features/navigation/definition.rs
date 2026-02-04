@@ -486,7 +486,8 @@ mod tests {
         let doc = create_test_document("local x = 1\nlocal y = 2");
         let provider = DefinitionProvider::new();
 
-        let word = provider.get_word_at_position(&doc, Position::new(1, 7));
+        // Position at start of "local" on line 2
+        let word = provider.get_word_at_position(&doc, Position::new(1, 0));
 
         assert_eq!(word, Some("local".to_string()));
     }

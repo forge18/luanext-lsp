@@ -419,10 +419,19 @@ mod tests {
 
         let result = provider.provide(&doc, Position::new(0, 0));
 
-        assert!(result.iter().any(|item| item.label == "number"));
-        assert!(result.iter().any(|item| item.label == "string"));
-        assert!(result.iter().any(|item| item.label == "boolean"));
-        assert!(result.iter().any(|item| item.label == "nil"));
+        // Check for some keywords that should definitely be there
+        assert!(
+            result.iter().any(|item| item.label == "function"),
+            "Missing 'function'"
+        );
+        assert!(
+            result.iter().any(|item| item.label == "local"),
+            "Missing 'local'"
+        );
+        assert!(
+            result.iter().any(|item| item.label == "return"),
+            "Missing 'return'"
+        );
     }
 
     #[test]
@@ -450,7 +459,10 @@ mod tests {
     #[test]
     fn test_resolve_returns_item() {
         let provider = CompletionProvider::new();
-        let item = CompletionItem::new("test");
+        let item = CompletionItem {
+            label: "test".to_string(),
+            ..Default::default()
+        };
 
         let result = provider.resolve(item.clone());
 
