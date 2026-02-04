@@ -378,3 +378,95 @@ impl CompletionProviderTrait for CompletionProvider {
         item
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::document::Document;
+
+    fn create_test_document(text: &str) -> Document {
+        Document::new_test(text.to_string(), 1)
+    }
+
+    #[test]
+    fn test_empty_document() {
+        let doc = create_test_document("");
+        let provider = CompletionProvider::new();
+
+        let result = provider.provide(&doc, Position::new(0, 0));
+
+        assert!(!result.is_empty());
+        assert!(result.iter().any(|item| item.label == "local"));
+    }
+
+    #[test]
+    fn test_keywords_included() {
+        let doc = create_test_document("");
+        let provider = CompletionProvider::new();
+
+        let result = provider.provide(&doc, Position::new(0, 0));
+
+        assert!(result.iter().any(|item| item.label == "function"));
+        assert!(result.iter().any(|item| item.label == "class"));
+        assert!(result.iter().any(|item| item.label == "if"));
+        assert!(result.iter().any(|item| item.label == "while"));
+    }
+
+    #[test]
+    fn test_builtin_types_included() {
+        let doc = create_test_document("");
+        let provider = CompletionProvider::new();
+
+        let result = provider.provide(&doc, Position::new(0, 0));
+
+        assert!(result.iter().any(|item| item.label == "number"));
+        assert!(result.iter().any(|item| item.label == "string"));
+        assert!(result.iter().any(|item| item.label == "boolean"));
+        assert!(result.iter().any(|item| item.label == "nil"));
+    }
+
+    #[test]
+    fn test_out_of_bounds_position() {
+        let doc = create_test_document("local x = 1");
+        let provider = CompletionProvider::new();
+
+        let result = provider.provide(&doc, Position::new(10, 10));
+
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_completion_item_fields() {
+        let doc = create_test_document("");
+        let provider = CompletionProvider::new();
+
+        let result = provider.provide(&doc, Position::new(0, 0));
+
+        if let Some(item) = result.iter().find(|i| i.label == "function") {
+            assert_eq!(item.kind, Some(CompletionItemKind::KEYWORD));
+        }
+    }
+
+    #[test]
+    fn test_resolve_returns_item() {
+        let provider = CompletionProvider::new();
+        let item = CompletionItem::new("test");
+
+        let result = provider.resolve(item.clone());
+
+        assert_eq!(result.label, item.label);
+    }
+
+    #[test]
+    fn test_lua_keywords_included() {
+        let doc = create_test_document("");
+        let provider = CompletionProvider::new();
+
+        let result = provider.provide(&doc, Position::new(0, 0));
+
+        assert!(result.iter().any(|item| item.label == "return"));
+        assert!(result.iter().any(|item| item.label == "end"));
+        assert!(result.iter().any(|item| item.label == "do"));
+        assert!(result.iter().any(|item| item.label == "then"));
+    }
+}

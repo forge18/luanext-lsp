@@ -425,3 +425,100 @@ impl DefinitionProviderTrait for DefinitionProvider {
         self.provide_with_manager(uri, document, position, &manager)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::document::Document;
+
+    fn create_test_document(text: &str) -> Document {
+        Document::new_test(text.to_string(), 1)
+    }
+
+    #[test]
+    fn test_span_to_range() {
+        let span = Span {
+            line: 2,
+            column: 5,
+            len: 3,
+        };
+        let range = span_to_range(&span);
+        assert_eq!(range.start.line, 1);
+        assert_eq!(range.start.character, 4);
+        assert_eq!(range.end.line, 1);
+        assert_eq!(range.end.character, 7);
+    }
+
+    #[test]
+    fn test_get_word_at_position_valid() {
+        let doc = create_test_document("local foo = 1");
+        let provider = DefinitionProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(0, 7));
+
+        assert_eq!(word, Some("foo".to_string()));
+    }
+
+    #[test]
+    fn test_get_word_at_position_whitespace() {
+        let doc = create_test_document("local foo = 1");
+        let provider = DefinitionProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(0, 5));
+
+        assert_eq!(word, None);
+    }
+
+    #[test]
+    fn test_get_word_at_position_out_of_bounds() {
+        let doc = create_test_document("local foo = 1");
+        let provider = DefinitionProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(10, 0));
+
+        assert_eq!(word, None);
+    }
+
+    #[test]
+    fn test_get_word_at_position_multiline() {
+        let doc = create_test_document("local x = 1\nlocal y = 2");
+        let provider = DefinitionProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(1, 7));
+
+        assert_eq!(word, Some("local".to_string()));
+    }
+
+    #[test]
+    fn test_find_export_in_document_function() {
+        let doc = create_test_document("export function myFunc() end");
+        let provider = DefinitionProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.find_export_in_document(&doc, "myFunc", &uri);
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_find_export_in_document_not_found() {
+        let doc = create_test_document("export function myFunc() end");
+        let provider = DefinitionProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.find_export_in_document(&doc, "nonExistent", &uri);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_empty_document() {
+        let doc = create_test_document("");
+        let provider = DefinitionProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.provide(&uri, &doc, Position::new(0, 0));
+
+        assert!(result.is_none());
+    }
+}

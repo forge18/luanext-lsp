@@ -249,3 +249,110 @@ impl HoverProviderTrait for HoverProvider {
         self.provide_impl(document, position)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::document::Document;
+
+    fn create_test_document(text: &str) -> Document {
+        Document::new_test(text.to_string(), 1)
+    }
+
+    #[test]
+    fn test_hover_for_keyword_function() {
+        let doc = create_test_document("function foo() end");
+        let provider = HoverProvider::new();
+
+        let result = provider.hover_for_keyword("function");
+
+        assert!(result.is_some());
+        let hover = result.unwrap();
+        match hover.contents {
+            HoverContents::Markup(markup) => {
+                assert!(markup.value.contains("Function declaration"));
+            }
+            _ => panic!("Expected MarkupContent"),
+        }
+    }
+
+    #[test]
+    fn test_hover_for_keyword_class() {
+        let doc = create_test_document("class Foo end");
+        let provider = HoverProvider::new();
+
+        let result = provider.hover_for_keyword("class");
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_hover_for_keyword_not_found() {
+        let doc = create_test_document("local x = 1");
+        let provider = HoverProvider::new();
+
+        let result = provider.hover_for_keyword("notakeyword");
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_hover_for_builtin_type_number() {
+        let doc = create_test_document("local x: number = 1");
+        let provider = HoverProvider::new();
+
+        let result = provider.hover_for_builtin_type("number");
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_hover_for_builtin_type_nil() {
+        let doc = create_test_document("local x = nil");
+        let provider = HoverProvider::new();
+
+        let result = provider.hover_for_builtin_type("nil");
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_hover_for_builtin_type_unknown() {
+        let doc = create_test_document("let x: unknown = something");
+        let provider = HoverProvider::new();
+
+        let result = provider.hover_for_builtin_type("unknown");
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_hover_for_builtin_type_not_found() {
+        let doc = create_test_document("local x = 1");
+        let provider = HoverProvider::new();
+
+        let result = provider.hover_for_builtin_type("notatype");
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_empty_document() {
+        let doc = create_test_document("");
+        let provider = HoverProvider::new();
+
+        let result = provider.provide(&doc, Position::new(0, 0));
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_out_of_bounds_position() {
+        let doc = create_test_document("local x = 1");
+        let provider = HoverProvider::new();
+
+        let result = provider.provide(&doc, Position::new(10, 10));
+
+        assert!(result.is_none());
+    }
+}

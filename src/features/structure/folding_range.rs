@@ -147,3 +147,160 @@ impl FoldingRangeProvider {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::document::Document;
+
+    fn create_test_document(text: &str) -> Document {
+        Document::new_test(text.to_string(), 1)
+    }
+
+    #[test]
+    fn test_empty_document() {
+        let doc = create_test_document("");
+        let provider = FoldingRangeProvider::new();
+
+        let result = provider.provide(&doc);
+
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_single_line_no_folding() {
+        let doc = create_test_document("local x = 1");
+        let provider = FoldingRangeProvider::new();
+
+        let result = provider.provide(&doc);
+
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_multiline_function_folding() {
+        let doc = create_test_document("function foo()\n    local x = 1\nend");
+        let provider = FoldingRangeProvider::new();
+
+        let result = provider.provide(&doc);
+
+        assert!(!result.is_empty());
+        assert!(result
+            .iter()
+            .any(|r| r.kind == Some(FoldingRangeKind::Region)));
+    }
+
+    #[test]
+    fn test_multiline_if_folding() {
+        let doc = create_test_document("if true then\n    local x = 1\nend");
+        let provider = FoldingRangeProvider::new();
+
+        let result = provider.provide(&doc);
+
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_multiline_while_folding() {
+        let doc = create_test_document("while true do\n    local x = 1\nend");
+        let provider = FoldingRangeProvider::new();
+
+        let result = provider.provide(&doc);
+
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_multiline_class_folding() {
+        let doc = create_test_document("class Foo\n    local x: number = 1\nend");
+        let provider = FoldingRangeProvider::new();
+
+        let result = provider.provide(&doc);
+
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_multiline_interface_folding() {
+        let doc = create_test_document("interface Foo\n    name: string\nend");
+        let provider = FoldingRangeProvider::new();
+
+        let result = provider.provide(&doc);
+
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_multiline_enum_folding() {
+        let doc = create_test_document("enum Foo\n    A\n    B\nend");
+        let provider = FoldingRangeProvider::new();
+
+        let result = provider.provide(&doc);
+
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_multiline_comment_folding() {
+        let doc = create_test_document("--[[\nline 1\nline 2\n]]");
+        let provider = FoldingRangeProvider::new();
+
+        let result = provider.provide(&doc);
+
+        assert!(!result.is_empty());
+        assert!(result
+            .iter()
+            .any(|r| r.kind == Some(FoldingRangeKind::Comment)));
+    }
+
+    #[test]
+    fn test_is_block_start_keywords() {
+        let provider = FoldingRangeProvider::new();
+
+        assert!(provider.is_block_start("function foo() end"));
+        assert!(provider.is_block_start("if true then"));
+        assert!(provider.is_block_start("while true do"));
+        assert!(provider.is_block_start("for i = 1, 10 do"));
+        assert!(provider.is_block_start("repeat until false"));
+        assert!(provider.is_block_start("do end"));
+        assert!(provider.is_block_start("class Foo end"));
+        assert!(provider.is_block_start("interface Foo end"));
+        assert!(provider.is_block_start("enum Foo end"));
+        assert!(provider.is_block_start("match x end"));
+    }
+
+    #[test]
+    fn test_is_block_start_non_keywords() {
+        let provider = FoldingRangeProvider::new();
+
+        assert!(!provider.is_block_start("local x = 1"));
+        assert!(!provider.is_block_start("functioncall()"));
+        assert!(!provider.is_block_start("return x"));
+    }
+
+    #[test]
+    fn test_get_block_kind() {
+        let provider = FoldingRangeProvider::new();
+
+        assert_eq!(
+            provider.get_block_kind("function foo() end"),
+            FoldingRangeKind::Region
+        );
+        assert_eq!(
+            provider.get_block_kind("if true then"),
+            FoldingRangeKind::Region
+        );
+        assert_eq!(
+            provider.get_block_kind("while true do"),
+            FoldingRangeKind::Region
+        );
+        assert_eq!(
+            provider.get_block_kind("class Foo end"),
+            FoldingRangeKind::Region
+        );
+        assert_eq!(
+            provider.get_block_kind("interface Foo end"),
+            FoldingRangeKind::Region
+        );
+    }
+}

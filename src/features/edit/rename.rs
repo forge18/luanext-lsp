@@ -727,3 +727,100 @@ fn span_to_range(span: &Span) -> Range {
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::document::Document;
+
+    fn create_test_document(text: &str) -> Document {
+        Document::new_test(text.to_string(), 1)
+    }
+
+    #[test]
+    fn test_span_to_range() {
+        let span = Span {
+            line: 2,
+            column: 5,
+            len: 3,
+        };
+        let range = span_to_range(&span);
+        assert_eq!(range.start.line, 1);
+        assert_eq!(range.start.character, 4);
+        assert_eq!(range.end.line, 1);
+        assert_eq!(range.end.character, 7);
+    }
+
+    #[test]
+    fn test_prepare_no_declaration() {
+        let doc = create_test_document("local x = 1");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 0));
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_prepare_at_function() {
+        let doc = create_test_document("function foo() end");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 10));
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_out_of_bounds() {
+        let doc = create_test_document("local x = 1");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(10, 10));
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_empty_document() {
+        let doc = create_test_document("");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 0));
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_invalid_new_name_empty() {
+        let doc = create_test_document("function foo() end");
+        let provider = RenameProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.rename(&uri, &doc, Position::new(0, 10), "", &doc);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_invalid_new_name_same() {
+        let doc = create_test_document("function foo() end");
+        let provider = RenameProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.rename(&uri, &doc, Position::new(0, 10), "foo", &doc);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_invalid_new_name_invalid_identifier() {
+        let doc = create_test_document("function foo() end");
+        let provider = RenameProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.rename(&uri, &doc, Position::new(0, 10), "123invalid", &doc);
+
+        assert!(result.is_none());
+    }
+}

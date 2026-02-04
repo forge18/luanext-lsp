@@ -300,3 +300,82 @@ impl ReferencesProviderTrait for ReferencesProvider {
         .unwrap_or_default()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::document::Document;
+
+    fn create_test_document(text: &str) -> Document {
+        Document::new_test(text.to_string(), 1)
+    }
+
+    #[test]
+    fn test_find_variable_reference() {
+        let doc = create_test_document("local x = 1\nlocal y = x + 1");
+        let provider = ReferencesProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let references = provider.provide(&uri, &doc, Position::new(1, 11), true);
+
+        assert!(!references.is_empty());
+    }
+
+    #[test]
+    fn test_find_function_reference() {
+        let doc = create_test_document("function foo() end\nfoo()");
+        let provider = ReferencesProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let references = provider.provide(&uri, &doc, Position::new(1, 0), true);
+
+        assert!(!references.is_empty());
+    }
+
+    #[test]
+    fn test_no_references_for_unknown_symbol() {
+        let doc = create_test_document("local x = 1");
+        let provider = ReferencesProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let references = provider.provide(&uri, &doc, Position::new(0, 0), true);
+
+        assert!(references.is_empty());
+    }
+
+    #[test]
+    fn test_span_to_range() {
+        let span = Span {
+            line: 2,
+            column: 5,
+            len: 3,
+        };
+        let range = span_to_range(&span);
+        assert_eq!(range.start.line, 1);
+        assert_eq!(range.start.character, 4);
+        assert_eq!(range.end.line, 1);
+        assert_eq!(range.end.character, 7);
+    }
+
+    #[test]
+    fn test_empty_document() {
+        let doc = create_test_document("");
+        let provider = ReferencesProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let references = provider.provide(&uri, &doc, Position::new(0, 0), true);
+
+        assert!(references.is_empty());
+    }
+
+    #[test]
+    fn test_out_of_bounds_position() {
+        let doc = create_test_document("local x = 1");
+        let provider = ReferencesProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let references = provider.provide(&uri, &doc, Position::new(10, 10), true);
+
+        assert!(references.is_empty());
+    }
+}
