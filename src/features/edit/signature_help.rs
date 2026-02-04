@@ -1,4 +1,4 @@
-use crate::document::Document;
+use crate::core::document::Document;
 use lsp_types::*;
 use std::sync::Arc;
 use typedlua_parser::string_interner::StringInterner;

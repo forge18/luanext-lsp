@@ -1,4 +1,4 @@
-use crate::document::Document;
+use crate::core::document::Document;
 use crate::traits::DiagnosticsProviderTrait;
 use lsp_types::*;
 use std::sync::Arc;

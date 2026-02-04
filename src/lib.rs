@@ -4,18 +4,30 @@
 #![allow(clippy::all)]
 #![allow(deprecated)]
 
+// Protocol layer
+pub mod protocol;
+
+// Core document management
+pub mod core;
+
+// Analysis features
+pub mod analysis;
+
+// Feature providers organized by category
+pub mod features;
+
 // Trait abstractions for type system components
 pub mod traits;
 
 // Bridge implementations for typedlua-typechecker types
 pub mod impls;
 
+// Dependency injection
 pub mod di;
-pub mod document;
+
+// Message handler (LSP protocol routing)
 pub mod message_handler;
-pub mod providers;
-pub mod symbol_index;
 
 // Re-export commonly used types
-pub use document::{Document, DocumentManager};
+pub use core::{DiagnosticsProvider, Document, DocumentManager};
 pub use message_handler::{BasicMessageHandler, LspConnection};

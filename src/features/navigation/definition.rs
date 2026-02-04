@@ -1,4 +1,4 @@
-use crate::document::{Document, DocumentManager};
+use crate::core::document::{Document, DocumentManager};
 use crate::traits::DefinitionProviderTrait;
 use lsp_types::{GotoDefinitionResponse, Location, Position, Range, Uri};
 use std::sync::Arc;

@@ -1,19 +1,20 @@
 #![allow(clippy::all)]
 #![allow(deprecated)]
 
+mod core;
 mod di;
-mod document;
+mod features;
 mod impls;
 mod message_handler;
-mod providers;
-mod symbol_index;
+mod protocol;
 mod traits;
 
 use anyhow::Result;
-use document::DocumentManager;
+use core::DocumentManager;
 use lsp_server::{Connection, Message, Notification, Response};
 use lsp_types::*;
 use message_handler::{LspConnection, MessageHandler};
+use protocol::LspConnection as _;
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;

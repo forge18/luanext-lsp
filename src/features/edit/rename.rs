@@ -1,36 +1,58 @@
-use crate::document::{Document, DocumentManager};
-use crate::traits::ReferencesProviderTrait;
+use crate::core::document::{Document, DocumentManager};
 use lsp_types::{Uri, *};
 
+use std::collections::HashMap;
 use std::sync::Arc;
-use typedlua_parser::ast::{
-    expression::{Expression, ExpressionKind},
-    statement::Statement,
-};
+use typedlua_parser::ast::expression::{Expression, ExpressionKind};
+use typedlua_parser::ast::statement::Statement;
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::{Lexer, Parser, Span};
 use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
 
-/// Provides find-references functionality
+/// Provides rename functionality
 #[derive(Clone)]
-pub struct ReferencesProvider;
+pub struct RenameProvider;
 
-impl ReferencesProvider {
+impl RenameProvider {
     pub fn new() -> Self {
         Self
     }
 
-    /// Find all references to the symbol at the given position (internal method)
-    pub fn provide_impl(
+    /// Prepare a rename operation (validate rename position and provide placeholder)
+    pub fn prepare(
+        &self,
+        document: &Document,
+        position: Position,
+    ) -> Option<PrepareRenameResponse> {
+        // Get the word at the current position
+        let word = self.get_word_at_position(document, position)?;
+
+        // Get the range of the word
+        let range = self.get_word_range(document, position)?;
+
+        // Return the range and current name as placeholder
+        Some(PrepareRenameResponse::RangeWithPlaceholder {
+            range,
+            placeholder: word,
+        })
+    }
+
+    /// Perform the rename operation
+    pub fn rename(
         &self,
         uri: &Uri,
         document: &Document,
         position: Position,
-        include_declaration: bool,
+        new_name: &str,
         document_manager: &DocumentManager,
-    ) -> Option<Vec<Location>> {
+    ) -> Option<WorkspaceEdit> {
         // Get the word at the current position
         let word = self.get_word_at_position(document, position)?;
+
+        // Validate the new name
+        if !self.is_valid_identifier(new_name) {
+            return None;
+        }
 
         // Parse the document
         let handler = Arc::new(CollectingDiagnosticHandler::new());
@@ -41,41 +63,48 @@ impl ReferencesProvider {
         let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
         let ast = parser.parse().ok()?;
 
-        // Find all references in the current file
-        let mut references = Vec::new();
-        self.find_references_in_statements(&ast.statements, &word, &mut references, &interner);
+        // Create a map to store edits for each file
+        let mut all_edits: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
 
-        // Optionally include the declaration
-        if include_declaration {
-            if let Some(decl_span) = self.find_declaration(&ast.statements, &word, &interner) {
-                references.push(decl_span);
-            }
+        // Find all occurrences in the current file (including declaration)
+        let mut current_file_occurrences = Vec::new();
+        self.find_all_occurrences(
+            &ast.statements,
+            &word,
+            &mut current_file_occurrences,
+            &interner,
+        );
+
+        // Find the declaration to include it
+        if let Some(decl_span) = self.find_declaration(&ast.statements, &word, &interner) {
+            current_file_occurrences.push(decl_span);
         }
 
-        // Convert spans to locations (current file)
-        let mut locations: Vec<Location> = references
+        // Convert spans to text edits for current file
+        let current_edits: Vec<TextEdit> = current_file_occurrences
             .into_iter()
-            .map(|span| Location {
-                uri: uri.clone(),
+            .map(|span| TextEdit {
                 range: span_to_range(&span),
+                new_text: new_name.to_string(),
             })
             .collect();
 
-        // Check if this symbol is exported from current file
-        // If so, search for references in files that import it
+        all_edits.insert(uri.clone(), current_edits);
+
+        // Check if this symbol is exported - if so, rename in all importing files
         if self.is_symbol_exported(&ast.statements, &word, &interner) {
             if let Some(module_id) = &document.module_id {
-                self.search_references_in_importing_files(
+                self.collect_renames_in_importing_files(
                     module_id,
                     &word,
+                    new_name,
                     document_manager,
-                    &mut locations,
+                    &mut all_edits,
                 );
             }
         }
 
-        // Check if this symbol is imported from another file
-        // If so, also search for references in that file
+        // Check if this symbol is imported - if so, rename in the source file
         if let Some((source_uri, exported_name)) = self.find_import_source(
             &ast.statements,
             &word,
@@ -83,45 +112,49 @@ impl ReferencesProvider {
             document_manager,
             &interner,
         ) {
-            // Search references in the source file
             if let Some(source_doc) = document_manager.get(&source_uri) {
-                let mut source_refs = Vec::new();
-
                 // Parse source document
                 let handler = Arc::new(CollectingDiagnosticHandler::new());
                 let mut lexer = Lexer::new(&source_doc.text, handler.clone(), &interner);
                 if let Ok(tokens) = lexer.tokenize() {
                     let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
                     if let Ok(ast) = parser.parse() {
-                        self.find_references_in_statements(
+                        let mut source_occurrences = Vec::new();
+                        self.find_all_occurrences(
                             &ast.statements,
                             &exported_name,
-                            &mut source_refs,
+                            &mut source_occurrences,
                             &interner,
                         );
 
                         // Include declaration in source file
-                        if include_declaration {
-                            if let Some(decl_span) =
-                                self.find_declaration(&ast.statements, &exported_name, &interner)
-                            {
-                                source_refs.push(decl_span);
-                            }
+                        if let Some(decl_span) =
+                            self.find_declaration(&ast.statements, &exported_name, &interner)
+                        {
+                            source_occurrences.push(decl_span);
                         }
 
-                        // Convert to locations
-                        for span in source_refs {
-                            locations.push(Location {
-                                uri: source_uri.clone(),
+                        // Convert to text edits
+                        let source_edits: Vec<TextEdit> = source_occurrences
+                            .into_iter()
+                            .map(|span| TextEdit {
                                 range: span_to_range(&span),
-                            });
-                        }
+                                new_text: new_name.to_string(),
+                            })
+                            .collect();
+
+                        all_edits.insert(source_uri, source_edits);
                     }
                 }
             }
         }
 
-        Some(locations)
+        // Create workspace edit
+        Some(WorkspaceEdit {
+            changes: Some(all_edits),
+            document_changes: None,
+            change_annotations: None,
+        })
     }
 
     /// Check if a symbol is exported from the file
@@ -214,20 +247,21 @@ impl ReferencesProvider {
         None
     }
 
-    /// Search for references in files that import from the current module
-    fn search_references_in_importing_files(
+    /// Collect rename edits in files that import from the current module
+    fn collect_renames_in_importing_files(
         &self,
         module_id: &typedlua_typechecker::module_resolver::ModuleId,
         symbol_name: &str,
+        new_name: &str,
         document_manager: &DocumentManager,
-        locations: &mut Vec<Location>,
+        all_edits: &mut HashMap<Uri, Vec<TextEdit>>,
     ) {
         // Use symbol index to quickly find all files that import this symbol
         let importing_uris = document_manager
             .symbol_index()
             .get_importers(module_id.as_str(), symbol_name);
 
-        // For each importing file, find references to the local name
+        // For each importing file, find and rename all occurrences of the local name
         for uri in importing_uris {
             if let Some(doc) = document_manager.get(&uri) {
                 // Get the document's module ID
@@ -245,22 +279,27 @@ impl ReferencesProvider {
                                 if source_module_id == module_id
                                     && import_info.imported_name == symbol_name
                                 {
-                                    // Parse the document to find references
+                                    // Parse the document to find all occurrences
                                     if let Some((ast, interner, _)) = doc.get_or_parse_ast() {
-                                        let mut refs = Vec::new();
-                                        self.find_references_in_statements(
+                                        let mut occurrences = Vec::new();
+                                        self.find_all_occurrences(
                                             &ast.statements,
                                             &import_info.local_name,
-                                            &mut refs,
+                                            &mut occurrences,
                                             &*interner,
                                         );
 
-                                        // Convert to locations
-                                        for span in refs {
-                                            locations.push(Location {
-                                                uri: uri.clone(),
+                                        // Convert to text edits
+                                        let edits: Vec<TextEdit> = occurrences
+                                            .into_iter()
+                                            .map(|span| TextEdit {
                                                 range: span_to_range(&span),
-                                            });
+                                                new_text: new_name.to_string(),
+                                            })
+                                            .collect();
+
+                                        if !edits.is_empty() {
+                                            all_edits.insert(uri.clone(), edits);
                                         }
                                     }
                                 }
@@ -352,211 +391,82 @@ impl ReferencesProvider {
         None
     }
 
-    /// Find the declaration span for a given symbol name
-    fn find_declaration(
-        &self,
-        statements: &[Statement],
-        name: &str,
-        interner: &StringInterner,
-    ) -> Option<Span> {
-        use typedlua_parser::ast::pattern::Pattern;
+    /// Validate that a name is a valid identifier
+    fn is_valid_identifier(&self, name: &str) -> bool {
+        if name.is_empty() {
+            return false;
+        }
 
-        for stmt in statements {
-            match stmt {
-                Statement::Variable(var_decl) => {
-                    // Check if the pattern contains this identifier
-                    if let Pattern::Identifier(ident) = &var_decl.pattern {
-                        if interner.resolve(ident.node) == name {
-                            return Some(ident.span);
-                        }
-                    }
-                }
-                Statement::Function(func_decl) => {
-                    if interner.resolve(func_decl.name.node) == name {
-                        return Some(func_decl.name.span);
-                    }
-                }
-                Statement::Class(class_decl) => {
-                    if interner.resolve(class_decl.name.node) == name {
-                        return Some(class_decl.name.span);
-                    }
-                }
-                Statement::Interface(interface_decl) => {
-                    if interner.resolve(interface_decl.name.node) == name {
-                        return Some(interface_decl.name.span);
-                    }
-                }
-                Statement::TypeAlias(type_decl) => {
-                    if interner.resolve(type_decl.name.node) == name {
-                        return Some(type_decl.name.span);
-                    }
-                }
-                Statement::Enum(enum_decl) => {
-                    if interner.resolve(enum_decl.name.node) == name {
-                        return Some(enum_decl.name.span);
-                    }
-                }
-                _ => {}
+        // Check first character (must be letter or underscore)
+        let mut chars = name.chars();
+        if let Some(first) = chars.next() {
+            if !first.is_alphabetic() && first != '_' {
+                return false;
+            }
+        } else {
+            return false;
+        }
+
+        // Check remaining characters (letter, digit, or underscore)
+        for ch in chars {
+            if !ch.is_alphanumeric() && ch != '_' {
+                return false;
             }
         }
-        None
+
+        // Check if it's a reserved keyword
+        if self.is_keyword(name) {
+            return false;
+        }
+
+        true
     }
 
-    /// Find all references to a symbol by traversing the AST
-    fn find_references_in_statements(
-        &self,
-        statements: &[Statement],
-        name: &str,
-        refs: &mut Vec<Span>,
-        interner: &StringInterner,
-    ) {
-        for stmt in statements {
-            self.find_references_in_statement(stmt, name, refs, interner);
-        }
-    }
-
-    fn find_references_in_statement(
-        &self,
-        stmt: &Statement,
-        name: &str,
-        refs: &mut Vec<Span>,
-        interner: &StringInterner,
-    ) {
-        match stmt {
-            Statement::Expression(expr) => {
-                self.find_references_in_expression(expr, name, refs, interner);
-            }
-            Statement::Variable(var_decl) => {
-                self.find_references_in_expression(&var_decl.initializer, name, refs, interner);
-            }
-            Statement::Function(func_decl) => {
-                for stmt in &func_decl.body.statements {
-                    self.find_references_in_statement(stmt, name, refs, interner);
-                }
-            }
-            Statement::If(if_stmt) => {
-                self.find_references_in_expression(&if_stmt.condition, name, refs, interner);
-                self.find_references_in_statements(
-                    &if_stmt.then_block.statements,
-                    name,
-                    refs,
-                    interner,
-                );
-                for else_if in &if_stmt.else_ifs {
-                    self.find_references_in_expression(&else_if.condition, name, refs, interner);
-                    self.find_references_in_statements(
-                        &else_if.block.statements,
-                        name,
-                        refs,
-                        interner,
-                    );
-                }
-                if let Some(else_block) = &if_stmt.else_block {
-                    self.find_references_in_statements(
-                        &else_block.statements,
-                        name,
-                        refs,
-                        interner,
-                    );
-                }
-            }
-            Statement::While(while_stmt) => {
-                self.find_references_in_expression(&while_stmt.condition, name, refs, interner);
-                self.find_references_in_statements(
-                    &while_stmt.body.statements,
-                    name,
-                    refs,
-                    interner,
-                );
-            }
-            Statement::Return(ret) => {
-                for expr in &ret.values {
-                    self.find_references_in_expression(expr, name, refs, interner);
-                }
-            }
-            Statement::Block(block) => {
-                self.find_references_in_statements(&block.statements, name, refs, interner);
-            }
-            _ => {}
-        }
-    }
-
-    fn find_references_in_expression(
-        &self,
-        expr: &Expression,
-        name: &str,
-        refs: &mut Vec<Span>,
-        interner: &StringInterner,
-    ) {
-        match &expr.kind {
-            ExpressionKind::Identifier(ident) => {
-                if interner.resolve(*ident) == name {
-                    refs.push(expr.span);
-                }
-            }
-            ExpressionKind::Binary(_, left, right) => {
-                self.find_references_in_expression(left, name, refs, interner);
-                self.find_references_in_expression(right, name, refs, interner);
-            }
-            ExpressionKind::Unary(_, operand) => {
-                self.find_references_in_expression(operand, name, refs, interner);
-            }
-            ExpressionKind::Call(callee, args, _type_args) => {
-                self.find_references_in_expression(callee, name, refs, interner);
-                for arg in args {
-                    self.find_references_in_expression(&arg.value, name, refs, interner);
-                }
-            }
-            ExpressionKind::Member(object, _) => {
-                self.find_references_in_expression(object, name, refs, interner);
-            }
-            ExpressionKind::Index(object, index) => {
-                self.find_references_in_expression(object, name, refs, interner);
-                self.find_references_in_expression(index, name, refs, interner);
-            }
-            ExpressionKind::Assignment(target, _, value) => {
-                self.find_references_in_expression(target, name, refs, interner);
-                self.find_references_in_expression(value, name, refs, interner);
-            }
-            ExpressionKind::Array(elements) => {
-                for elem in elements {
-                    match elem {
-                        typedlua_parser::ast::expression::ArrayElement::Expression(e) => {
-                            self.find_references_in_expression(e, name, refs, interner);
-                        }
-                        typedlua_parser::ast::expression::ArrayElement::Spread(e) => {
-                            self.find_references_in_expression(e, name, refs, interner);
-                        }
-                    }
-                }
-            }
-            ExpressionKind::Object(properties) => {
-                use typedlua_parser::ast::expression::ObjectProperty;
-                for prop in properties {
-                    match prop {
-                        ObjectProperty::Property { value, .. } => {
-                            self.find_references_in_expression(value, name, refs, interner);
-                        }
-                        ObjectProperty::Computed { key, value, .. } => {
-                            self.find_references_in_expression(key, name, refs, interner);
-                            self.find_references_in_expression(value, name, refs, interner);
-                        }
-                        ObjectProperty::Spread { value, .. } => {
-                            self.find_references_in_expression(value, name, refs, interner);
-                        }
-                    }
-                }
-            }
-            ExpressionKind::Conditional(condition, then_expr, else_expr) => {
-                self.find_references_in_expression(condition, name, refs, interner);
-                self.find_references_in_expression(then_expr, name, refs, interner);
-                self.find_references_in_expression(else_expr, name, refs, interner);
-            }
-            ExpressionKind::Parenthesized(inner) => {
-                self.find_references_in_expression(inner, name, refs, interner);
-            }
-            _ => {}
-        }
+    /// Check if a name is a reserved keyword
+    fn is_keyword(&self, name: &str) -> bool {
+        matches!(
+            name,
+            "const"
+                | "local"
+                | "function"
+                | "if"
+                | "then"
+                | "else"
+                | "elseif"
+                | "end"
+                | "while"
+                | "for"
+                | "in"
+                | "do"
+                | "repeat"
+                | "until"
+                | "return"
+                | "break"
+                | "continue"
+                | "and"
+                | "or"
+                | "not"
+                | "true"
+                | "false"
+                | "nil"
+                | "type"
+                | "interface"
+                | "enum"
+                | "class"
+                | "extends"
+                | "implements"
+                | "public"
+                | "private"
+                | "protected"
+                | "static"
+                | "abstract"
+                | "readonly"
+                | "match"
+                | "when"
+                | "import"
+                | "from"
+                | "export"
+        )
     }
 
     /// Get the word at the cursor position
@@ -598,47 +508,208 @@ impl ReferencesProvider {
         Some(chars[start..end].iter().collect())
     }
 
-    /// Provide document highlights for the symbol at the given position
-    #[allow(dead_code)]
-    pub fn provide_highlights(
-        &self,
-        document: &Document,
-        position: Position,
-    ) -> Option<Vec<DocumentHighlight>> {
-        // Get the word at the current position
-        let word = self.get_word_at_position(document, position)?;
-
-        // Parse the document
-        let handler = Arc::new(CollectingDiagnosticHandler::new());
-        let (interner, common_ids) = StringInterner::new_with_common_identifiers();
-        let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
-        let tokens = lexer.tokenize().ok()?;
-
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
-        let ast = parser.parse().ok()?;
-
-        // Find all references to this symbol (including declaration)
-        let mut references = Vec::new();
-        self.find_references_in_statements(&ast.statements, &word, &mut references, &interner);
-
-        // Include the declaration
-        if let Some(decl_span) = self.find_declaration(&ast.statements, &word, &interner) {
-            references.push(decl_span);
+    /// Get the range of the word at the cursor position
+    fn get_word_range(&self, document: &Document, position: Position) -> Option<Range> {
+        let lines: Vec<&str> = document.text.lines().collect();
+        if position.line as usize >= lines.len() {
+            return None;
         }
 
-        // Convert spans to document highlights
-        let highlights: Vec<DocumentHighlight> = references
-            .into_iter()
-            .map(|span| DocumentHighlight {
-                range: span_to_range(&span),
-                kind: Some(DocumentHighlightKind::TEXT),
-            })
-            .collect();
+        let line = lines[position.line as usize];
+        let char_pos = position.character as usize;
+        if char_pos > line.len() {
+            return None;
+        }
 
-        if highlights.is_empty() {
-            None
-        } else {
-            Some(highlights)
+        // Find word boundaries
+        let chars: Vec<char> = line.chars().collect();
+        if char_pos >= chars.len() {
+            return None;
+        }
+
+        // Check if we're on a word character
+        if !chars[char_pos].is_alphanumeric() && chars[char_pos] != '_' {
+            return None;
+        }
+
+        // Find start of word
+        let mut start = char_pos;
+        while start > 0 && (chars[start - 1].is_alphanumeric() || chars[start - 1] == '_') {
+            start -= 1;
+        }
+
+        // Find end of word
+        let mut end = char_pos;
+        while end < chars.len() && (chars[end].is_alphanumeric() || chars[end] == '_') {
+            end += 1;
+        }
+
+        Some(Range {
+            start: Position {
+                line: position.line,
+                character: start as u32,
+            },
+            end: Position {
+                line: position.line,
+                character: end as u32,
+            },
+        })
+    }
+
+    /// Find the declaration span for a given symbol name
+    fn find_declaration(
+        &self,
+        statements: &[Statement],
+        name: &str,
+        interner: &StringInterner,
+    ) -> Option<Span> {
+        use typedlua_parser::ast::pattern::Pattern;
+
+        for stmt in statements {
+            match stmt {
+                Statement::Variable(var_decl) => {
+                    if let Pattern::Identifier(ident) = &var_decl.pattern {
+                        if interner.resolve(ident.node) == name {
+                            return Some(ident.span);
+                        }
+                    }
+                }
+                Statement::Function(func_decl) => {
+                    if interner.resolve(func_decl.name.node) == name {
+                        return Some(func_decl.name.span);
+                    }
+                }
+                Statement::Class(class_decl) => {
+                    if interner.resolve(class_decl.name.node) == name {
+                        return Some(class_decl.name.span);
+                    }
+                }
+                Statement::Interface(interface_decl) => {
+                    if interner.resolve(interface_decl.name.node) == name {
+                        return Some(interface_decl.name.span);
+                    }
+                }
+                Statement::TypeAlias(type_decl) => {
+                    if interner.resolve(type_decl.name.node) == name {
+                        return Some(type_decl.name.span);
+                    }
+                }
+                Statement::Enum(enum_decl) => {
+                    if interner.resolve(enum_decl.name.node) == name {
+                        return Some(enum_decl.name.span);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    /// Find all occurrences of a symbol
+    fn find_all_occurrences(
+        &self,
+        statements: &[Statement],
+        name: &str,
+        refs: &mut Vec<Span>,
+        interner: &StringInterner,
+    ) {
+        for stmt in statements {
+            self.find_occurrences_in_statement(stmt, name, refs, interner);
+        }
+    }
+
+    fn find_occurrences_in_statement(
+        &self,
+        stmt: &Statement,
+        name: &str,
+        refs: &mut Vec<Span>,
+        interner: &StringInterner,
+    ) {
+        match stmt {
+            Statement::Expression(expr) => {
+                self.find_occurrences_in_expression(expr, name, refs, interner);
+            }
+            Statement::Variable(var_decl) => {
+                self.find_occurrences_in_expression(&var_decl.initializer, name, refs, interner);
+            }
+            Statement::Function(func_decl) => {
+                for stmt in &func_decl.body.statements {
+                    self.find_occurrences_in_statement(stmt, name, refs, interner);
+                }
+            }
+            Statement::If(if_stmt) => {
+                self.find_occurrences_in_expression(&if_stmt.condition, name, refs, interner);
+                self.find_all_occurrences(&if_stmt.then_block.statements, name, refs, interner);
+                for else_if in &if_stmt.else_ifs {
+                    self.find_occurrences_in_expression(&else_if.condition, name, refs, interner);
+                    self.find_all_occurrences(&else_if.block.statements, name, refs, interner);
+                }
+                if let Some(else_block) = &if_stmt.else_block {
+                    self.find_all_occurrences(&else_block.statements, name, refs, interner);
+                }
+            }
+            Statement::While(while_stmt) => {
+                self.find_occurrences_in_expression(&while_stmt.condition, name, refs, interner);
+                self.find_all_occurrences(&while_stmt.body.statements, name, refs, interner);
+            }
+            Statement::Return(ret) => {
+                for expr in &ret.values {
+                    self.find_occurrences_in_expression(expr, name, refs, interner);
+                }
+            }
+            Statement::Block(block) => {
+                self.find_all_occurrences(&block.statements, name, refs, interner);
+            }
+            _ => {}
+        }
+    }
+
+    fn find_occurrences_in_expression(
+        &self,
+        expr: &Expression,
+        name: &str,
+        refs: &mut Vec<Span>,
+        interner: &StringInterner,
+    ) {
+        match &expr.kind {
+            ExpressionKind::Identifier(ident) => {
+                if interner.resolve(*ident) == name {
+                    refs.push(expr.span);
+                }
+            }
+            ExpressionKind::Binary(_, left, right) => {
+                self.find_occurrences_in_expression(left, name, refs, interner);
+                self.find_occurrences_in_expression(right, name, refs, interner);
+            }
+            ExpressionKind::Unary(_, operand) => {
+                self.find_occurrences_in_expression(operand, name, refs, interner);
+            }
+            ExpressionKind::Call(callee, args, _typeargs) => {
+                self.find_occurrences_in_expression(callee, name, refs, interner);
+                for arg in args {
+                    self.find_occurrences_in_expression(&arg.value, name, refs, interner);
+                }
+            }
+            ExpressionKind::Member(object, _) => {
+                self.find_occurrences_in_expression(object, name, refs, interner);
+            }
+            ExpressionKind::Index(object, index) => {
+                self.find_occurrences_in_expression(object, name, refs, interner);
+                self.find_occurrences_in_expression(index, name, refs, interner);
+            }
+            ExpressionKind::Assignment(target, _, value) => {
+                self.find_occurrences_in_expression(target, name, refs, interner);
+                self.find_occurrences_in_expression(value, name, refs, interner);
+            }
+            ExpressionKind::Conditional(condition, then_expr, else_expr) => {
+                self.find_occurrences_in_expression(condition, name, refs, interner);
+                self.find_occurrences_in_expression(then_expr, name, refs, interner);
+                self.find_occurrences_in_expression(else_expr, name, refs, interner);
+            }
+            ExpressionKind::Parenthesized(inner) => {
+                self.find_occurrences_in_expression(inner, name, refs, interner);
+            }
+            _ => {}
         }
     }
 }
@@ -654,37 +725,5 @@ fn span_to_range(span: &Span) -> Range {
             line: (span.line.saturating_sub(1)) as u32,
             character: ((span.column + span.len()).saturating_sub(1)) as u32,
         },
-    }
-}
-
-impl ReferencesProviderTrait for ReferencesProvider {
-    fn provide(
-        &self,
-        uri: &Uri,
-        document: &Document,
-        position: Position,
-        include_declaration: bool,
-    ) -> Vec<Location> {
-        use typedlua_typechecker::config::CompilerOptions;
-        use typedlua_typechecker::fs::MockFileSystem;
-        use typedlua_typechecker::module_resolver::{ModuleRegistry, ModuleResolver};
-
-        let workspace_root = std::path::PathBuf::from("/test");
-        let fs = std::sync::Arc::new(MockFileSystem::new());
-        let compiler_options = CompilerOptions::default();
-        let module_config =
-            typedlua_typechecker::module_resolver::ModuleConfig::from_compiler_options(
-                &compiler_options,
-                &workspace_root,
-            );
-        let module_registry = std::sync::Arc::new(ModuleRegistry::new());
-        let module_resolver = std::sync::Arc::new(ModuleResolver::new(
-            fs,
-            module_config,
-            workspace_root.clone(),
-        ));
-        let manager = DocumentManager::new(workspace_root, module_registry, module_resolver);
-        self.provide_impl(uri, document, position, include_declaration, &manager)
-            .unwrap_or_default()
     }
 }

@@ -1,4 +1,4 @@
-use crate::document::Document;
+use crate::core::document::Document;
 use crate::traits::CompletionProviderTrait;
 use lsp_types::*;
 use std::sync::Arc;
@@ -151,8 +151,8 @@ impl CompletionProvider {
                 "Interface declaration",
                 CompletionItemKind::KEYWORD,
             ),
-            ("enum", "Enum declaration", CompletionItemKind::KEYWORD),
-            ("class", "Class declaration", CompletionItemKind::KEYWORD),
+            ("enum", "Enum declaration", CompletionItemKind::ENUM),
+            ("class", "Class declaration", CompletionItemKind::CLASS),
             ("extends", "Extends clause", CompletionItemKind::KEYWORD),
             (
                 "implements",

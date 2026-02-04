@@ -1,18 +1,15 @@
-use crate::document::Document;
-use std::cell::RefCell;
-use typedlua_parser::string_interner::StringInterner;
+use crate::core::document::Document;
 use lsp_types::*;
-use std::cell::RefCell;
-use typedlua_parser::string_interner::StringInterner;
 use std::sync::Arc;
 use typedlua_parser::ast::expression::{Expression, ExpressionKind};
 use typedlua_parser::ast::pattern::Pattern;
 use typedlua_parser::ast::statement::{ClassMember, Statement, VariableKind};
-use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::{Lexer, Parser, Span};
+use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
 
 /// Provides semantic tokens for syntax highlighting based on semantic analysis
+#[derive(Clone)]
 pub struct SemanticTokensProvider {
     /// Token types legend (must match what's advertised in server capabilities)
     token_types: Vec<SemanticTokenType>,
@@ -53,10 +50,8 @@ impl SemanticTokensProvider {
     pub fn provide_full(&self, document: &Document) -> SemanticTokens {
         // Parse the document
         let handler = Arc::new(CollectingDiagnosticHandler::new());
-        let (_interner, _common_ids) = StringInterner::new_with_common_identifiers();
-        let (mut interner, common_ids) =
-            typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
-        let mut lexer = Lexer::new(&document.text, handler.clone(), &mut interner);
+        let (interner, common_ids) = StringInterner::new_with_common_identifiers();
+        let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = match lexer.tokenize() {
             Ok(t) => t,
             Err(_) => {
@@ -67,7 +62,7 @@ impl SemanticTokensProvider {
             }
         };
 
-        let mut parser = Parser::new(tokens, handler, &mut interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
         let ast = match parser.parse() {
             Ok(a) => a,
             Err(_) => {
@@ -419,7 +414,7 @@ impl SemanticTokensProvider {
                     last_char,
                 );
             }
-            ExpressionKind::Call(callee, args) => {
+            ExpressionKind::Call(callee, args, _type_args) => {
                 // Mark function calls
                 if let ExpressionKind::Identifier(_) = &callee.kind {
                     self.add_token(

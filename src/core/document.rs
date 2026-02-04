@@ -1,4 +1,4 @@
-use crate::symbol_index::SymbolIndex;
+use crate::analysis::symbol_index::SymbolIndex;
 use lsp_types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DidSaveTextDocumentParams, Position, Uri,

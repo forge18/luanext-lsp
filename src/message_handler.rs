@@ -1,7 +1,7 @@
+use crate::core::DocumentManager;
 use crate::di::{DiContainer, ServiceLifetime};
-use crate::document::DocumentManager;
-
-use crate::providers::*;
+use crate::features::*;
+use crate::protocol::LspConnection;
 use crate::traits::{
     DefinitionProviderTrait, DiagnosticsProviderTrait, HoverProviderTrait, ReferencesProviderTrait,
     SymbolsProviderTrait,
@@ -25,12 +25,6 @@ use lsp_types::request::{
 };
 use lsp_types::*;
 use serde::{de::DeserializeOwned, Serialize};
-
-/// Trait for sending LSP messages - allows mocking for tests
-pub trait LspConnection {
-    fn send_response(&self, response: Response) -> Result<()>;
-    fn send_notification(&self, notification: Notification) -> Result<()>;
-}
 
 /// Basic message handler for document lifecycle and diagnostics (no type-aware features)
 ///
