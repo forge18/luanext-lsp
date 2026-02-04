@@ -4,7 +4,7 @@ use lsp_types::*;
 use std::sync::Arc;
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::{Lexer, Parser};
-use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
+use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
 /// Provides code formatting functionality
 #[derive(Clone)]

@@ -19,8 +19,8 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
-use typedlua_typechecker::config::CompilerOptions;
-use typedlua_typechecker::fs::RealFileSystem;
+use typedlua_typechecker::cli::config::CompilerOptions;
+use typedlua_typechecker::cli::fs::RealFileSystem;
 use typedlua_typechecker::module_resolver::{ModuleConfig, ModuleRegistry, ModuleResolver};
 
 // Implement LspConnection for the real lsp_server::Connection

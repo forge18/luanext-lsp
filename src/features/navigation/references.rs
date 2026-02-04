@@ -9,7 +9,7 @@ use typedlua_parser::ast::{
 };
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::{Lexer, Parser, Span};
-use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
+use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
 /// Provides find-references functionality
 #[derive(Clone)]

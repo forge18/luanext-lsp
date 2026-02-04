@@ -168,8 +168,8 @@ impl DocumentManager {
     /// Create a test document manager with mock module system
     #[cfg(test)]
     pub fn new_test() -> Self {
-        use typedlua_typechecker::config::CompilerOptions;
-        use typedlua_typechecker::fs::MockFileSystem;
+        use typedlua_typechecker::cli::config::CompilerOptions;
+        use typedlua_typechecker::cli::fs::MockFileSystem;
 
         let workspace_root = PathBuf::from("/test");
         let fs = Arc::new(MockFileSystem::new());
