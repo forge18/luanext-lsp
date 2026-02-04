@@ -732,6 +732,7 @@ fn span_to_range(span: &Span) -> Range {
 mod tests {
     use super::*;
     use crate::core::document::Document;
+    use std::str::FromStr;
 
     fn create_test_document(text: &str) -> Document {
         Document::new_test(text.to_string(), 1)
@@ -740,9 +741,10 @@ mod tests {
     #[test]
     fn test_span_to_range() {
         let span = Span {
+            start: 10,
+            end: 13,
             line: 2,
             column: 5,
-            len: 3,
         };
         let range = span_to_range(&span);
         assert_eq!(range.start.line, 1);

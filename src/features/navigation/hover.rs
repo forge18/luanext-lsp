@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn test_hover_for_keyword_function() {
-        let doc = create_test_document("function foo() end");
+        let _doc = create_test_document("function foo() end");
         let provider = HoverProvider::new();
 
         let result = provider.hover_for_keyword("function");
@@ -278,7 +278,7 @@ mod tests {
 
     #[test]
     fn test_hover_for_keyword_class() {
-        let doc = create_test_document("class Foo end");
+        let _doc = create_test_document("class Foo end");
         let provider = HoverProvider::new();
 
         let result = provider.hover_for_keyword("class");
@@ -288,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_hover_for_keyword_not_found() {
-        let doc = create_test_document("local x = 1");
+        let _doc = create_test_document("local x = 1");
         let provider = HoverProvider::new();
 
         let result = provider.hover_for_keyword("notakeyword");
@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn test_hover_for_builtin_type_number() {
-        let doc = create_test_document("local x: number = 1");
+        let _doc = create_test_document("local x: number = 1");
         let provider = HoverProvider::new();
 
         let result = provider.hover_for_builtin_type("number");
@@ -308,7 +308,7 @@ mod tests {
 
     #[test]
     fn test_hover_for_builtin_type_nil() {
-        let doc = create_test_document("local x = nil");
+        let _doc = create_test_document("local x = nil");
         let provider = HoverProvider::new();
 
         let result = provider.hover_for_builtin_type("nil");
@@ -318,7 +318,7 @@ mod tests {
 
     #[test]
     fn test_hover_for_builtin_type_unknown() {
-        let doc = create_test_document("let x: unknown = something");
+        let _doc = create_test_document("let x: unknown = something");
         let provider = HoverProvider::new();
 
         let result = provider.hover_for_builtin_type("unknown");
@@ -328,7 +328,7 @@ mod tests {
 
     #[test]
     fn test_hover_for_builtin_type_not_found() {
-        let doc = create_test_document("local x = 1");
+        let _doc = create_test_document("local x = 1");
         let provider = HoverProvider::new();
 
         let result = provider.hover_for_builtin_type("notatype");

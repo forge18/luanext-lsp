@@ -320,3 +320,73 @@ impl DocumentManager {
         text.len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_document() {
+        let doc = Document::new_test("local x = 1".to_string(), 1);
+
+        assert_eq!(doc.text, "local x = 1");
+        assert_eq!(doc.version, 1);
+        assert_eq!(doc.uri.as_str(), "file:///test/test.lua");
+    }
+
+    #[test]
+    fn test_empty_document() {
+        let doc = Document::new_test("".to_string(), 1);
+
+        assert_eq!(doc.text, "");
+        assert_eq!(doc.version, 1);
+    }
+
+    #[test]
+    fn test_multiline_document() {
+        let text = "local x = 1\nlocal y = 2\nreturn x + y";
+        let doc = Document::new_test(text.to_string(), 1);
+
+        assert_eq!(doc.text, text);
+        assert_eq!(doc.text.lines().count(), 3);
+    }
+
+    #[test]
+    fn test_position_to_offset_line_0() {
+        let doc = Document::new_test("hello world".to_string(), 1);
+
+        let offset = doc.position_to_offset(&Position::new(0, 0));
+        assert_eq!(offset, 0);
+
+        let offset = doc.position_to_offset(&Position::new(0, 5));
+        assert_eq!(offset, 5);
+    }
+
+    #[test]
+    fn test_position_to_offset_multiline() {
+        let doc = Document::new_test("line 1\nline 2\nline 3".to_string(), 1);
+
+        let offset = doc.position_to_offset(&Position::new(1, 0));
+        assert_eq!(offset, 7); // After "line 1\n"
+
+        let offset = doc.position_to_offset(&Position::new(2, 0));
+        assert_eq!(offset, 14); // After "line 1\nline 2\n"
+    }
+
+    #[test]
+    fn test_position_to_offset_out_of_bounds() {
+        let doc = Document::new_test("hello".to_string(), 1);
+
+        let offset = doc.position_to_offset(&Position::new(100, 100));
+        assert_eq!(offset, 5); // Returns text.len()
+    }
+
+    #[test]
+    fn test_get_document_attributes() {
+        let doc = Document::new_test("local x = 1".to_string(), 5);
+
+        assert_eq!(doc.text(), "local x = 1");
+        assert_eq!(doc.version(), 5);
+        assert_eq!(doc.uri().as_str(), "file:///test/test.lua");
+    }
+}
