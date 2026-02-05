@@ -103,3 +103,133 @@ impl DiagnosticsProviderTrait for DiagnosticsProvider {
         self.provide_impl(document)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::document::Document;
+
+    #[test]
+    fn test_diagnostics_provider_new() {
+        let provider = DiagnosticsProvider::new();
+        let _ = provider;
+    }
+
+    #[test]
+    fn test_diagnostics_empty_document() {
+        let doc = Document::new_test("".to_string(), 1);
+        let provider = DiagnosticsProvider::new();
+
+        let diagnostics = provider.provide(&doc);
+
+        // Empty document should have no diagnostics
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_diagnostics_valid_code() {
+        let doc = Document::new_test("local x = 1".to_string(), 1);
+        let provider = DiagnosticsProvider::new();
+
+        let diagnostics = provider.provide(&doc);
+
+        // Valid code should have no diagnostics
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_diagnostics_function_declaration() {
+        let doc = Document::new_test("function foo() end".to_string(), 1);
+        let provider = DiagnosticsProvider::new();
+
+        let diagnostics = provider.provide(&doc);
+
+        // Valid function should have no diagnostics
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_diagnostics_with_type_annotation() {
+        let doc = Document::new_test("local x: number = 1".to_string(), 1);
+        let provider = DiagnosticsProvider::new();
+
+        let diagnostics = provider.provide(&doc);
+
+        // Correctly typed code should have no diagnostics
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_diagnostics_multiple_statements() {
+        let code = "local x = 1\nlocal y = 2\nlocal z = x + y";
+        let doc = Document::new_test(code.to_string(), 1);
+        let provider = DiagnosticsProvider::new();
+
+        let diagnostics = provider.provide(&doc);
+
+        // Valid multi-statement code should have no diagnostics
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_span_to_range_basic() {
+        let span = Span {
+            start: 0,
+            end: 10,
+            line: 1,
+            column: 1,
+        };
+
+        let range = span_to_range(&span);
+
+        // Line and column are 0-indexed in LSP
+        assert_eq!(range.start.line, 0);
+        assert_eq!(range.start.character, 0);
+        assert_eq!(range.end.line, 0);
+        assert_eq!(range.end.character, 10);
+    }
+
+    #[test]
+    fn test_span_to_range_multiline() {
+        let span = Span {
+            start: 0,
+            end: 5,
+            line: 5,
+            column: 3,
+        };
+
+        let range = span_to_range(&span);
+
+        assert_eq!(range.start.line, 4);
+        assert_eq!(range.start.character, 2);
+        assert_eq!(range.end.line, 4);
+        assert_eq!(range.end.character, 7);
+    }
+
+    #[test]
+    fn test_span_to_range_at_position_zero() {
+        let span = Span {
+            start: 0,
+            end: 0,
+            line: 0,
+            column: 0,
+        };
+
+        let range = span_to_range(&span);
+
+        // Should handle zero values gracefully (saturating_sub)
+        assert_eq!(range.start.line, 0);
+        assert_eq!(range.start.character, 0);
+    }
+
+    #[test]
+    fn test_diagnostics_provider_trait() {
+        let doc = Document::new_test("local x = 1".to_string(), 1);
+        let provider: Box<dyn DiagnosticsProviderTrait> = Box::new(DiagnosticsProvider::new());
+
+        let diagnostics = provider.provide(&doc);
+
+        // Should work through trait
+        assert!(diagnostics.is_empty());
+    }
+}

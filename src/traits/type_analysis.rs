@@ -127,3 +127,107 @@ impl Span {
         self.len() == 0
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_span_new() {
+        let span = Span::new(10, 20, 5, 3);
+        assert_eq!(span.start, 10);
+        assert_eq!(span.end, 20);
+        assert_eq!(span.line, 5);
+        assert_eq!(span.column, 3);
+    }
+
+    #[test]
+    fn test_span_len() {
+        let span = Span::new(10, 20, 0, 0);
+        assert_eq!(span.len(), 10);
+    }
+
+    #[test]
+    fn test_span_len_zero() {
+        let span = Span::new(10, 10, 0, 0);
+        assert_eq!(span.len(), 0);
+    }
+
+    #[test]
+    fn test_span_is_empty_true() {
+        let span = Span::new(10, 10, 0, 0);
+        assert!(span.is_empty());
+    }
+
+    #[test]
+    fn test_span_is_empty_false() {
+        let span = Span::new(10, 11, 0, 0);
+        assert!(!span.is_empty());
+    }
+
+    #[test]
+    fn test_symbol_kind_variants() {
+        // Ensure all variants can be created
+        let _ = SymbolKind::Variable;
+        let _ = SymbolKind::Const;
+        let _ = SymbolKind::Function;
+        let _ = SymbolKind::Class;
+        let _ = SymbolKind::Interface;
+        let _ = SymbolKind::Type;
+        let _ = SymbolKind::Enum;
+        let _ = SymbolKind::Property;
+        let _ = SymbolKind::Method;
+        let _ = SymbolKind::Parameter;
+        let _ = SymbolKind::Namespace;
+    }
+
+    #[test]
+    fn test_symbol_kind_equality() {
+        assert_eq!(SymbolKind::Variable, SymbolKind::Variable);
+        assert_ne!(SymbolKind::Variable, SymbolKind::Function);
+    }
+
+    #[test]
+    fn test_symbol_info_creation() {
+        let info = SymbolInfo {
+            name: "test".to_string(),
+            kind: SymbolKind::Variable,
+            type_annotation: Some("number".to_string()),
+            span: Span::new(0, 4, 0, 0),
+            is_exported: false,
+            references: vec![],
+        };
+
+        assert_eq!(info.name, "test");
+        assert_eq!(info.kind, SymbolKind::Variable);
+        assert_eq!(info.type_annotation, Some("number".to_string()));
+        assert!(!info.is_exported);
+        assert!(info.references.is_empty());
+    }
+
+    #[test]
+    fn test_symbol_info_with_references() {
+        let info = SymbolInfo {
+            name: "x".to_string(),
+            kind: SymbolKind::Variable,
+            type_annotation: None,
+            span: Span::new(0, 1, 0, 0),
+            is_exported: true,
+            references: vec![Span::new(10, 11, 1, 0), Span::new(20, 21, 2, 0)],
+        };
+
+        assert!(info.is_exported);
+        assert_eq!(info.references.len(), 2);
+    }
+
+    #[test]
+    fn test_type_check_result_creation() {
+        let result = TypeCheckResult {
+            diagnostics: vec![],
+            symbol_info: None,
+        };
+
+        assert!(result.diagnostics.is_empty());
+        assert!(result.symbol_info.is_none());
+    }
+}

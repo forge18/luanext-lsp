@@ -481,4 +481,358 @@ mod tests {
         assert!(result.iter().any(|item| item.label == "do"));
         assert!(result.iter().any(|item| item.label == "then"));
     }
+
+    #[test]
+    fn test_complete_types_returns_all_types() {
+        let provider = CompletionProvider::new();
+        let types = provider.complete_types();
+
+        assert!(!types.is_empty());
+
+        // Check all expected types are present
+        let labels: Vec<&str> = types.iter().map(|t| t.label.as_str()).collect();
+        assert!(labels.contains(&"nil"));
+        assert!(labels.contains(&"boolean"));
+        assert!(labels.contains(&"number"));
+        assert!(labels.contains(&"string"));
+        assert!(labels.contains(&"unknown"));
+        assert!(labels.contains(&"never"));
+        assert!(labels.contains(&"void"));
+        assert!(labels.contains(&"any"));
+    }
+
+    #[test]
+    fn test_complete_types_have_correct_kinds() {
+        let provider = CompletionProvider::new();
+        let types = provider.complete_types();
+
+        for item in &types {
+            assert_eq!(item.kind, Some(CompletionItemKind::TYPE_PARAMETER));
+            assert!(item.detail.is_some());
+            assert!(item.insert_text.is_some());
+        }
+    }
+
+    #[test]
+    fn test_complete_decorators_returns_decorators() {
+        let provider = CompletionProvider::new();
+        let decorators = provider.complete_decorators();
+
+        assert!(!decorators.is_empty());
+
+        let labels: Vec<&str> = decorators.iter().map(|d| d.label.as_str()).collect();
+        assert!(labels.contains(&"readonly"));
+        assert!(labels.contains(&"sealed"));
+        assert!(labels.contains(&"deprecated"));
+    }
+
+    #[test]
+    fn test_complete_decorators_have_documentation() {
+        let provider = CompletionProvider::new();
+        let decorators = provider.complete_decorators();
+
+        for item in &decorators {
+            assert_eq!(item.kind, Some(CompletionItemKind::FUNCTION));
+            assert!(item.detail.is_some());
+            assert!(item.documentation.is_some());
+        }
+    }
+
+    #[test]
+    fn test_complete_keywords_structure() {
+        let provider = CompletionProvider::new();
+        let keywords = provider.complete_keywords();
+
+        assert!(!keywords.is_empty());
+
+        // Check structure of keyword items
+        for item in &keywords {
+            assert!(!item.label.is_empty());
+            // Keywords can have various kinds depending on their nature
+            assert!(
+                item.kind.is_some(),
+                "'{}' should have a completion kind",
+                item.label
+            );
+            assert!(item.detail.is_some());
+        }
+    }
+
+    #[test]
+    fn test_complete_keywords_has_typedlua_specific() {
+        let provider = CompletionProvider::new();
+        let keywords = provider.complete_keywords();
+
+        let labels: Vec<&str> = keywords.iter().map(|k| k.label.as_str()).collect();
+
+        // TypedLua-specific keywords
+        assert!(labels.contains(&"class"));
+        assert!(labels.contains(&"interface"));
+        assert!(labels.contains(&"enum"));
+        assert!(labels.contains(&"type"));
+        assert!(labels.contains(&"import"));
+        assert!(labels.contains(&"export"));
+    }
+
+    #[test]
+    fn test_complete_symbols_with_code() {
+        let doc = create_test_document("local x = 1\nlocal y = 2");
+        let provider = CompletionProvider::new();
+
+        let symbols = provider.complete_symbols(&doc);
+
+        // Should find symbols from the code
+        let labels: Vec<&str> = symbols.iter().map(|s| s.label.as_str()).collect();
+
+        // Should have our local variables
+        assert!(labels.contains(&"x"), "Should find symbol 'x'");
+        assert!(labels.contains(&"y"), "Should find symbol 'y'");
+    }
+
+    #[test]
+    fn test_complete_symbols_returns_variable_kind() {
+        let doc = create_test_document("local myVar = 42");
+        let provider = CompletionProvider::new();
+
+        let symbols = provider.complete_symbols(&doc);
+
+        // Find our variable
+        let my_var = symbols.iter().find(|s| s.label == "myVar");
+        assert!(my_var.is_some(), "Should find 'myVar'");
+
+        if let Some(var) = my_var {
+            assert_eq!(var.kind, Some(CompletionItemKind::VARIABLE));
+            assert!(var.detail.is_some());
+        }
+    }
+
+    #[test]
+    fn test_complete_symbols_with_function() {
+        let doc = create_test_document("function myFunc() end");
+        let provider = CompletionProvider::new();
+
+        let symbols = provider.complete_symbols(&doc);
+
+        let func = symbols.iter().find(|s| s.label == "myFunc");
+        assert!(func.is_some(), "Should find function 'myFunc'");
+
+        if let Some(f) = func {
+            assert_eq!(f.kind, Some(CompletionItemKind::FUNCTION));
+        }
+    }
+
+    #[test]
+    fn test_format_symbol_detail_variable() {
+        let provider = CompletionProvider::new();
+
+        // Create a symbol representing a number variable
+        let symbol = Symbol {
+            name: "testVar".to_string(),
+            kind: typedlua_typechecker::SymbolKind::Variable,
+            typ: typedlua_parser::ast::types::Type::new(
+                typedlua_parser::ast::types::TypeKind::Primitive(
+                    typedlua_parser::ast::types::PrimitiveType::Number,
+                ),
+                typedlua_parser::Span::new(0, 10, 1, 1),
+            ),
+            is_exported: false,
+            span: typedlua_parser::Span::new(0, 10, 1, 1),
+            references: vec![],
+        };
+
+        let detail = CompletionProvider::format_symbol_detail(&symbol);
+        assert!(detail.contains("let"));
+        assert!(detail.contains("number"));
+    }
+
+    #[test]
+    fn test_format_symbol_detail_function() {
+        let provider = CompletionProvider::new();
+
+        let symbol = Symbol {
+            name: "testFunc".to_string(),
+            kind: typedlua_typechecker::SymbolKind::Function,
+            typ: typedlua_parser::ast::types::Type::new(
+                typedlua_parser::ast::types::TypeKind::Function(
+                    typedlua_parser::ast::types::FunctionType {
+                        type_parameters: None,
+                        parameters: vec![],
+                        return_type: Box::new(typedlua_parser::ast::types::Type::new(
+                            typedlua_parser::ast::types::TypeKind::Primitive(
+                                typedlua_parser::ast::types::PrimitiveType::Number,
+                            ),
+                            typedlua_parser::Span::new(0, 6, 1, 1),
+                        )),
+                        throws: None,
+                        span: typedlua_parser::Span::new(0, 20, 1, 1),
+                    },
+                ),
+                typedlua_parser::Span::new(0, 20, 1, 1),
+            ),
+            is_exported: false,
+            span: typedlua_parser::Span::new(0, 20, 1, 1),
+            references: vec![],
+        };
+
+        let detail = CompletionProvider::format_symbol_detail(&symbol);
+        assert!(detail.contains("function"));
+    }
+
+    #[test]
+    fn test_get_completion_context_member_access() {
+        let provider = CompletionProvider::new();
+        let doc = create_test_document("obj.");
+
+        let context = provider.get_completion_context(&doc, Position::new(0, 4));
+
+        assert_eq!(context, CompletionContext::MemberAccess);
+    }
+
+    #[test]
+    fn test_get_completion_context_method_call() {
+        let provider = CompletionProvider::new();
+        let doc = create_test_document("obj:");
+
+        let context = provider.get_completion_context(&doc, Position::new(0, 4));
+
+        assert_eq!(context, CompletionContext::MethodCall);
+    }
+
+    #[test]
+    fn test_get_completion_context_type_annotation() {
+        let provider = CompletionProvider::new();
+        let doc = create_test_document("local x: ");
+
+        let context = provider.get_completion_context(&doc, Position::new(0, 9));
+
+        assert_eq!(context, CompletionContext::TypeAnnotation);
+    }
+
+    #[test]
+    fn test_get_completion_context_decorator() {
+        let provider = CompletionProvider::new();
+        let doc = create_test_document("@");
+
+        let context = provider.get_completion_context(&doc, Position::new(0, 1));
+
+        assert_eq!(context, CompletionContext::Decorator);
+    }
+
+    #[test]
+    fn test_get_completion_context_import() {
+        let provider = CompletionProvider::new();
+        let doc = create_test_document("import ");
+
+        let context = provider.get_completion_context(&doc, Position::new(0, 7));
+
+        assert_eq!(context, CompletionContext::Import);
+    }
+
+    #[test]
+    fn test_get_completion_context_statement() {
+        let provider = CompletionProvider::new();
+        let doc = create_test_document("local x = ");
+
+        let context = provider.get_completion_context(&doc, Position::new(0, 10));
+
+        assert_eq!(context, CompletionContext::Statement);
+    }
+
+    #[test]
+    fn test_completion_with_member_access_context() {
+        let doc = create_test_document("obj.");
+        let provider = CompletionProvider::new();
+
+        // In member access context, should still return something
+        let result = provider.provide(&doc, Position::new(0, 4));
+
+        // Should not panic, may or may not have completions
+        let _ = result;
+    }
+
+    #[test]
+    fn test_completion_with_type_annotation_context() {
+        let doc = create_test_document("local x: ");
+        let provider = CompletionProvider::new();
+
+        let result = provider.provide(&doc, Position::new(0, 9));
+
+        // Should include type completions
+        let labels: Vec<&str> = result.iter().map(|i| i.label.as_str()).collect();
+        assert!(labels.contains(&"number"));
+        assert!(labels.contains(&"string"));
+        assert!(labels.contains(&"boolean"));
+    }
+
+    #[test]
+    fn test_completion_with_decorator_context() {
+        let doc = create_test_document("@");
+        let provider = CompletionProvider::new();
+
+        let result = provider.provide(&doc, Position::new(0, 1));
+
+        // Should include decorator completions
+        let labels: Vec<&str> = result.iter().map(|i| i.label.as_str()).collect();
+        assert!(labels.contains(&"readonly"));
+        assert!(labels.contains(&"deprecated"));
+    }
+
+    #[test]
+    fn test_completion_item_variants() {
+        let doc = create_test_document("");
+        let provider = CompletionProvider::new();
+
+        let result = provider.provide(&doc, Position::new(0, 0));
+
+        // Should have different kinds of items
+        let has_keywords = result.iter().any(|i| {
+            i.kind == Some(CompletionItemKind::KEYWORD)
+                || i.kind == Some(CompletionItemKind::OPERATOR)
+        });
+
+        assert!(has_keywords, "Should have keyword/operator completions");
+        // Types may only appear in type annotation context
+    }
+
+    #[test]
+    fn test_completion_multiline_document() {
+        let doc = create_test_document("local x = 1\nlocal y = 2\nlocal z = ");
+        let provider = CompletionProvider::new();
+
+        let result = provider.provide(&doc, Position::new(2, 9));
+
+        // Should find symbols from previous lines
+        let labels: Vec<&str> = result.iter().map(|i| i.label.as_str()).collect();
+        assert!(labels.contains(&"x"));
+        assert!(labels.contains(&"y"));
+    }
+
+    #[test]
+    fn test_completion_context_enum_variants() {
+        // Test that all context variants exist
+        let _ = CompletionContext::MemberAccess;
+        let _ = CompletionContext::MethodCall;
+        let _ = CompletionContext::TypeAnnotation;
+        let _ = CompletionContext::Decorator;
+        let _ = CompletionContext::Import;
+        let _ = CompletionContext::Statement;
+
+        // Test equality
+        assert_eq!(
+            CompletionContext::MemberAccess,
+            CompletionContext::MemberAccess
+        );
+        assert_ne!(
+            CompletionContext::MemberAccess,
+            CompletionContext::Statement
+        );
+    }
+
+    #[test]
+    fn test_completion_provider_clone() {
+        let provider = CompletionProvider::new();
+        let _cloned = provider.clone();
+
+        // Should be able to clone
+    }
 }

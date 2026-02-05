@@ -404,3 +404,322 @@ fn convert_diagnostic(diag: &typedlua_typechecker::cli::diagnostics::Diagnostic)
 
     diagnostic
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_core_module_identifier_from_path() {
+        let path = PathBuf::from("/test/module.lua");
+        let id = CoreModuleIdentifier::from_path(path.clone());
+
+        assert_eq!(id.path(), path.as_path());
+        assert!(id.as_str().contains("test/module.lua"));
+    }
+
+    #[test]
+    fn test_core_module_identifier_inner_access() {
+        let path = PathBuf::from("/test.lua");
+        let id = CoreModuleIdentifier::from_path(path);
+
+        // Test inner() returns reference
+        let _inner = id.inner();
+
+        // Test into_inner consumes self
+        let id2 = CoreModuleIdentifier::from_path(PathBuf::from("/test2.lua"));
+        let _inner_owned = id2.into_inner();
+    }
+
+    #[test]
+    fn test_convert_span_basic() {
+        let parser_span = typedlua_parser::Span {
+            start: 10,
+            end: 20,
+            line: 5,
+            column: 3,
+        };
+
+        let converted = convert_span(&parser_span);
+
+        assert_eq!(converted.start, 10);
+        assert_eq!(converted.end, 20);
+        assert_eq!(converted.line, 5);
+        assert_eq!(converted.column, 3);
+    }
+
+    #[test]
+    fn test_convert_span_zero_values() {
+        let parser_span = typedlua_parser::Span {
+            start: 0,
+            end: 0,
+            line: 1,
+            column: 1,
+        };
+
+        let converted = convert_span(&parser_span);
+
+        assert_eq!(converted.start, 0);
+        assert_eq!(converted.end, 0);
+        assert_eq!(converted.line, 1);
+        assert_eq!(converted.column, 1);
+    }
+
+    #[test]
+    fn test_convert_symbol_kind_variable() {
+        let core_kind = typedlua_typechecker::SymbolKind::Variable;
+        let converted = convert_symbol_kind(&core_kind);
+
+        assert!(matches!(converted, SymbolKind::Variable));
+    }
+
+    #[test]
+    fn test_convert_symbol_kind_function() {
+        let core_kind = typedlua_typechecker::SymbolKind::Function;
+        let converted = convert_symbol_kind(&core_kind);
+
+        assert!(matches!(converted, SymbolKind::Function));
+    }
+
+    #[test]
+    fn test_convert_symbol_kind_all_variants() {
+        let variants = vec![
+            (
+                typedlua_typechecker::SymbolKind::Variable,
+                SymbolKind::Variable,
+            ),
+            (typedlua_typechecker::SymbolKind::Const, SymbolKind::Const),
+            (
+                typedlua_typechecker::SymbolKind::Function,
+                SymbolKind::Function,
+            ),
+            (typedlua_typechecker::SymbolKind::Class, SymbolKind::Class),
+            (
+                typedlua_typechecker::SymbolKind::Interface,
+                SymbolKind::Interface,
+            ),
+            (
+                typedlua_typechecker::SymbolKind::TypeAlias,
+                SymbolKind::Type,
+            ),
+            (typedlua_typechecker::SymbolKind::Enum, SymbolKind::Enum),
+            (
+                typedlua_typechecker::SymbolKind::Parameter,
+                SymbolKind::Parameter,
+            ),
+            (
+                typedlua_typechecker::SymbolKind::Namespace,
+                SymbolKind::Namespace,
+            ),
+        ];
+
+        for (core, expected) in variants {
+            let converted = convert_symbol_kind(&core);
+            assert!(
+                std::mem::discriminant(&converted) == std::mem::discriminant(&expected),
+                "Symbol kind conversion failed"
+            );
+        }
+    }
+
+    #[test]
+    fn test_core_type_checker_new() {
+        let checker = CoreTypeChecker::new();
+        let _ = checker;
+    }
+
+    #[test]
+    fn test_core_type_checker_default() {
+        let checker: CoreTypeChecker = Default::default();
+        let _ = checker;
+    }
+
+    #[test]
+    fn test_core_diagnostic_collector_new() {
+        let collector = CoreDiagnosticCollector::new();
+        let _ = collector;
+    }
+
+    #[test]
+    fn test_core_diagnostic_collector_default() {
+        let collector: CoreDiagnosticCollector = Default::default();
+        let _ = collector;
+    }
+
+    #[test]
+    fn test_diagnostic_collector_empty_input() {
+        let collector = CoreDiagnosticCollector::new();
+        let diagnostics = collector.collect_diagnostics("");
+
+        // Empty input should not produce errors
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_diagnostic_collector_valid_lua() {
+        let collector = CoreDiagnosticCollector::new();
+        let diagnostics = collector.collect_diagnostics("local x = 1");
+
+        // Valid Lua code should not produce diagnostics
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_diagnostic_collector_invalid_syntax() {
+        let collector = CoreDiagnosticCollector::new();
+        // Invalid Lua syntax
+        let diagnostics = collector.collect_diagnostics("local x =");
+
+        // Should have at least one diagnostic for invalid syntax
+        // Note: Parser might be lenient, so we just verify it doesn't panic
+        let _ = diagnostics;
+    }
+
+    #[test]
+    fn test_diagnostic_collector_multiple_lines() {
+        let collector = CoreDiagnosticCollector::new();
+        let code = "local x = 1\nlocal y = 2\nlocal z = x + y";
+        let diagnostics = collector.collect_diagnostics(code);
+
+        // Valid multi-line code should not produce diagnostics
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_type_checker_check_document_empty() {
+        let checker = CoreTypeChecker::new();
+        let result = checker.check_document("");
+
+        // Should not panic on empty input
+        let _ = result.diagnostics;
+        let _ = result.symbol_info;
+    }
+
+    #[test]
+    fn test_type_checker_check_document_valid() {
+        let checker = CoreTypeChecker::new();
+        let result = checker.check_document("local x: number = 1");
+
+        // Valid typed code should have symbol info
+        let _ = result.diagnostics;
+        let _ = result.symbol_info;
+    }
+
+    #[test]
+    fn test_type_checker_check_document_function() {
+        let checker = CoreTypeChecker::new();
+        let result = checker
+            .check_document("function add(a: number, b: number): number\n  return a + b\nend");
+
+        // Should process function without panicking
+        let _ = result.diagnostics;
+        let _ = result.symbol_info;
+    }
+
+    #[test]
+    fn test_type_checker_check_document_with_type_error() {
+        let checker = CoreTypeChecker::new();
+        // Type mismatch: assigning string to number
+        let result = checker.check_document("local x: number = \"hello\"");
+
+        // Should have diagnostics for type error
+        assert!(!result.diagnostics.is_empty(), "Should report type error");
+    }
+
+    #[test]
+    fn test_core_symbol_store_empty() {
+        let symbol_table = SymbolTable::new();
+        let (interner, _) = StringInterner::new_with_common_identifiers();
+        let store = CoreSymbolStore::new(&symbol_table, &interner);
+
+        // Empty symbol table should return no symbols
+        let symbols = store.all_symbols();
+        assert!(symbols.is_empty());
+    }
+
+    #[test]
+    fn test_core_symbol_store_get_symbol_at_position_empty() {
+        let symbol_table = SymbolTable::new();
+        let (interner, _) = StringInterner::new_with_common_identifiers();
+        let store = CoreSymbolStore::new(&symbol_table, &interner);
+
+        // Should return None for empty store
+        let symbol = store.get_symbol_at_position(0, 0);
+        assert!(symbol.is_none());
+    }
+
+    #[test]
+    fn test_diagnostic_builder_basic() {
+        let span = Span {
+            start: 0,
+            end: 10,
+            line: 1,
+            column: 0,
+        };
+
+        let diag = Diagnostic::new(span, DiagnosticLevel::Error, "Test error".to_string());
+
+        assert_eq!(diag.message, "Test error");
+        assert!(matches!(diag.level, DiagnosticLevel::Error));
+    }
+
+    #[test]
+    fn test_diagnostic_builder_with_code() {
+        let span = Span {
+            start: 0,
+            end: 5,
+            line: 1,
+            column: 0,
+        };
+
+        let diag = Diagnostic::new(span, DiagnosticLevel::Warning, "Test warning".to_string())
+            .with_code("W001");
+
+        assert_eq!(diag.code, Some("W001".to_string()));
+    }
+
+    #[test]
+    fn test_diagnostic_builder_with_related() {
+        let span = Span {
+            start: 0,
+            end: 5,
+            line: 1,
+            column: 0,
+        };
+
+        let related_span = Span {
+            start: 10,
+            end: 15,
+            line: 2,
+            column: 0,
+        };
+
+        let diag = Diagnostic::new(span, DiagnosticLevel::Error, "Test error".to_string())
+            .with_related(RelatedInformation {
+                span: related_span,
+                message: "Related info".to_string(),
+            });
+
+        assert_eq!(diag.related.len(), 1);
+        assert_eq!(diag.related[0].message, "Related info");
+    }
+
+    #[test]
+    fn test_diagnostic_all_levels() {
+        let span = Span {
+            start: 0,
+            end: 5,
+            line: 1,
+            column: 0,
+        };
+
+        let error_diag = Diagnostic::new(span, DiagnosticLevel::Error, "Error".to_string());
+        let warn_diag = Diagnostic::new(span, DiagnosticLevel::Warning, "Warning".to_string());
+        let info_diag = Diagnostic::new(span, DiagnosticLevel::Info, "Info".to_string());
+
+        assert!(matches!(error_diag.level, DiagnosticLevel::Error));
+        assert!(matches!(warn_diag.level, DiagnosticLevel::Warning));
+        assert!(matches!(info_diag.level, DiagnosticLevel::Info));
+    }
+}

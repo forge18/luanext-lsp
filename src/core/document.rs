@@ -105,6 +105,7 @@ impl std::fmt::Debug for Document {
 impl Document {
     /// Create a test document with minimal setup
     /// Available in both test and non-test builds for integration testing
+    #[allow(dead_code)]
     pub fn new_test(text: String, version: i32) -> Self {
         Self {
             text,
