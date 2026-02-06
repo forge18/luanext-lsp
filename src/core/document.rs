@@ -864,4 +864,167 @@ mod tests {
         // Non-opened document should return None
         assert!(result.is_none());
     }
+
+    #[test]
+    fn test_document_manager_trait_impl() {
+        let dm = DocumentManager::new_test();
+        let uri = Uri::from_str("file:///test.lua").unwrap();
+
+        // Test trait implementation
+        let result: Option<&Document> = dm.get(&uri);
+        assert!(result.is_none());
+
+        let _ = dm.symbol_index();
+        let _ = dm.module_id_to_uri(&typedlua_typechecker::module_resolver::ModuleId::new(
+            "test".into(),
+        ));
+        let _ = dm.uri_to_module_id(&uri);
+    }
+
+    #[test]
+    fn test_position_to_offset_long_line() {
+        let doc = Document::new_test(
+            "this is a very long line of text that needs testing".to_string(),
+            1,
+        );
+
+        let offset = DocumentManager::position_to_offset(&doc.text, Position::new(0, 10));
+        assert_eq!(offset, 10);
+
+        let offset = DocumentManager::position_to_offset(&doc.text, Position::new(0, 20));
+        assert_eq!(offset, 20);
+    }
+
+    #[test]
+    fn test_position_to_offset_special_chars() {
+        let doc = Document::new_test("a!@#$%^&*()b".to_string(), 1);
+
+        let offset = DocumentManager::position_to_offset(&doc.text, Position::new(0, 0));
+        assert_eq!(offset, 0);
+
+        let offset = DocumentManager::position_to_offset(&doc.text, Position::new(0, 1));
+        assert_eq!(offset, 1);
+    }
+
+    #[test]
+    fn test_document_contains_unicode_emoji() {
+        let text = "local message = \"Hello 🌍\"";
+        let doc = Document::new_test(text.to_string(), 1);
+
+        assert!(doc.text.contains("🌍"));
+    }
+
+    #[test]
+    fn test_document_manager_change_clears_cache() {
+        let mut dm = DocumentManager::new_test();
+
+        let open_params = DidOpenTextDocumentParams {
+            text_document: lsp_types::TextDocumentItem {
+                uri: Uri::from_str("file:///test.lua").unwrap(),
+                language_id: "lua".to_string(),
+                version: 1,
+                text: "local x = 1".to_string(),
+            },
+        };
+
+        dm.open(open_params);
+
+        let uri = Uri::from_str("file:///test.lua").unwrap();
+        {
+            let doc = dm.get(&uri).unwrap();
+            let _ = doc.get_or_parse_ast();
+        }
+
+        let change_params = DidChangeTextDocumentParams {
+            text_document: lsp_types::VersionedTextDocumentIdentifier {
+                uri: Uri::from_str("file:///test.lua").unwrap(),
+                version: 2,
+            },
+            content_changes: vec![lsp_types::TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "local x = 2".to_string(),
+            }],
+        };
+
+        dm.change(change_params);
+
+        let doc = dm.get(&uri).unwrap();
+        assert!(doc.text.contains("local x = 2"));
+    }
+
+    #[test]
+    fn test_document_manager_open_twice_same_uri() {
+        let mut dm = DocumentManager::new_test();
+
+        let params1 = DidOpenTextDocumentParams {
+            text_document: lsp_types::TextDocumentItem {
+                uri: Uri::from_str("file:///test.lua").unwrap(),
+                language_id: "lua".to_string(),
+                version: 1,
+                text: "version 1".to_string(),
+            },
+        };
+
+        dm.open(params1);
+
+        let params2 = DidOpenTextDocumentParams {
+            text_document: lsp_types::TextDocumentItem {
+                uri: Uri::from_str("file:///test.lua").unwrap(),
+                language_id: "lua".to_string(),
+                version: 2,
+                text: "version 2".to_string(),
+            },
+        };
+
+        dm.open(params2);
+
+        let uri = Uri::from_str("file:///test.lua").unwrap();
+        let doc = dm.get(&uri).unwrap();
+        assert!(doc.text.contains("version 2"));
+    }
+
+    #[test]
+    fn test_document_with_long_unicode() {
+        let text = "日本語テスト文字列".repeat(10);
+        let doc = Document::new_test(text.clone(), 1);
+
+        assert_eq!(doc.text, text);
+    }
+
+    #[test]
+    fn test_position_to_offset_with_multibyte_chars() {
+        let doc = Document::new_test("αβγδ".to_string(), 1);
+
+        // Each Greek letter is 2 bytes in UTF-8
+        // Position is character offset, returns corresponding byte offset
+        assert_eq!(
+            DocumentManager::position_to_offset(&doc.text, Position::new(0, 0)),
+            0
+        );
+        assert_eq!(
+            DocumentManager::position_to_offset(&doc.text, Position::new(0, 1)),
+            2
+        );
+        assert_eq!(
+            DocumentManager::position_to_offset(&doc.text, Position::new(0, 2)),
+            4
+        );
+        assert_eq!(
+            DocumentManager::position_to_offset(&doc.text, Position::new(0, 3)),
+            6
+        );
+    }
+
+    #[test]
+    fn test_document_version_zero() {
+        let doc = Document::new_test("x".to_string(), 0);
+        assert_eq!(doc.version, 0);
+    }
+
+    #[test]
+    fn test_document_manager_with_real_path() {
+        let dm = DocumentManager::new_test();
+        assert!(dm.workspace_root.to_string_lossy().contains("test"));
+    }
 }

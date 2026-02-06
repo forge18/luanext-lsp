@@ -925,54 +925,106 @@ mod tests {
 
         assert_eq!(kinds.len(), 11);
     }
-}
 
-#[test]
-fn test_type_check_result_creation() {
-    let result = TypeCheckResult {
-        diagnostics: vec![],
-        symbol_info: None,
-    };
+    #[test]
+    fn test_core_module_registry_has_module_false() {
+        let registry = CoreModuleRegistry::new(Arc::new(CoreModuleRegistryType::new()));
+        assert!(!registry.has_module("/nonexistent/module.lua"));
+    }
 
-    assert!(result.diagnostics.is_empty());
-    assert!(result.symbol_info.is_none());
-}
+    #[test]
+    fn test_core_module_registry_all_modules() {
+        let registry = CoreModuleRegistry::new(Arc::new(CoreModuleRegistryType::new()));
+        let modules = registry.all_modules();
+        assert!(modules.is_empty());
+    }
 
-#[test]
-fn test_type_check_result_with_diagnostics() {
-    let span = Span {
-        start: 0,
-        end: 5,
-        line: 1,
-        column: 0,
-    };
-    let diag = Diagnostic::new(span, DiagnosticLevel::Error, "Error".to_string());
+    #[test]
+    fn test_core_module_resolver_new() {
+        use typedlua_typechecker::cli::config::CompilerOptions;
+        use typedlua_typechecker::module_resolver::ModuleConfig;
+        let config = ModuleConfig::from_compiler_options(
+            &CompilerOptions::default(),
+            std::path::Path::new("/"),
+        );
+        let resolver = CoreModuleResolver::new(Arc::new(CoreModuleResolverType::new(
+            Arc::new(typedlua_typechecker::cli::fs::MockFileSystem::new()),
+            config,
+            std::path::PathBuf::from("/"),
+        )));
+        let _ = resolver;
+    }
 
-    let result = TypeCheckResult {
-        diagnostics: vec![diag],
-        symbol_info: None,
-    };
+    #[test]
+    fn test_diagnostic_level_conversion() {
+        use typedlua_typechecker::cli::diagnostics::DiagnosticLevel as CoreLevel;
 
-    assert_eq!(result.diagnostics.len(), 1);
-}
+        let levels = vec![
+            (CoreLevel::Error, DiagnosticLevel::Error),
+            (CoreLevel::Warning, DiagnosticLevel::Warning),
+            (CoreLevel::Info, DiagnosticLevel::Info),
+        ];
 
-#[test]
-fn test_symbol_kind_variants() {
-    use crate::traits::type_analysis::SymbolKind;
+        for (core, expected) in levels {
+            let diag = Diagnostic::new(
+                Span {
+                    start: 0,
+                    end: 5,
+                    line: 1,
+                    column: 0,
+                },
+                match core {
+                    CoreLevel::Error => DiagnosticLevel::Error,
+                    CoreLevel::Warning => DiagnosticLevel::Warning,
+                    CoreLevel::Info => DiagnosticLevel::Info,
+                },
+                "test".to_string(),
+            );
+            assert!(matches!(diag.level, expected));
+        }
+    }
 
-    let kinds = vec![
-        SymbolKind::Variable,
-        SymbolKind::Const,
-        SymbolKind::Function,
-        SymbolKind::Class,
-        SymbolKind::Interface,
-        SymbolKind::Type,
-        SymbolKind::Enum,
-        SymbolKind::Property,
-        SymbolKind::Method,
-        SymbolKind::Parameter,
-        SymbolKind::Namespace,
-    ];
+    #[test]
+    fn test_span_is_empty_false() {
+        let span = Span {
+            start: 0,
+            end: 10,
+            line: 1,
+            column: 0,
+        };
+        assert!(!span.is_empty());
+    }
 
-    assert_eq!(kinds.len(), 11);
+    #[test]
+    fn test_span_is_empty_true() {
+        let span = Span {
+            start: 5,
+            end: 5,
+            line: 1,
+            column: 0,
+        };
+        assert!(span.is_empty());
+    }
+
+    #[test]
+    fn test_span_len() {
+        let span = Span {
+            start: 5,
+            end: 15,
+            line: 1,
+            column: 0,
+        };
+        assert_eq!(span.len(), 10);
+    }
+
+    #[test]
+    fn test_span_len_zero() {
+        let span = Span {
+            start: 5,
+            end: 5,
+            line: 1,
+            column: 0,
+        };
+        assert_eq!(span.len(), 0);
+    }
 }

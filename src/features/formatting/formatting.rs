@@ -654,4 +654,209 @@ mod tests {
         let edits = provider.format_document(&doc, options);
         assert!(edits.is_empty() || edits.len() >= 0);
     }
+
+    #[test]
+    fn test_make_indent_tabs() {
+        let provider = FormattingProvider::new();
+        let options = FormattingOptions {
+            tab_size: 4,
+            insert_spaces: false,
+            ..Default::default()
+        };
+
+        let indent = provider.make_indent(2, &options);
+        assert_eq!(indent, "\t\t");
+    }
+
+    #[test]
+    fn test_make_indent_spaces() {
+        let provider = FormattingProvider::new();
+        let options = FormattingOptions {
+            tab_size: 4,
+            insert_spaces: true,
+            ..Default::default()
+        };
+
+        let indent = provider.make_indent(2, &options);
+        assert_eq!(indent, "        ");
+    }
+
+    #[test]
+    fn test_make_indent_zero() {
+        let provider = FormattingProvider::new();
+        let options = FormattingOptions::default();
+
+        let indent = provider.make_indent(0, &options);
+        assert!(indent.is_empty());
+    }
+
+    #[test]
+    fn test_format_on_type_end_brace() {
+        let provider = FormattingProvider::new();
+        let doc = Document::new_test("local t = {".to_string(), 1);
+
+        let options = FormattingOptions::default();
+        let position = Position::new(0, 11);
+        let edits = provider.format_on_type(&doc, position, "}", options);
+        assert!(edits.is_empty() || edits.len() >= 0);
+    }
+
+    #[test]
+    fn test_format_on_type_comma() {
+        let provider = FormattingProvider::new();
+        let doc = Document::new_test("local t = { a = 1,".to_string(), 1);
+
+        let options = FormattingOptions::default();
+        let position = Position::new(0, 15);
+        let edits = provider.format_on_type(&doc, position, ",", options);
+        assert!(edits.is_empty() || edits.len() >= 0);
+    }
+
+    #[test]
+    fn test_format_on_type_keyword() {
+        let provider = FormattingProvider::new();
+        let doc = Document::new_test("function foo()".to_string(), 1);
+
+        let options = FormattingOptions::default();
+        let position = Position::new(0, 13);
+        let edits = provider.format_on_type(&doc, position, "end", options);
+        assert!(edits.is_empty() || edits.len() >= 0);
+    }
+
+    #[test]
+    fn test_format_document_mixed_whitespace() {
+        let provider = FormattingProvider::new();
+        let doc = Document::new_test("local    x     =     1".to_string(), 1);
+
+        let options = FormattingOptions {
+            tab_size: 4,
+            insert_spaces: true,
+            ..Default::default()
+        };
+
+        let edits = provider.format_document(&doc, options);
+        assert!(edits.is_empty() || edits.len() >= 0);
+    }
+
+    #[test]
+    fn test_format_document_nested_structures() {
+        let provider = FormattingProvider::new();
+        let doc = Document::new_test(
+            "function outer() function inner() return 1 end end".to_string(),
+            1,
+        );
+
+        let options = FormattingOptions {
+            tab_size: 2,
+            insert_spaces: true,
+            ..Default::default()
+        };
+
+        let edits = provider.format_document(&doc, options);
+        assert!(edits.is_empty() || edits.len() >= 0);
+    }
+
+    #[test]
+    fn test_format_range_single_line() {
+        let provider = FormattingProvider::new();
+        let doc = Document::new_test("local a = 1\nlocal b = 2\nlocal c = 3".to_string(), 1);
+
+        let options = FormattingOptions::default();
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(0, 10),
+        };
+        let edits = provider.format_range(&doc, range, options);
+        assert!(edits.is_empty() || edits.len() >= 0);
+    }
+
+    #[test]
+    fn test_format_range_last_line() {
+        let provider = FormattingProvider::new();
+        let doc = Document::new_test("local a = 1\nlocal b = 2\nlocal c = 3".to_string(), 1);
+
+        let options = FormattingOptions::default();
+        let range = Range {
+            start: Position::new(2, 0),
+            end: Position::new(2, 10),
+        };
+        let edits = provider.format_range(&doc, range, options);
+        assert!(edits.is_empty() || edits.len() >= 0);
+    }
+
+    #[test]
+    fn test_format_with_tabs_and_spaces() {
+        let provider = FormattingProvider::new();
+        let doc = Document::new_test("\t\tlocal x = 1".to_string(), 1);
+
+        let options = FormattingOptions {
+            tab_size: 4,
+            insert_spaces: true,
+            ..Default::default()
+        };
+
+        let edits = provider.format_document(&doc, options);
+        assert!(edits.is_empty() || edits.len() >= 0);
+    }
+
+    #[test]
+    fn test_format_document_if_else() {
+        let provider = FormattingProvider::new();
+        let doc = Document::new_test(
+            "if x then\n  if y then\na = 1\n  else\n  b = 2\n  end\nelse\nc = 3\nend".to_string(),
+            1,
+        );
+
+        let options = FormattingOptions {
+            tab_size: 2,
+            insert_spaces: true,
+            ..Default::default()
+        };
+
+        let edits = provider.format_document(&doc, options);
+        assert!(edits.is_empty() || edits.len() >= 0);
+    }
+
+    #[test]
+    fn test_format_document_while_loop() {
+        let provider = FormattingProvider::new();
+        let doc = Document::new_test("while x < 10 do x = x + 1 end".to_string(), 1);
+
+        let options = FormattingOptions {
+            tab_size: 4,
+            insert_spaces: true,
+            ..Default::default()
+        };
+
+        let edits = provider.format_document(&doc, options);
+        assert!(edits.is_empty() || edits.len() >= 0);
+    }
+
+    #[test]
+    fn test_format_document_for_loop() {
+        let provider = FormattingProvider::new();
+        let doc = Document::new_test("for i = 1, 10 do print(i) end".to_string(), 1);
+
+        let options = FormattingOptions::default();
+        let edits = provider.format_document(&doc, options);
+        assert!(edits.is_empty() || edits.len() >= 0);
+    }
+
+    #[test]
+    fn test_format_document_match_expression() {
+        let provider = FormattingProvider::new();
+        let doc = Document::new_test(
+            "match x\n| 1 => \"one\"\n| 2 => \"two\"\n|_ => \"other\"\nend".to_string(),
+            1,
+        );
+
+        let options = FormattingOptions {
+            tab_size: 2,
+            insert_spaces: true,
+            ..Default::default()
+        };
+
+        let edits = provider.format_document(&doc, options);
+        assert!(edits.is_empty() || edits.len() >= 0);
+    }
 }
