@@ -527,4 +527,327 @@ mod tests {
         let provider = HoverProvider::new();
         let _cloned = provider.clone();
     }
+
+    #[test]
+    fn test_hover_format_type_primitives() {
+        use typedlua_parser::ast::types::{PrimitiveType, Type};
+        use typedlua_parser::string_interner::StringInterner;
+
+        let interner = StringInterner::new();
+
+        // Test primitive type formatting
+        let nil_type = Type::new(
+            typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Nil),
+            typedlua_parser::Span::new(0, 3, 1, 1),
+        );
+        let result = HoverProvider::format_type(&nil_type, &interner);
+        assert_eq!(result, "nil");
+
+        let bool_type = Type::new(
+            typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Boolean),
+            typedlua_parser::Span::new(0, 7, 1, 1),
+        );
+        let result = HoverProvider::format_type(&bool_type, &interner);
+        assert_eq!(result, "boolean");
+
+        let num_type = Type::new(
+            typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Number),
+            typedlua_parser::Span::new(0, 6, 1, 1),
+        );
+        let result = HoverProvider::format_type(&num_type, &interner);
+        assert_eq!(result, "number");
+
+        let str_type = Type::new(
+            typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::String),
+            typedlua_parser::Span::new(0, 6, 1, 1),
+        );
+        let result = HoverProvider::format_type(&str_type, &interner);
+        assert_eq!(result, "string");
+    }
+
+    #[test]
+    fn test_hover_format_type_function() {
+        use typedlua_parser::ast::types::{PrimitiveType, Type, TypeKind};
+        use typedlua_parser::string_interner::StringInterner;
+
+        let interner = StringInterner::new();
+
+        let func_type = Type::new(
+            TypeKind::Function(typedlua_parser::ast::types::FunctionType {
+                type_parameters: None,
+                parameters: vec![],
+                return_type: Box::new(Type::new(
+                    TypeKind::Primitive(PrimitiveType::Number),
+                    typedlua_parser::Span::new(0, 6, 1, 1),
+                )),
+                throws: None,
+                span: typedlua_parser::Span::new(0, 20, 1, 1),
+            }),
+            typedlua_parser::Span::new(0, 20, 1, 1),
+        );
+        let result = HoverProvider::format_type(&func_type, &interner);
+        assert_eq!(result, "function");
+    }
+
+    #[test]
+    fn test_hover_format_type_array() {
+        use typedlua_parser::ast::types::{PrimitiveType, Type, TypeKind};
+        use typedlua_parser::string_interner::StringInterner;
+
+        let interner = StringInterner::new();
+
+        let array_type = Type::new(
+            TypeKind::Array(Box::new(Type::new(
+                TypeKind::Primitive(PrimitiveType::Number),
+                typedlua_parser::Span::new(0, 6, 1, 1),
+            ))),
+            typedlua_parser::Span::new(0, 11, 1, 1),
+        );
+        let result = HoverProvider::format_type(&array_type, &interner);
+        assert_eq!(result, "array");
+    }
+
+    #[test]
+    fn test_hover_format_type_object() {
+        use typedlua_parser::ast::types::{PrimitiveType, Type, TypeKind};
+        use typedlua_parser::string_interner::StringInterner;
+
+        let interner = StringInterner::new();
+
+        let object_type = Type::new(
+            TypeKind::Object(typedlua_parser::ast::types::ObjectType {
+                members: vec![],
+                span: typedlua_parser::Span::new(0, 6, 1, 1),
+            }),
+            typedlua_parser::Span::new(0, 6, 1, 1),
+        );
+        let result = HoverProvider::format_type(&object_type, &interner);
+        assert_eq!(result, "object");
+    }
+
+    #[test]
+    fn test_hover_format_type_tuple() {
+        use typedlua_parser::ast::types::{Type, TypeKind};
+        use typedlua_parser::string_interner::StringInterner;
+
+        let interner = StringInterner::new();
+
+        let tuple_type = Type::new(
+            TypeKind::Tuple(vec![]),
+            typedlua_parser::Span::new(0, 5, 1, 1),
+        );
+        let result = HoverProvider::format_type(&tuple_type, &interner);
+        assert_eq!(result, "tuple");
+    }
+
+    #[test]
+    fn test_hover_format_type_union() {
+        use typedlua_parser::ast::types::{Type, TypeKind};
+        use typedlua_parser::string_interner::StringInterner;
+
+        let interner = StringInterner::new();
+
+        let union_type = Type::new(
+            TypeKind::Union(vec![]),
+            typedlua_parser::Span::new(0, 10, 1, 1),
+        );
+        let result = HoverProvider::format_type(&union_type, &interner);
+        assert_eq!(result, "union type");
+    }
+
+    #[test]
+    fn test_hover_format_type_intersection() {
+        use typedlua_parser::ast::types::{Type, TypeKind};
+        use typedlua_parser::string_interner::StringInterner;
+
+        let interner = StringInterner::new();
+
+        let intersection_type = Type::new(
+            TypeKind::Intersection(vec![]),
+            typedlua_parser::Span::new(0, 12, 1, 1),
+        );
+        let result = HoverProvider::format_type(&intersection_type, &interner);
+        assert_eq!(result, "intersection type");
+    }
+
+    #[test]
+    fn test_hover_format_type_literal() {
+        use typedlua_parser::ast::types::{Type, TypeKind};
+        use typedlua_parser::string_interner::StringInterner;
+
+        let interner = StringInterner::new();
+
+        let literal_type = Type::new(
+            TypeKind::Primitive(typedlua_parser::ast::types::PrimitiveType::String),
+            typedlua_parser::Span::new(0, 5, 1, 1),
+        );
+        let result = HoverProvider::format_type(&literal_type, &interner);
+        assert_eq!(result, "string");
+    }
+
+    #[test]
+    fn test_hover_on_type_annotation() {
+        let doc = create_test_document("local x: number = 1");
+        let provider = HoverProvider::new();
+
+        // Hover on the type annotation
+        let result = provider.provide(&doc, Position::new(0, 9));
+
+        let _ = result;
+    }
+
+    #[test]
+    fn test_hover_on_class_keyword() {
+        let _doc = create_test_document("class Foo end");
+        let provider = HoverProvider::new();
+
+        let result = provider.hover_for_keyword("class");
+
+        assert!(result.is_some());
+        if let Some(hover) = result {
+            match hover.contents {
+                HoverContents::Markup(markup) => {
+                    assert!(markup.value.contains("Class"));
+                }
+                _ => panic!("Expected MarkupContent"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_hover_on_interface_keyword() {
+        let _doc = create_test_document("interface Foo end");
+        let provider = HoverProvider::new();
+
+        let result = provider.hover_for_keyword("interface");
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_hover_on_enum_keyword() {
+        let _doc = create_test_document("enum Color { Red } end");
+        let provider = HoverProvider::new();
+
+        let result = provider.hover_for_keyword("enum");
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_hover_on_type_keyword() {
+        let _doc = create_test_document("type MyAlias = string");
+        let provider = HoverProvider::new();
+
+        let result = provider.hover_for_keyword("type");
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_hover_on_import_export() {
+        let provider = HoverProvider::new();
+
+        let import_result = provider.hover_for_keyword("import");
+        let export_result = provider.hover_for_keyword("export");
+
+        assert!(import_result.is_some());
+        assert!(export_result.is_some());
+    }
+
+    #[test]
+    fn test_hover_on_loop_keywords() {
+        let provider = HoverProvider::new();
+
+        let while_result = provider.hover_for_keyword("while");
+        let for_result = provider.hover_for_keyword("for");
+        let repeat_result = provider.hover_for_keyword("repeat");
+
+        assert!(while_result.is_some());
+        assert!(for_result.is_some());
+        assert!(repeat_result.is_some());
+    }
+
+    #[test]
+    fn test_hover_on_conditional_keywords() {
+        let provider = HoverProvider::new();
+
+        let if_result = provider.hover_for_keyword("if");
+        let then_result = provider.hover_for_keyword("then");
+        let elseif_result = provider.hover_for_keyword("elseif");
+        let else_result = provider.hover_for_keyword("else");
+
+        assert!(if_result.is_some());
+        assert!(then_result.is_some());
+        assert!(elseif_result.is_some());
+        assert!(else_result.is_some());
+    }
+
+    #[test]
+    fn test_hover_on_control_keywords() {
+        let provider = HoverProvider::new();
+
+        let return_result = provider.hover_for_keyword("return");
+        let break_result = provider.hover_for_keyword("break");
+        let continue_result = provider.hover_for_keyword("continue");
+
+        assert!(return_result.is_some());
+        assert!(break_result.is_some());
+        assert!(continue_result.is_some());
+    }
+
+    #[test]
+    fn test_hover_on_logical_operators() {
+        let provider = HoverProvider::new();
+
+        let and_result = provider.hover_for_keyword("and");
+        let or_result = provider.hover_for_keyword("or");
+        let not_result = provider.hover_for_keyword("not");
+
+        assert!(and_result.is_some());
+        assert!(or_result.is_some());
+        assert!(not_result.is_some());
+    }
+
+    #[test]
+    fn test_hover_on_boolean_values() {
+        let provider = HoverProvider::new();
+
+        let true_result = provider.hover_for_keyword("true");
+        let false_result = provider.hover_for_keyword("false");
+
+        assert!(true_result.is_some());
+        assert!(false_result.is_some());
+    }
+
+    #[test]
+    fn test_hover_on_builtin_types_extended() {
+        let provider = HoverProvider::new();
+
+        let void_result = provider.hover_for_builtin_type("void");
+        let never_result = provider.hover_for_builtin_type("never");
+
+        assert!(void_result.is_some());
+        assert!(never_result.is_some());
+    }
+
+    #[test]
+    fn test_hover_provide_impl_empty() {
+        let doc = create_test_document("");
+        let provider = HoverProvider::new();
+
+        let result = provider.provide_impl(&doc, Position::new(0, 0));
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_hover_provide_impl_whitespace() {
+        let doc = create_test_document("   ");
+        let provider = HoverProvider::new();
+
+        let result = provider.provide_impl(&doc, Position::new(0, 1));
+
+        assert!(result.is_none());
+    }
 }

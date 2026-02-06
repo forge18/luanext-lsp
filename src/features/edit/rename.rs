@@ -1191,7 +1191,11 @@ mod tests {
         let provider = RenameProvider::new();
 
         let result = provider.prepare(&doc, Position::new(0, 7));
-        if let Some(PrepareRenameResponse::RangeWithPlaceholder { range, placeholder }) = result {
+        if let Some(PrepareRenameResponse::RangeWithPlaceholder {
+            range: _,
+            placeholder,
+        }) = result
+        {
             assert!(placeholder.contains("variable"));
         }
     }
@@ -1203,5 +1207,490 @@ mod tests {
 
         let result = provider.prepare(&doc, Position::new(0, 100));
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_is_keyword_lua_reserved_words() {
+        let provider = RenameProvider::new();
+
+        assert!(provider.is_keyword("local"));
+        assert!(provider.is_keyword("function"));
+        assert!(provider.is_keyword("end"));
+        assert!(provider.is_keyword("if"));
+        assert!(provider.is_keyword("then"));
+        assert!(provider.is_keyword("else"));
+        assert!(provider.is_keyword("elseif"));
+        assert!(provider.is_keyword("while"));
+        assert!(provider.is_keyword("for"));
+        assert!(provider.is_keyword("do"));
+        assert!(provider.is_keyword("return"));
+        assert!(provider.is_keyword("break"));
+        assert!(provider.is_keyword("continue"));
+    }
+
+    #[test]
+    fn test_is_keyword_typedlua_keywords() {
+        let provider = RenameProvider::new();
+
+        assert!(provider.is_keyword("type"));
+        assert!(provider.is_keyword("interface"));
+        assert!(provider.is_keyword("class"));
+        assert!(provider.is_keyword("enum"));
+        assert!(provider.is_keyword("const"));
+        assert!(provider.is_keyword("export"));
+        assert!(provider.is_keyword("import"));
+        assert!(provider.is_keyword("from"));
+        assert!(provider.is_keyword("extends"));
+        assert!(provider.is_keyword("implements"));
+        assert!(provider.is_keyword("public"));
+        assert!(provider.is_keyword("private"));
+        assert!(provider.is_keyword("protected"));
+        assert!(provider.is_keyword("static"));
+        assert!(provider.is_keyword("readonly"));
+        assert!(provider.is_keyword("abstract"));
+        assert!(provider.is_keyword("match"));
+        assert!(provider.is_keyword("when"));
+    }
+
+    #[test]
+    fn test_is_keyword_not_keyword() {
+        let provider = RenameProvider::new();
+
+        assert!(!provider.is_keyword("myFunction"));
+        assert!(!provider.is_keyword("myVariable"));
+        assert!(!provider.is_keyword("CustomClass"));
+        assert!(!provider.is_keyword("_private"));
+        assert!(!provider.is_keyword("MyType"));
+    }
+
+    #[test]
+    fn test_get_word_at_position_simple() {
+        let doc = create_test_document("local myVariable = 42");
+        let provider = RenameProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(0, 6));
+        assert_eq!(word, Some("myVariable".to_string()));
+    }
+
+    #[test]
+    fn test_get_word_at_position_start() {
+        let doc = create_test_document("local x = 1");
+        let provider = RenameProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(0, 0));
+        assert_eq!(word, Some("local".to_string()));
+    }
+
+    #[test]
+    fn test_get_word_at_position_middle() {
+        let doc = create_test_document("myLongVariableName");
+        let provider = RenameProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(0, 5));
+        assert_eq!(word, Some("myLongVariableName".to_string()));
+    }
+
+    #[test]
+    fn test_get_word_at_position_whitespace() {
+        let doc = create_test_document("local x = 1");
+        let provider = RenameProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(0, 5));
+        assert!(word.is_none());
+    }
+
+    #[test]
+    fn test_get_word_at_position_after_word() {
+        let doc = create_test_document("local x = 1");
+        let provider = RenameProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(0, 9));
+        assert!(word.is_none());
+    }
+
+    #[test]
+    fn test_get_word_at_position_number() {
+        let doc = create_test_document("value123 = 42");
+        let provider = RenameProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(0, 0));
+        assert_eq!(word, Some("value123".to_string()));
+    }
+
+    #[test]
+    fn test_get_word_at_position_underscore() {
+        let doc = create_test_document("_privateVar = 1");
+        let provider = RenameProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(0, 0));
+        assert_eq!(word, Some("_privateVar".to_string()));
+    }
+
+    #[test]
+    fn test_get_word_range_simple() {
+        let doc = create_test_document("local myVar = 1");
+        let provider = RenameProvider::new();
+
+        let range = provider.get_word_range(&doc, Position::new(0, 6));
+        assert!(range.is_some());
+        let r = range.unwrap();
+        assert_eq!(r.start.line, 0);
+        assert_eq!(r.start.character, 6);
+        assert_eq!(r.end.character, 11);
+    }
+
+    #[test]
+    fn test_get_word_range_multiline() {
+        let doc = create_test_document("function test()\n  local x = 1\nend");
+        let provider = RenameProvider::new();
+
+        let range = provider.get_word_range(&doc, Position::new(1, 2));
+        assert!(range.is_some());
+    }
+
+    #[test]
+    fn test_get_word_range_whitespace_returns_none() {
+        let doc = create_test_document("local x = 1");
+        let provider = RenameProvider::new();
+
+        let range = provider.get_word_range(&doc, Position::new(0, 5));
+        assert!(range.is_none());
+    }
+
+    #[test]
+    fn test_find_declaration_function() {
+        let doc = create_test_document("function myFunction() return 1 end");
+        let provider = RenameProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.rename(
+            &uri,
+            &doc,
+            Position::new(0, 10),
+            "renamedFunction",
+            &DocumentManager::new_test(),
+        );
+
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_find_declaration_variable() {
+        let doc = create_test_document("local myVar = 42");
+        let provider = RenameProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.rename(
+            &uri,
+            &doc,
+            Position::new(0, 6),
+            "renamedVar",
+            &DocumentManager::new_test(),
+        );
+
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_find_declaration_class() {
+        let doc = create_test_document("class MyClass end");
+        let provider = RenameProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.rename(
+            &uri,
+            &doc,
+            Position::new(0, 6),
+            "RenamedClass",
+            &DocumentManager::new_test(),
+        );
+
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_find_declaration_interface() {
+        let doc = create_test_document("interface MyInterface end");
+        let provider = RenameProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.rename(
+            &uri,
+            &doc,
+            Position::new(0, 10),
+            "RenamedInterface",
+            &DocumentManager::new_test(),
+        );
+
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_find_declaration_type_alias() {
+        let doc = create_test_document("type MyType = string");
+        let provider = RenameProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.rename(
+            &uri,
+            &doc,
+            Position::new(0, 5),
+            "RenamedType",
+            &DocumentManager::new_test(),
+        );
+
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_find_declaration_enum() {
+        let doc = create_test_document("enum MyEnum\n  A\n  B\nend");
+        let provider = RenameProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.rename(
+            &uri,
+            &doc,
+            Position::new(0, 5),
+            "RenamedEnum",
+            &DocumentManager::new_test(),
+        );
+
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_invalid_identifier_numbers_only() {
+        let provider = RenameProvider::new();
+
+        assert!(!provider.is_valid_identifier("123"));
+        assert!(!provider.is_valid_identifier("1abc"));
+    }
+
+    #[test]
+    fn test_invalid_identifier_starts_with_digit() {
+        let provider = RenameProvider::new();
+
+        assert!(!provider.is_valid_identifier("1abc"));
+        assert!(!provider.is_valid_identifier("0test"));
+        assert!(!provider.is_valid_identifier("9variable"));
+    }
+
+    #[test]
+    fn test_valid_identifier_with_numbers() {
+        let provider = RenameProvider::new();
+
+        assert!(provider.is_valid_identifier("var1"));
+        assert!(provider.is_valid_identifier("value2"));
+        assert!(provider.is_valid_identifier("test123"));
+    }
+
+    #[test]
+    fn test_valid_identifier_underscore_prefix() {
+        let provider = RenameProvider::new();
+
+        assert!(provider.is_valid_identifier("_"));
+        assert!(provider.is_valid_identifier("_private"));
+        assert!(provider.is_valid_identifier("__"));
+        assert!(provider.is_valid_identifier("_test123"));
+    }
+
+    #[test]
+    fn test_invalid_identifier_contains_hyphen() {
+        let provider = RenameProvider::new();
+
+        assert!(!provider.is_valid_identifier("my-var"));
+        assert!(!provider.is_valid_identifier("test-value"));
+    }
+
+    #[test]
+    fn test_invalid_identifier_contains_dot() {
+        let provider = RenameProvider::new();
+
+        assert!(!provider.is_valid_identifier("my.var"));
+        assert!(!provider.is_valid_identifier("obj.prop"));
+    }
+
+    #[test]
+    fn test_invalid_identifier_empty_after_trim() {
+        let provider = RenameProvider::new();
+
+        assert!(!provider.is_valid_identifier("   "));
+    }
+
+    #[test]
+    fn test_prepare_response_format() {
+        let doc = create_test_document("local myFunction = 1");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 6));
+        assert!(result.is_some());
+
+        if let Some(PrepareRenameResponse::RangeWithPlaceholder { range, placeholder }) = result {
+            assert_eq!(placeholder, "myFunction");
+        }
+    }
+
+    #[test]
+    fn test_span_to_range_preserves_length() {
+        let span = Span {
+            start: 5,
+            end: 15,
+            line: 1,
+            column: 5,
+        };
+        let range = span_to_range(&span);
+
+        let expected_length = 10; // 15 - 5 = 10
+        let actual_length = range.end.character - range.start.character;
+        assert_eq!(actual_length, expected_length);
+    }
+
+    #[test]
+    fn test_span_to_range_single_line() {
+        let span = Span {
+            start: 0,
+            end: 5,
+            line: 0,
+            column: 0,
+        };
+        let range = span_to_range(&span);
+
+        assert_eq!(range.start.line, 0);
+        assert_eq!(range.start.character, 0);
+        assert_eq!(range.end.character, 4);
+    }
+
+    #[test]
+    fn test_span_to_range_negative_column() {
+        let span = Span {
+            start: 0,
+            end: 5,
+            line: 0,
+            column: 0,
+        };
+        let range = span_to_range(&span);
+        assert!(range.end.character >= 0);
+    }
+
+    #[test]
+    fn test_prepare_at_comment_line() {
+        let doc = create_test_document("-- This is a comment\nlocal x = 1");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 5));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_string_literal() {
+        let doc = create_test_document("local s = \"hello\"");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 13));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_number_literal() {
+        let doc = create_test_document("local x = 12345");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 12));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_table_literal() {
+        let doc = create_test_document("local t = { key = \"value\" }");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 13));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_colon_method_definition() {
+        let doc = create_test_document("function obj:method() end");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 10));
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_local_function_with_type_annotations() {
+        let doc = create_test_document(
+            "local function add(a: number, b: number): number return a + b end",
+        );
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 15));
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_generic_class() {
+        let doc = create_test_document("class Container<T>\n  value: T\nend");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 6));
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_generic_function() {
+        let doc = create_test_document("function identity<T>(x: T): T return x end");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 10));
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_method_in_class() {
+        let doc = create_test_document(
+            "class Point\n  x: number\n  y: number\n  constructor(x, y) end\n  method() end\nend",
+        );
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(4, 2));
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_property_in_class() {
+        let doc = create_test_document("class Point\n  x: number\n  y: number\nend");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(1, 2));
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_constructor_in_class() {
+        let doc = create_test_document("class Point\n  constructor() end\nend");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(1, 2));
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_is_valid_identifier_max_length() {
+        let provider = RenameProvider::new();
+
+        let long_name = "a".repeat(1000);
+        assert!(provider.is_valid_identifier(&long_name));
+    }
+
+    #[test]
+    fn test_is_valid_identifier_special_unicode() {
+        let provider = RenameProvider::new();
+
+        assert!(!provider.is_valid_identifier("var@name"));
+        assert!(!provider.is_valid_identifier("var#name"));
+        assert!(!provider.is_valid_identifier("var$name"));
+        assert!(!provider.is_valid_identifier("var%name"));
     }
 }

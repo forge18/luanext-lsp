@@ -262,4 +262,105 @@ mod tests {
         let result = conn.send_notification(notification);
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn test_connection_wrapper_response() {
+        use lsp_server::Message;
+
+        let response = Response {
+            id: RequestId::from(1),
+            result: Some(serde_json::json!({"test": true})),
+            error: None,
+        };
+        let message = Message::Response(response);
+        assert!(matches!(message, Message::Response(_)));
+    }
+
+    #[test]
+    fn test_connection_wrapper_notification() {
+        use lsp_server::Message;
+
+        let notification = Notification::new("test".to_string(), serde_json::json!({"data": 42}));
+        let message = Message::Notification(notification);
+        assert!(matches!(message, Message::Notification(_)));
+    }
+
+    #[test]
+    fn test_connection_wrapper_request() {
+        use lsp_server::Message;
+
+        let request = Request::new(
+            RequestId::from(1),
+            "test".to_string(),
+            serde_json::json!({"id": 1}),
+        );
+        let message = Message::Request(request);
+        assert!(matches!(message, Message::Request(_)));
+    }
+
+    #[test]
+    fn test_mock_connection_counters() {
+        let (conn, not_count, resp_count) = MockConnection::new();
+
+        assert_eq!(not_count.load(Ordering::SeqCst), 0);
+        assert_eq!(resp_count.load(Ordering::SeqCst), 0);
+
+        let _ = conn.send_response(Response {
+            id: RequestId::from(1),
+            result: None,
+            error: None,
+        });
+        assert_eq!(not_count.load(Ordering::SeqCst), 1);
+
+        let notification = Notification::new("test".to_string(), serde_json::json!({}));
+        let _ = conn.send_notification(notification);
+        assert_eq!(resp_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_connection_wrapper_clone() {
+        let (conn, _, _) = MockConnection::new();
+        let _cloned = conn.clone();
+    }
+
+    #[test]
+    fn test_server_capabilities_serialization() {
+        let capabilities = ServerCapabilities {
+            text_document_sync: Some(TextDocumentSyncCapability::Kind(
+                TextDocumentSyncKind::INCREMENTAL,
+            )),
+            completion_provider: Some(CompletionOptions::default()),
+            definition_provider: Some(OneOf::Left(true)),
+            references_provider: Some(OneOf::Left(true)),
+            document_symbol_provider: Some(OneOf::Left(true)),
+            ..Default::default()
+        };
+
+        let value = serde_json::to_value(&capabilities).unwrap();
+        assert!(value.is_object());
+    }
+
+    #[test]
+    fn test_initialize_params_empty() {
+        let params = InitializeParams::default();
+        assert!(params.capabilities.workspace.is_none());
+    }
+
+    #[test]
+    fn test_semantic_tokens_legend() {
+        let legend = SemanticTokensLegend {
+            token_types: vec![
+                SemanticTokenType::CLASS,
+                SemanticTokenType::FUNCTION,
+                SemanticTokenType::VARIABLE,
+            ],
+            token_modifiers: vec![
+                SemanticTokenModifier::DECLARATION,
+                SemanticTokenModifier::READONLY,
+            ],
+        };
+
+        assert_eq!(legend.token_types.len(), 3);
+        assert_eq!(legend.token_modifiers.len(), 2);
+    }
 }

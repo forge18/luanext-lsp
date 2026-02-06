@@ -9,6 +9,7 @@ use typedlua_parser::{Lexer, Parser, Span};
 use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
 /// Provides semantic tokens for syntax highlighting based on semantic analysis
+#[derive(Clone)]
 pub struct SemanticTokensProvider {
     /// Token types legend (must match what's advertised in server capabilities)
     token_types: Vec<SemanticTokenType>,
@@ -662,5 +663,412 @@ mod tests {
         // Test empty modifiers
         let no_modifiers = provider.encode_modifiers(&[]);
         assert_eq!(no_modifiers, 0);
+    }
+
+    #[test]
+    fn test_provide_range_returns_empty() {
+        let provider = SemanticTokensProvider::new();
+        let doc = Document::new_test("local x = 1".to_string(), 1);
+
+        let result =
+            provider.provide_range(&doc, Range::new(Position::new(0, 0), Position::new(0, 10)));
+
+        // Range provider returns empty for now
+        assert!(result.data.is_empty());
+        assert!(result.result_id.is_none());
+    }
+
+    #[test]
+    fn test_provide_full_delta_returns_empty() {
+        let provider = SemanticTokensProvider::new();
+        let doc = Document::new_test("local x = 1".to_string(), 1);
+
+        let result = provider.provide_full_delta(&doc, "test_result_id".to_string());
+
+        // Delta returns empty for now
+        assert!(result.edits.is_empty());
+        assert!(result.result_id.is_none());
+    }
+
+    #[test]
+    fn test_semantic_tokens_provider_new() {
+        let provider = SemanticTokensProvider::new();
+        let _cloned = provider.clone();
+    }
+
+    #[test]
+    fn test_classify_token_always_returns_variable() {
+        let provider = SemanticTokensProvider::new();
+
+        let result = provider.classify_token("FunctionDeclaration");
+        assert_eq!(result.0, SemanticTokenType::VARIABLE);
+        assert!(result.1.is_empty());
+
+        let result = provider.classify_token("ClassDeclaration");
+        assert_eq!(result.0, SemanticTokenType::VARIABLE);
+
+        let result = provider.classify_token("VariableDeclaration");
+        assert_eq!(result.0, SemanticTokenType::VARIABLE);
+    }
+
+    #[test]
+    fn test_get_token_type_index() {
+        let provider = SemanticTokensProvider::new();
+
+        // Test various token types
+        assert_eq!(provider.get_token_type_index(&SemanticTokenType::CLASS), 0);
+        assert_eq!(
+            provider.get_token_type_index(&SemanticTokenType::INTERFACE),
+            1
+        );
+        assert_eq!(provider.get_token_type_index(&SemanticTokenType::ENUM), 2);
+        assert_eq!(provider.get_token_type_index(&SemanticTokenType::TYPE), 3);
+        assert_eq!(
+            provider.get_token_type_index(&SemanticTokenType::PARAMETER),
+            4
+        );
+        assert_eq!(
+            provider.get_token_type_index(&SemanticTokenType::VARIABLE),
+            5
+        );
+        assert_eq!(
+            provider.get_token_type_index(&SemanticTokenType::PROPERTY),
+            6
+        );
+        assert_eq!(
+            provider.get_token_type_index(&SemanticTokenType::FUNCTION),
+            7
+        );
+        assert_eq!(provider.get_token_type_index(&SemanticTokenType::METHOD), 8);
+        assert_eq!(
+            provider.get_token_type_index(&SemanticTokenType::KEYWORD),
+            9
+        );
+        assert_eq!(
+            provider.get_token_type_index(&SemanticTokenType::COMMENT),
+            10
+        );
+        assert_eq!(
+            provider.get_token_type_index(&SemanticTokenType::STRING),
+            11
+        );
+        assert_eq!(
+            provider.get_token_type_index(&SemanticTokenType::NUMBER),
+            12
+        );
+    }
+
+    #[test]
+    fn test_get_token_type_index_unknown() {
+        let provider = SemanticTokensProvider::new();
+
+        // Unknown token type should return 0 (default)
+        let result = provider.get_token_type_index(&SemanticTokenType::EVENT);
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_encode_modifiers_bits() {
+        let provider = SemanticTokensProvider::new();
+
+        // DECLARATION = bit 0
+        let decl = provider.encode_modifiers(&[SemanticTokenModifier::DECLARATION]);
+        assert_eq!(decl, 1);
+
+        // READONLY = bit 1
+        let readonly = provider.encode_modifiers(&[SemanticTokenModifier::READONLY]);
+        assert_eq!(readonly, 2);
+
+        // STATIC = bit 2
+        let static_mod = provider.encode_modifiers(&[SemanticTokenModifier::STATIC]);
+        assert_eq!(static_mod, 4);
+
+        // ABSTRACT = bit 3
+        let abstract_mod = provider.encode_modifiers(&[SemanticTokenModifier::ABSTRACT]);
+        assert_eq!(abstract_mod, 8);
+
+        // DEPRECATED = bit 4
+        let deprecated = provider.encode_modifiers(&[SemanticTokenModifier::DEPRECATED]);
+        assert_eq!(deprecated, 16);
+
+        // MODIFICATION = bit 5
+        let modification = provider.encode_modifiers(&[SemanticTokenModifier::MODIFICATION]);
+        assert_eq!(modification, 32);
+    }
+
+    #[test]
+    fn test_encode_modifiers_combinations() {
+        let provider = SemanticTokensProvider::new();
+
+        // DECLARATION | READONLY = 1 | 2 = 3
+        let decl_readonly = provider.encode_modifiers(&[
+            SemanticTokenModifier::DECLARATION,
+            SemanticTokenModifier::READONLY,
+        ]);
+        assert_eq!(decl_readonly, 3);
+
+        // DECLARATION | STATIC | READONLY = 1 | 4 | 2 = 7
+        let all_three = provider.encode_modifiers(&[
+            SemanticTokenModifier::DECLARATION,
+            SemanticTokenModifier::STATIC,
+            SemanticTokenModifier::READONLY,
+        ]);
+        assert_eq!(all_three, 7);
+    }
+
+    #[test]
+    fn test_interface_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("local Drawable = nil".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_enum_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("local Color = nil".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_type_alias_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("local Point = nil".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_expression_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("print(x + y)".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        // Should have tokens for the expression
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_nested_function_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("function outer() function inner() end end".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        // Should have tokens for both functions
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_if_statement_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("if x then y = 1 end".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_while_loop_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("while x do x = x - 1 end".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_return_statement_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("function f() return 1 end".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_block_statement_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("do local x = 1 end".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_semantic_token_delta_encoding() {
+        let provider = SemanticTokensProvider::new();
+        let doc = Document::new_test("local a = 1\nlocal b = 2\nlocal c = 3".to_string(), 1);
+
+        let result = provider.provide_full(&doc);
+
+        // Verify delta encoding
+        if result.data.len() >= 3 {
+            // First token on line 0
+            assert_eq!(result.data[0].delta_line, 0);
+
+            // Second token on line 1 (delta_line should be 1)
+            assert_eq!(result.data[1].delta_line, 1);
+
+            // Third token on line 2 (delta_line should be 1)
+            assert_eq!(result.data[2].delta_line, 1);
+        }
+    }
+
+    #[test]
+    fn test_semantic_token_length() {
+        let provider = SemanticTokensProvider::new();
+        let doc = Document::new_test("local veryLongVariableName = 1".to_string(), 1);
+
+        let result = provider.provide_full(&doc);
+
+        if !result.data.is_empty() {
+            // Length should match variable name length
+            let token = &result.data[0];
+            assert!(token.length > 5);
+        }
+    }
+
+    #[test]
+    fn test_member_access_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("obj.property".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_function_call_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("myFunction(arg1, arg2)".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_binary_expression_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("a + b * c - d / e".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_unary_expression_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("-x + not y".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_index_expression_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("arr[0]".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_assignment_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("x = 1 + 2".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_conditional_expression_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("a and (b or c)".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_parenthesized_expression_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("(a + b) * c".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_method_call_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("obj:method()".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_static_property_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("class Foo { static bar: number } end".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_readonly_property_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("class Foo { readonly id: number } end".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_getter_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("local value = nil".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn test_setter_tokens() {
+        let provider = SemanticTokensProvider::new();
+
+        let doc = Document::new_test("local v = nil".to_string(), 1);
+        let result = provider.provide_full(&doc);
+
+        assert!(!result.data.is_empty());
     }
 }

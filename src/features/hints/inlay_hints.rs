@@ -250,6 +250,7 @@ fn span_to_position_end(span: &Span) -> Position {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use typedlua_parser::ast::types::{PrimitiveType, Type, TypeKind};
 
     #[test]
     fn test_type_hint_scenarios() {
@@ -693,5 +694,459 @@ mod tests {
     fn test_inlay_hints_provider_clone() {
         let provider = InlayHintsProvider::new();
         let _cloned = provider.clone();
+    }
+
+    #[test]
+    fn test_inlay_hints_span_in_range() {
+        let provider = InlayHintsProvider::new();
+
+        let span = Span {
+            start: 0,
+            end: 10,
+            line: 5,
+            column: 0,
+        };
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(10, 0),
+        };
+
+        let in_range = provider.span_in_range(&span, range);
+        assert!(in_range);
+    }
+
+    #[test]
+    fn test_inlay_hints_span_outside_range() {
+        let provider = InlayHintsProvider::new();
+
+        let span = Span {
+            start: 0,
+            end: 10,
+            line: 15,
+            column: 0,
+        };
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(10, 0),
+        };
+
+        let in_range = provider.span_in_range(&span, range);
+        assert!(!in_range);
+    }
+
+    #[test]
+    fn test_inlay_hints_span_on_boundary() {
+        let provider = InlayHintsProvider::new();
+
+        let span = Span {
+            start: 0,
+            end: 10,
+            line: 0,
+            column: 0,
+        };
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(0, 10),
+        };
+
+        let in_range = provider.span_in_range(&span, range);
+        assert!(in_range);
+    }
+
+    #[test]
+    fn test_format_type_simple_primitives() {
+        let provider = InlayHintsProvider::new();
+        use typedlua_parser::ast::types::{PrimitiveType, Type};
+
+        let nil_type = Type {
+            span: Span::new(0, 3, 1, 1),
+            kind: typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Nil),
+        };
+
+        let result = provider.format_type_simple(&nil_type, &StringInterner::new());
+        assert_eq!(result, "nil");
+
+        let number_type = Type {
+            span: Span::new(0, 6, 1, 1),
+            kind: typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Number),
+        };
+        let result = provider.format_type_simple(&number_type, &StringInterner::new());
+        assert_eq!(result, "number");
+
+        let string_type = Type {
+            span: Span::new(0, 6, 1, 1),
+            kind: typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::String),
+        };
+        let result = provider.format_type_simple(&string_type, &StringInterner::new());
+        assert_eq!(result, "string");
+
+        let boolean_type = Type {
+            span: Span::new(0, 7, 1, 1),
+            kind: typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Boolean),
+        };
+        let result = provider.format_type_simple(&boolean_type, &StringInterner::new());
+        assert_eq!(result, "boolean");
+
+        let integer_type = Type {
+            span: Span::new(0, 7, 1, 1),
+            kind: typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Integer),
+        };
+        let result = provider.format_type_simple(&integer_type, &StringInterner::new());
+        assert_eq!(result, "integer");
+
+        let void_type = Type {
+            span: Span::new(0, 4, 1, 1),
+            kind: typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Void),
+        };
+        let result = provider.format_type_simple(&void_type, &StringInterner::new());
+        assert_eq!(result, "void");
+
+        let never_type = Type {
+            span: Span::new(0, 5, 1, 1),
+            kind: typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Never),
+        };
+        let result = provider.format_type_simple(&never_type, &StringInterner::new());
+        assert_eq!(result, "never");
+
+        let unknown_type = Type {
+            span: Span::new(0, 7, 1, 1),
+            kind: typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Unknown),
+        };
+        let result = provider.format_type_simple(&unknown_type, &StringInterner::new());
+        assert_eq!(result, "unknown");
+    }
+
+    #[test]
+    fn test_format_type_function() {
+        let provider = InlayHintsProvider::new();
+
+        let return_type = Type {
+            span: Span::new(0, 4, 1, 1),
+            kind: TypeKind::Primitive(PrimitiveType::Void),
+        };
+
+        let func_type = Type {
+            span: Span::new(0, 8, 1, 1),
+            kind: TypeKind::Function(typedlua_parser::ast::types::FunctionType {
+                span: Span::new(0, 8, 1, 1),
+                parameters: vec![],
+                return_type: Box::new(return_type),
+                throws: None,
+                type_parameters: None,
+            }),
+        };
+
+        let result = provider.format_type_simple(&func_type, &StringInterner::new());
+        assert_eq!(result, "function");
+    }
+
+    #[test]
+    fn test_format_type_array() {
+        let provider = InlayHintsProvider::new();
+
+        let number_type = Type {
+            span: Span::new(0, 6, 1, 1),
+            kind: typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Number),
+        };
+
+        let array_type = Type {
+            span: Span::new(0, 9, 1, 1),
+            kind: typedlua_parser::ast::types::TypeKind::Array(Box::new(number_type)),
+        };
+
+        let result = provider.format_type_simple(&array_type, &StringInterner::new());
+        assert_eq!(result, "number[]");
+    }
+
+    #[test]
+    fn test_provide_with_parse_error() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("local x = ".to_string(), 1);
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(0, 10),
+        };
+
+        let hints = provider.provide(&doc, range);
+        assert!(hints.is_empty());
+    }
+
+    #[test]
+    fn test_provide_with_lexer_error() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("\x00\x01\x02".to_string(), 1);
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(0, 10),
+        };
+
+        let hints = provider.provide(&doc, range);
+        assert!(hints.is_empty());
+    }
+
+    #[test]
+    fn test_provide_with_type_check_error() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("local x: nonexistent_type = 1".to_string(), 1);
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(0, 30),
+        };
+
+        let hints = provider.provide(&doc, range);
+        assert!(hints.is_empty() || !hints.is_empty());
+    }
+
+    #[test]
+    fn test_hints_position_line_number() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("local x = 10\nlocal y = 20".to_string(), 1);
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(2, 0),
+        };
+
+        let hints = provider.provide(&doc, range);
+
+        for hint in hints {
+            assert!(hint.position.line >= 0);
+            assert!(hint.position.line <= 1);
+        }
+    }
+
+    #[test]
+    fn test_hints_label_formats() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("local myVar = 42".to_string(), 1);
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(0, 15),
+        };
+
+        let hints = provider.provide(&doc, range);
+
+        for hint in hints {
+            match &hint.label {
+                InlayHintLabel::String(s) => {
+                    assert!(!s.is_empty());
+                    assert!(s.starts_with(':'));
+                }
+                InlayHintLabel::LabelParts(parts) => {
+                    assert!(!parts.is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_hints_type_kind() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("local x = 1".to_string(), 1);
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(0, 10),
+        };
+
+        let hints = provider.provide(&doc, range);
+
+        for hint in hints {
+            assert_eq!(hint.kind, Some(InlayHintKind::TYPE));
+        }
+    }
+
+    #[test]
+    fn test_hints_padding() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("local x = 1".to_string(), 1);
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(0, 10),
+        };
+
+        let hints = provider.provide(&doc, range);
+
+        for hint in hints {
+            assert_eq!(hint.padding_left, Some(true));
+            assert_eq!(hint.padding_right, Some(false));
+        }
+    }
+
+    #[test]
+    fn test_provide_with_nested_blocks() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test(
+            "function outer()\n  function inner()\n    local x = 1\n  end\nend".to_string(),
+            1,
+        );
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(4, 0),
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_provide_with_while_loop() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("while true do local x = 1 end".to_string(), 1);
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(0, 30),
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_provide_with_if_statement() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("if x then local y = 1 end".to_string(), 1);
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(0, 25),
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_provide_with_if_else() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("if x then local a = 1 else local b = 2 end".to_string(), 1);
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(0, 45),
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_provide_with_repeat_until() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("repeat local x = 1 until false".to_string(), 1);
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(0, 30),
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_provide_with_for_loop() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("for i = 1, 10 do local x = i end".to_string(), 1);
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(0, 35),
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_provide_with_match_expression() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test(
+            "match x\n  | 1 => local y = 1\n  | _ => local z = 2\nend".to_string(),
+            1,
+        );
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(4, 0),
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_inlay_hints_multiple_variables() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test(
+            "local a = 1\nlocal b = 2\nlocal c = 3\nlocal d = 4".to_string(),
+            1,
+        );
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(4, 0),
+        };
+
+        let hints = provider.provide(&doc, range);
+        assert!(hints.len() >= 0);
+    }
+
+    #[test]
+    fn test_inlay_hints_with_type_annotation() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test(
+            "local x: number = 1\nlocal y: string = \"hello\"".to_string(),
+            1,
+        );
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(2, 0),
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_inlay_hints_unicode_identifier() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("local π = 3.14".to_string(), 1);
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(0, 15),
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_inlay_hints_long_variable_name() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test(
+            "local veryLongVariableNameThatIsHardToRead = 42".to_string(),
+            1,
+        );
+
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(0, 50),
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
     }
 }

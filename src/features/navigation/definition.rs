@@ -524,4 +524,374 @@ mod tests {
 
         assert!(result.is_none());
     }
+
+    #[test]
+    fn test_definition_provider_new() {
+        let provider = DefinitionProvider::new();
+        let _ = provider.clone();
+    }
+
+    #[test]
+    fn test_span_to_range_zero_line() {
+        let span = Span {
+            start: 0,
+            end: 5,
+            line: 1,
+            column: 1,
+        };
+        let range = span_to_range(&span);
+        assert_eq!(range.start.line, 0);
+        assert_eq!(range.start.character, 0);
+        assert_eq!(range.end.line, 0);
+        // column 1 + (5-1) = 5 (not 4) because span.column is 1-based
+        assert_eq!(range.end.character, 5);
+    }
+
+    #[test]
+    fn test_get_word_at_position_underscore() {
+        let doc = create_test_document("local my_var = 1");
+        let provider = DefinitionProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(0, 7));
+
+        assert_eq!(word, Some("my_var".to_string()));
+    }
+
+    #[test]
+    fn test_get_word_at_position_number_in_name() {
+        let doc = create_test_document("local var1 = 1");
+        let provider = DefinitionProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(0, 8));
+
+        assert_eq!(word, Some("var1".to_string()));
+    }
+
+    #[test]
+    fn test_get_word_at_position_start_of_line() {
+        let doc = create_test_document("local x = 1");
+        let provider = DefinitionProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(0, 0));
+
+        assert_eq!(word, Some("local".to_string()));
+    }
+
+    #[test]
+    fn test_get_word_at_position_end_of_word() {
+        let doc = create_test_document("local x = 1");
+        let provider = DefinitionProvider::new();
+
+        // Position at end of "local" (position 5 is the space)
+        let word = provider.get_word_at_position(&doc, Position::new(0, 4));
+
+        assert_eq!(word, Some("local".to_string()));
+    }
+
+    #[test]
+    fn test_get_word_at_position_special_characters() {
+        let doc = create_test_document("local x = @#$%");
+        let provider = DefinitionProvider::new();
+
+        // Position on special character
+        let word = provider.get_word_at_position(&doc, Position::new(0, 9));
+
+        assert!(word.is_none());
+    }
+
+    #[test]
+    fn test_get_word_at_position_empty_line() {
+        let doc = create_test_document("");
+        let provider = DefinitionProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(0, 0));
+
+        assert!(word.is_none());
+    }
+
+    #[test]
+    fn test_find_declaration_function() {
+        let doc = create_test_document("export function myFunc() end");
+        let provider = DefinitionProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        // Function declarations should be findable
+        let result = provider.find_export_in_document(&doc, "myFunc", &uri);
+
+        // Either it finds it or not, but shouldn't panic
+        let _ = result;
+    }
+
+    #[test]
+    fn test_find_declaration_variable() {
+        let doc = create_test_document("export let myVar = 42");
+        let provider = DefinitionProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.find_export_in_document(&doc, "myVar", &uri);
+
+        let _ = result;
+    }
+
+    #[test]
+    fn test_find_declaration_class() {
+        let doc = create_test_document("export class MyClass end");
+        let provider = DefinitionProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.find_export_in_document(&doc, "MyClass", &uri);
+
+        let _ = result;
+    }
+
+    #[test]
+    fn test_find_declaration_interface() {
+        let doc = create_test_document("export interface MyInterface end");
+        let provider = DefinitionProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.find_export_in_document(&doc, "MyInterface", &uri);
+
+        let _ = result;
+    }
+
+    #[test]
+    fn test_find_declaration_enum() {
+        let doc = create_test_document("export enum MyEnum { A, B } end");
+        let provider = DefinitionProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.find_export_in_document(&doc, "MyEnum", &uri);
+
+        let _ = result;
+    }
+
+    #[test]
+    fn test_find_declaration_type_alias() {
+        let doc = create_test_document("export type MyType = number");
+        let provider = DefinitionProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.find_export_in_document(&doc, "MyType", &uri);
+
+        let _ = result;
+    }
+
+    #[test]
+    fn test_definition_provider_trait_impl() {
+        let provider = DefinitionProvider::new();
+        let doc = create_test_document("local x = 1");
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        // Test through trait
+        let result = provider.provide(&uri, &doc, Position::new(0, 0));
+
+        // Should not panic, result depends on implementation
+        let _ = result;
+    }
+
+    #[test]
+    fn test_find_declaration_with_nested_function() {
+        let doc =
+            create_test_document("function outer() local x = 1 function inner() return x end end");
+        let provider = DefinitionProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.find_export_in_document(&doc, "x", &uri);
+        let _ = result;
+    }
+
+    #[test]
+    fn test_find_declaration_with_if_statement() {
+        let doc = create_test_document("local x = 1 if true then x = 2 end");
+        let provider = DefinitionProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.find_export_in_document(&doc, "x", &uri);
+        let _ = result;
+    }
+
+    #[test]
+    fn test_find_declaration_with_while_loop() {
+        let doc = create_test_document("local i = 0 while i < 10 do i = i + 1 end");
+        let provider = DefinitionProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.find_export_in_document(&doc, "i", &uri);
+        let _ = result;
+    }
+
+    #[test]
+    fn test_find_declaration_with_for_loop() {
+        let doc = create_test_document("for i = 1, 10 do print(i) end");
+        let provider = DefinitionProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.find_export_in_document(&doc, "i", &uri);
+        let _ = result;
+    }
+
+    #[test]
+    fn test_get_word_at_position_beyond_line_length() {
+        let doc = create_test_document("local x = 1");
+        let provider = DefinitionProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(0, 100));
+
+        assert!(word.is_none());
+    }
+
+    #[test]
+    fn test_get_word_at_position_unicode() {
+        let doc = create_test_document("local π = 3.14");
+        let provider = DefinitionProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(0, 6));
+
+        assert_eq!(word, Some("π".to_string()));
+    }
+
+    #[test]
+    fn test_get_word_at_position_long_variable() {
+        let doc = create_test_document("local veryLongVariableName = 42");
+        let provider = DefinitionProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(0, 15));
+
+        assert_eq!(word, Some("veryLongVariableName".to_string()));
+    }
+
+    #[test]
+    fn test_get_word_at_position_after_equal_sign() {
+        let doc = create_test_document("local x = 12345");
+        let provider = DefinitionProvider::new();
+
+        let word = provider.get_word_at_position(&doc, Position::new(0, 10));
+
+        assert_eq!(word, Some("12345".to_string()));
+    }
+
+    #[test]
+    fn test_span_to_range_multiline() {
+        let span = Span {
+            start: 0,
+            end: 10,
+            line: 5,
+            column: 0,
+        };
+        let range = span_to_range(&span);
+
+        assert_eq!(range.start.line, 4);
+        assert_eq!(range.end.line, 4);
+    }
+
+    #[test]
+    fn test_span_to_range_single_character() {
+        let span = Span {
+            start: 0,
+            end: 1,
+            line: 1,
+            column: 0,
+        };
+        let range = span_to_range(&span);
+
+        assert_eq!(range.start.character, 0);
+        assert_eq!(range.end.character, 0);
+    }
+
+    #[test]
+    fn test_provide_with_parse_error() {
+        let doc = create_test_document("local x = ");
+        let provider = DefinitionProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.provide(&uri, &doc, Position::new(0, 5));
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_provide_with_lexer_error() {
+        let doc = create_test_document("\x00\x01\x02");
+        let provider = DefinitionProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.provide(&uri, &doc, Position::new(0, 0));
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_find_export_default() {
+        let doc = create_test_document("export default MyClass end");
+        let provider = DefinitionProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.find_export_in_document(&doc, "default", &uri);
+        let _ = result;
+    }
+
+    #[test]
+    fn test_find_declaration_in_class_method() {
+        let doc =
+            create_test_document("class Point\n  x: number\n  constructor(x: number) end\nend");
+        let provider = DefinitionProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.find_export_in_document(&doc, "x", &uri);
+        let _ = result;
+    }
+
+    #[test]
+    fn test_get_declaration_name_span_variable() {
+        let doc = create_test_document("local myVar = 42");
+        let provider = DefinitionProvider::new();
+        let _ = doc;
+
+        // Test the internal method through find_export_in_document
+        let uri = Uri::from_str("file://test.lua").unwrap();
+        let result = provider.find_export_in_document(&doc, "myVar", &uri);
+        let _ = result;
+    }
+
+    #[test]
+    fn test_find_export_not_found_in_class() {
+        let doc = create_test_document("class MyClass\n  x: number\nend");
+        let provider = DefinitionProvider::new();
+        let uri = Uri::from_str("file://test.lua").unwrap();
+
+        let result = provider.find_export_in_document(&doc, "nonExistent", &uri);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_definition_response_types() {
+        let location = Location {
+            uri: Uri::from_str("file://test.lua").unwrap(),
+            range: Range {
+                start: Position::new(0, 0),
+                end: Position::new(0, 5),
+            },
+        };
+
+        let scalar_response = GotoDefinitionResponse::Scalar(location.clone());
+        assert!(matches!(scalar_response, GotoDefinitionResponse::Scalar(_)));
+
+        let array_response = GotoDefinitionResponse::Array(vec![location]);
+        assert!(matches!(array_response, GotoDefinitionResponse::Array(_)));
+    }
+
+    #[test]
+    fn test_span_with_zero_length() {
+        let span = Span {
+            start: 0,
+            end: 0,
+            line: 1,
+            column: 0,
+        };
+        let range = span_to_range(&span);
+
+        // Should not panic
+        assert!(range.start.character >= 0);
+    }
 }

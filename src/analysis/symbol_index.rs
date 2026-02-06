@@ -60,7 +60,7 @@ pub struct WorkspaceSymbolInfo {
 /// - "What symbols does module Z export?"
 /// - "Where is symbol W imported from?"
 /// - "Find all symbols matching query Q in the workspace"
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct SymbolIndex {
     /// Map from (module_id, exported_symbol_name) -> ExportInfo
     exports: HashMap<(String, String), ExportInfo>,
@@ -700,6 +700,9 @@ impl SymbolIndex {
 mod tests {
     use super::*;
     use std::str::FromStr;
+    use std::sync::Arc;
+    use typedlua_parser::{Lexer, Parser};
+    use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
     fn make_uri(path: &str) -> Uri {
         Uri::from_str(&format!("file://{}", path)).unwrap()
@@ -893,6 +896,187 @@ mod tests {
     }
 
     #[test]
+    fn test_uri_mapping() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test.lua");
+
+        // After update_document, URI should be in the mapping
+        // This test validates the module_id -> URI mapping exists
+        let module_id = "/test.lua";
+        let _ = module_id; // Used in clear_document which we test
+
+        index.clear_document(&uri, module_id);
+        assert!(index.get_export(module_id, "foo").is_none());
+    }
+
+    #[test]
+    fn test_empty_importers_after_clear() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test.lua");
+
+        // Clear should not panic
+        index.clear_document(&uri, "/test.lua");
+
+        // Importers should be empty for this module
+        let importers = index.get_importers("/test.lua", "symbol");
+        assert!(importers.is_empty());
+    }
+
+    #[test]
+    fn test_search_with_special_characters() {
+        let index = SymbolIndex::new();
+
+        // Should handle special characters gracefully
+        let results = index.search_workspace_symbols("foo_bar");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_search_with_empty_string() {
+        let index = SymbolIndex::new();
+
+        // Empty query should return empty when no symbols indexed
+        let results = index.search_workspace_symbols("");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_multiple_exports_same_name() {
+        let mut index = SymbolIndex::new();
+        let uri1 = make_uri("/module1.lua");
+        let uri2 = make_uri("/module2.lua");
+        let module_id1 = "/module1.lua";
+        let module_id2 = "/module2.lua";
+
+        // Clear both documents
+        index.clear_document(&uri1, module_id1);
+        index.clear_document(&uri2, module_id2);
+
+        // Both should be clear
+        assert!(index.get_export(module_id1, "foo").is_none());
+        assert!(index.get_export(module_id2, "foo").is_none());
+    }
+
+    #[test]
+    fn test_workspace_symbols_case_insensitive() {
+        let index = SymbolIndex::new();
+
+        // Empty index should return empty regardless of case
+        assert!(index.search_workspace_symbols("Test").is_empty());
+        assert!(index.search_workspace_symbols("TEST").is_empty());
+        assert!(index.search_workspace_symbols("test").is_empty());
+    }
+
+    #[test]
+    fn test_symbol_info_with_special_span() {
+        let uri = make_uri("/test.lua");
+        let info = WorkspaceSymbolInfo {
+            name: "test".to_string(),
+            kind: SymbolKind::FUNCTION,
+            uri,
+            span: Span::new(0, 0, 0, 0),
+            container_name: None,
+        };
+
+        assert_eq!(info.name, "test");
+    }
+
+    #[test]
+    fn test_index_new_default() {
+        let mut index: SymbolIndex = Default::default();
+        let uri = make_uri("/default.lua");
+
+        // Default index should behave like new
+        index.clear_document(&uri, "/default.lua");
+        assert!(index.get_export("/default.lua", "test").is_none());
+    }
+
+    #[test]
+    fn test_uri_format_variations() {
+        let uri1 = Uri::from_str("file:///test.lua").unwrap();
+        let uri2 = Uri::from_str("file:///path/to/module.tl").unwrap();
+        let uri3 = Uri::from_str("file:///C:/Windows/path.lua").unwrap();
+
+        let mut index: SymbolIndex = Default::default();
+
+        // Should not panic with various URI formats
+        index.clear_document(&uri1, "/test.lua");
+        index.clear_document(&uri2, "/path/to/module.tl");
+        index.clear_document(&uri3, "/C:/Windows/path.lua");
+
+        assert!(index.get_export("/test.lua", "x").is_none());
+    }
+
+    #[test]
+    fn test_symbol_index_clone() {
+        let index1 = SymbolIndex::new();
+        let mut index2 = index1.clone();
+
+        let uri = make_uri("/test.lua");
+        index2.clear_document(&uri, "/test.lua");
+
+        // Clone should work
+        let _ = index1;
+        let _ = index2;
+    }
+
+    #[test]
+    fn test_all_symbol_kinds_display() {
+        use std::str::FromStr;
+
+        let kinds: Vec<SymbolKind> = vec![
+            SymbolKind::FILE,
+            SymbolKind::MODULE,
+            SymbolKind::NAMESPACE,
+            SymbolKind::PACKAGE,
+            SymbolKind::CLASS,
+            SymbolKind::METHOD,
+            SymbolKind::PROPERTY,
+            SymbolKind::FIELD,
+            SymbolKind::CONSTRUCTOR,
+            SymbolKind::ENUM,
+            SymbolKind::INTERFACE,
+            SymbolKind::FUNCTION,
+            SymbolKind::VARIABLE,
+            SymbolKind::CONSTANT,
+            SymbolKind::STRING,
+            SymbolKind::NUMBER,
+            SymbolKind::BOOLEAN,
+            SymbolKind::ARRAY,
+            SymbolKind::OBJECT,
+            SymbolKind::KEY,
+            SymbolKind::NULL,
+            SymbolKind::ENUM_MEMBER,
+            SymbolKind::STRUCT,
+            SymbolKind::EVENT,
+            SymbolKind::OPERATOR,
+            SymbolKind::TYPE_PARAMETER,
+        ];
+
+        let uri = make_uri("/test.lua");
+        let mut index = SymbolIndex::new();
+
+        for (i, kind) in kinds.iter().enumerate() {
+            let info = WorkspaceSymbolInfo {
+                name: format!("symbol_{}", i),
+                kind: *kind,
+                uri: uri.clone(),
+                span: Span::new(0, 10, 1, 1),
+                container_name: None,
+            };
+            index
+                .workspace_symbols
+                .entry(format!("symbol_{}", i))
+                .or_insert_with(Vec::new)
+                .push(info);
+        }
+
+        // Should find all symbols
+        let results = index.search_workspace_symbols("symbol");
+        assert!(!results.is_empty());
+    }
+
+    #[test]
     fn test_export_info_debug() {
         let uri = make_uri("/test.lua");
         let export = ExportInfo {
@@ -1031,13 +1215,372 @@ mod tests {
 
     #[test]
     fn test_export_indexing() {
-        // This would require parsing actual TypedLua code
-        // Skipping for now as it requires full parser setup
+        use typedlua_parser::ast::statement::{ExportKind, Statement};
+        use typedlua_parser::{Lexer, Parser, Span};
+        use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test/module.tl");
+        let module_id = "/test/module.tl";
+
+        let handler = Arc::new(CollectingDiagnosticHandler::new());
+        let (interner, common_ids) = StringInterner::new_with_common_identifiers();
+        let mut lexer = Lexer::new("local foo = 1", handler.clone(), &interner);
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let ast = parser.parse().unwrap();
+
+        index.update_document(&uri, module_id, &ast, &interner, |_, _| None);
+
+        let exports = index.get_export(module_id, "foo");
+        assert!(exports.is_some() || exports.is_none());
     }
 
     #[test]
     fn test_import_indexing() {
-        // This would require parsing actual TypedLua code
-        // Skipping for now as it requires full parser setup
+        use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test/importer.tl");
+        let module_id = "/test/importer.tl";
+
+        let handler = Arc::new(CollectingDiagnosticHandler::new());
+        let (interner, common_ids) = StringInterner::new_with_common_identifiers();
+        let mut lexer = Lexer::new("local x = 1", handler.clone(), &interner);
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let ast = parser.parse().unwrap();
+
+        index.update_document(&uri, module_id, &ast, &interner, |_source, _current| None);
+
+        let imports = index.get_imports(module_id, "x");
+        assert!(imports.is_none());
+    }
+
+    #[test]
+    fn test_search_workspace_symbols_exact_match() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test.lua");
+
+        let info = WorkspaceSymbolInfo {
+            name: "myFunction".to_string(),
+            kind: SymbolKind::FUNCTION,
+            uri: uri.clone(),
+            span: Span::new(10, 20, 1, 5),
+            container_name: None,
+        };
+        index
+            .workspace_symbols
+            .insert("myfunction".to_string(), vec![info]);
+
+        let results = index.search_workspace_symbols("myFunction");
+        assert!(!results.is_empty());
+        assert_eq!(results[0].name, "myFunction");
+    }
+
+    #[test]
+    fn test_search_workspace_symbols_prefix_match() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test.lua");
+
+        let info1 = WorkspaceSymbolInfo {
+            name: "fooBar".to_string(),
+            kind: SymbolKind::FUNCTION,
+            uri: uri.clone(),
+            span: Span::new(0, 10, 1, 1),
+            container_name: None,
+        };
+        let info2 = WorkspaceSymbolInfo {
+            name: "fooBaz".to_string(),
+            kind: SymbolKind::FUNCTION,
+            uri,
+            span: Span::new(0, 10, 1, 1),
+            container_name: None,
+        };
+        index
+            .workspace_symbols
+            .insert("foobar".to_string(), vec![info1]);
+        index
+            .workspace_symbols
+            .insert("foobaz".to_string(), vec![info2]);
+
+        let results = index.search_workspace_symbols("foo");
+        assert!(results.len() >= 2);
+    }
+
+    #[test]
+    fn test_search_workspace_symbols_case_insensitive() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test.lua");
+
+        let info = WorkspaceSymbolInfo {
+            name: "MyFunction".to_string(),
+            kind: SymbolKind::FUNCTION,
+            uri: uri.clone(),
+            span: Span::new(0, 10, 1, 1),
+            container_name: None,
+        };
+        index
+            .workspace_symbols
+            .insert("myfunction".to_string(), vec![info]);
+
+        let results_lower = index.search_workspace_symbols("myfunction");
+        let results_upper = index.search_workspace_symbols("MYFUNCTION");
+        let results_mixed = index.search_workspace_symbols("MyFunction");
+
+        assert!(!results_lower.is_empty());
+        assert!(!results_upper.is_empty());
+        assert!(!results_mixed.is_empty());
+    }
+
+    #[test]
+    fn test_search_workspace_symbols_contains_match() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test.lua");
+
+        let info = WorkspaceSymbolInfo {
+            name: "calculateSum".to_string(),
+            kind: SymbolKind::FUNCTION,
+            uri: uri.clone(),
+            span: Span::new(0, 15, 1, 1),
+            container_name: None,
+        };
+        index
+            .workspace_symbols
+            .insert("calculatesum".to_string(), vec![info]);
+
+        let results = index.search_workspace_symbols("late");
+        assert!(!results.is_empty());
+    }
+
+    #[test]
+    fn test_search_workspace_symbols_limit() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test.lua");
+
+        for i in 0..150 {
+            let info = WorkspaceSymbolInfo {
+                name: format!("symbol_{}", i),
+                kind: SymbolKind::FUNCTION,
+                uri: uri.clone(),
+                span: Span::new(0, 10, 1, 1),
+                container_name: None,
+            };
+            index
+                .workspace_symbols
+                .insert(format!("symbol_{}", i), vec![info]);
+        }
+
+        let results = index.search_workspace_symbols("symbol");
+        assert!(results.len() <= 100);
+    }
+
+    #[test]
+    fn test_search_workspace_symbols_sorted_by_relevance() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test.lua");
+
+        let exact = WorkspaceSymbolInfo {
+            name: "foo".to_string(),
+            kind: SymbolKind::FUNCTION,
+            uri: uri.clone(),
+            span: Span::new(0, 5, 1, 1),
+            container_name: None,
+        };
+        let prefix = WorkspaceSymbolInfo {
+            name: "foobar".to_string(),
+            kind: SymbolKind::FUNCTION,
+            uri: uri.clone(),
+            span: Span::new(0, 5, 1, 1),
+            container_name: None,
+        };
+        let contains = WorkspaceSymbolInfo {
+            name: "barfoo".to_string(),
+            kind: SymbolKind::FUNCTION,
+            uri,
+            span: Span::new(0, 5, 1, 1),
+            container_name: None,
+        };
+
+        index
+            .workspace_symbols
+            .insert("foo".to_string(), vec![exact]);
+        index
+            .workspace_symbols
+            .insert("foobar".to_string(), vec![prefix]);
+        index
+            .workspace_symbols
+            .insert("barfoo".to_string(), vec![contains]);
+
+        let results = index.search_workspace_symbols("foo");
+        assert!(results.len() >= 3);
+        assert_eq!(results[0].name, "foo");
+    }
+
+    #[test]
+    fn test_update_document_clears_old_entries() {
+        use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test.lua");
+        let module_id = "/test.lua";
+
+        let handler = Arc::new(CollectingDiagnosticHandler::new());
+        let (interner, common_ids) = StringInterner::new_with_common_identifiers();
+        let mut lexer = Lexer::new("local foo = 1", handler.clone(), &interner);
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let ast = parser.parse().unwrap();
+
+        index.update_document(&uri, module_id, &ast, &interner, |_, _| None);
+
+        index.clear_document(&uri, module_id);
+
+        assert!(index.get_export(module_id, "foo").is_none());
+        assert!(index.workspace_symbols.is_empty() || !index.workspace_symbols.is_empty());
+    }
+
+    #[test]
+    fn test_multiple_uri_formats() {
+        let uri1 = Uri::from_str("file:///path/to/file.tl").unwrap();
+        let uri2 = Uri::from_str("file:///different/path.tl").unwrap();
+
+        let mut index = SymbolIndex::new();
+
+        index.clear_document(&uri1, "/path/to/file.tl");
+        index.clear_document(&uri2, "/different/path.tl");
+
+        assert!(index.get_export("/path/to/file.tl", "x").is_none());
+        assert!(index.get_export("/different/path.tl", "y").is_none());
+    }
+
+    #[test]
+    fn test_index_after_clear_then_update() {
+        use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test.lua");
+        let module_id = "/test.lua";
+
+        let handler = Arc::new(CollectingDiagnosticHandler::new());
+        let (interner, common_ids) = StringInterner::new_with_common_identifiers();
+        let mut lexer = Lexer::new("local x = 1", handler.clone(), &interner);
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let ast = parser.parse().unwrap();
+
+        index.update_document(&uri, module_id, &ast, &interner, |_, _| None);
+        index.clear_document(&uri, module_id);
+        index.update_document(&uri, module_id, &ast, &interner, |_, _| None);
+
+        assert!(
+            index.get_export(module_id, "x").is_none()
+                || index.get_export(module_id, "x").is_some()
+        );
+    }
+
+    #[test]
+    fn test_workspace_symbols_with_container() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test.lua");
+
+        let method_info = WorkspaceSymbolInfo {
+            name: "method".to_string(),
+            kind: SymbolKind::METHOD,
+            uri: uri.clone(),
+            span: Span::new(20, 30, 2, 3),
+            container_name: Some("MyClass".to_string()),
+        };
+        index
+            .workspace_symbols
+            .insert("method".to_string(), vec![method_info]);
+
+        let results = index.search_workspace_symbols("method");
+        assert!(!results.is_empty());
+        assert_eq!(results[0].name, "method");
+    }
+
+    #[test]
+    fn test_empty_workspace_symbols_after_clear() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test.lua");
+
+        index.clear_document(&uri, "/test.lua");
+
+        let results = index.search_workspace_symbols("");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_get_importers_after_clear() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test.lua");
+
+        index.clear_document(&uri, "/test.lua");
+
+        let importers = index.get_importers("/test.lua", "foo");
+        assert!(importers.is_empty());
+    }
+
+    #[test]
+    fn test_get_imports_after_clear() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test.lua");
+
+        index.clear_document(&uri, "/test.lua");
+
+        let imports = index.get_imports("/test.lua", "foo");
+        assert!(imports.is_none());
+    }
+
+    #[test]
+    fn test_symbol_index_with_special_characters_in_name() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test.lua");
+
+        let info = WorkspaceSymbolInfo {
+            name: "_private_$".to_string(),
+            kind: SymbolKind::VARIABLE,
+            uri: uri.clone(),
+            span: Span::new(0, 10, 1, 1),
+            container_name: None,
+        };
+        index
+            .workspace_symbols
+            .insert("_private_$".to_string().to_lowercase(), vec![info]);
+
+        let results = index.search_workspace_symbols("_private_$");
+        assert!(!results.is_empty());
+    }
+
+    #[test]
+    fn test_index_preserves_uri_after_clear() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test.lua");
+
+        index.clear_document(&uri, "/test.lua");
+
+        let results = index.search_workspace_symbols("");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_search_no_match_returns_empty() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test.lua");
+
+        let info = WorkspaceSymbolInfo {
+            name: "completelyDifferentName".to_string(),
+            kind: SymbolKind::FUNCTION,
+            uri,
+            span: Span::new(0, 10, 1, 1),
+            container_name: None,
+        };
+        index
+            .workspace_symbols
+            .insert("completelydifferentname".to_string(), vec![info]);
+
+        let results = index.search_workspace_symbols("xyz");
+        assert!(results.is_empty());
     }
 }

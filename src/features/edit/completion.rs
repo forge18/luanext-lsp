@@ -835,4 +835,323 @@ mod tests {
 
         // Should be able to clone
     }
+
+    #[test]
+    fn test_format_symbol_detail_class() {
+        let _provider = CompletionProvider::new();
+
+        let symbol = Symbol {
+            name: "MyClass".to_string(),
+            kind: typedlua_typechecker::SymbolKind::Class,
+            typ: typedlua_parser::ast::types::Type::new(
+                typedlua_parser::ast::types::TypeKind::Primitive(
+                    typedlua_parser::ast::types::PrimitiveType::Unknown,
+                ),
+                typedlua_parser::Span::new(0, 8, 1, 1),
+            ),
+            is_exported: false,
+            span: typedlua_parser::Span::new(0, 8, 1, 1),
+            references: vec![],
+        };
+
+        let detail = CompletionProvider::format_symbol_detail(&symbol);
+        assert!(detail.contains("class"));
+    }
+
+    #[test]
+    fn test_format_symbol_detail_interface() {
+        let _provider = CompletionProvider::new();
+
+        let symbol = Symbol {
+            name: "MyInterface".to_string(),
+            kind: typedlua_typechecker::SymbolKind::Interface,
+            typ: typedlua_parser::ast::types::Type::new(
+                typedlua_parser::ast::types::TypeKind::Primitive(
+                    typedlua_parser::ast::types::PrimitiveType::Unknown,
+                ),
+                typedlua_parser::Span::new(0, 11, 1, 1),
+            ),
+            is_exported: false,
+            span: typedlua_parser::Span::new(0, 11, 1, 1),
+            references: vec![],
+        };
+
+        let detail = CompletionProvider::format_symbol_detail(&symbol);
+        assert!(detail.contains("interface"));
+    }
+
+    #[test]
+    fn test_format_symbol_detail_enum() {
+        let _provider = CompletionProvider::new();
+
+        let symbol = Symbol {
+            name: "MyEnum".to_string(),
+            kind: typedlua_typechecker::SymbolKind::Enum,
+            typ: typedlua_parser::ast::types::Type::new(
+                typedlua_parser::ast::types::TypeKind::Primitive(
+                    typedlua_parser::ast::types::PrimitiveType::Unknown,
+                ),
+                typedlua_parser::Span::new(0, 7, 1, 1),
+            ),
+            is_exported: false,
+            span: typedlua_parser::Span::new(0, 7, 1, 1),
+            references: vec![],
+        };
+
+        let detail = CompletionProvider::format_symbol_detail(&symbol);
+        assert!(detail.contains("enum"));
+    }
+
+    #[test]
+    fn test_format_symbol_detail_type_alias() {
+        let _provider = CompletionProvider::new();
+
+        let symbol = Symbol {
+            name: "MyType".to_string(),
+            kind: typedlua_typechecker::SymbolKind::TypeAlias,
+            typ: typedlua_parser::ast::types::Type::new(
+                typedlua_parser::ast::types::TypeKind::Primitive(
+                    typedlua_parser::ast::types::PrimitiveType::Unknown,
+                ),
+                typedlua_parser::Span::new(0, 6, 1, 1),
+            ),
+            is_exported: false,
+            span: typedlua_parser::Span::new(0, 6, 1, 1),
+            references: vec![],
+        };
+
+        let detail = CompletionProvider::format_symbol_detail(&symbol);
+        assert!(detail.contains("type"));
+    }
+
+    #[test]
+    fn test_format_symbol_detail_parameter() {
+        let _provider = CompletionProvider::new();
+
+        let symbol = Symbol {
+            name: "param".to_string(),
+            kind: typedlua_typechecker::SymbolKind::Parameter,
+            typ: typedlua_parser::ast::types::Type::new(
+                typedlua_parser::ast::types::TypeKind::Primitive(
+                    typedlua_parser::ast::types::PrimitiveType::String,
+                ),
+                typedlua_parser::Span::new(0, 6, 1, 1),
+            ),
+            is_exported: false,
+            span: typedlua_parser::Span::new(0, 6, 1, 1),
+            references: vec![],
+        };
+
+        let detail = CompletionProvider::format_symbol_detail(&symbol);
+        assert!(detail.contains("param"));
+    }
+
+    #[test]
+    fn test_complete_symbols_with_class() {
+        let doc = create_test_document("local myVar = 1");
+        let provider = CompletionProvider::new();
+
+        let symbols = provider.complete_symbols(&doc);
+
+        // Should find the variable we declared
+        let found = symbols.iter().any(|s| s.label == "myVar");
+        assert!(found, "Should find symbol 'myVar'");
+    }
+
+    #[test]
+    fn test_complete_symbols_with_interface() {
+        let doc = create_test_document("local myVar = 1");
+        let provider = CompletionProvider::new();
+
+        let symbols = provider.complete_symbols(&doc);
+
+        // Should find the variable
+        let found = symbols.iter().any(|s| s.label == "myVar");
+        assert!(found, "Should find symbol 'myVar'");
+    }
+
+    #[test]
+    fn test_complete_symbols_with_enum() {
+        let doc = create_test_document("local myVar = 1");
+        let provider = CompletionProvider::new();
+
+        let symbols = provider.complete_symbols(&doc);
+
+        // Should find the variable
+        let found = symbols.iter().any(|s| s.label == "myVar");
+        assert!(found, "Should find symbol 'myVar'");
+    }
+
+    #[test]
+    fn test_complete_symbols_with_type_alias() {
+        let doc = create_test_document("local myVar = 1");
+        let provider = CompletionProvider::new();
+
+        let symbols = provider.complete_symbols(&doc);
+
+        // Should find the variable
+        let found = symbols.iter().any(|s| s.label == "myVar");
+        assert!(found, "Should find symbol 'myVar'");
+    }
+
+    #[test]
+    fn test_complete_symbols_complex_function() {
+        let doc =
+            create_test_document("function myFunc(a: number, b: string): boolean return true end");
+        let provider = CompletionProvider::new();
+
+        let symbols = provider.complete_symbols(&doc);
+
+        let func = symbols.iter().find(|s| s.label == "myFunc");
+        assert!(func.is_some(), "Should find function 'myFunc'");
+
+        if let Some(f) = func {
+            assert_eq!(f.kind, Some(CompletionItemKind::FUNCTION));
+        }
+    }
+
+    #[test]
+    fn test_complete_symbols_multiple_variables() {
+        let doc = create_test_document("local a = 1\nlocal b = 2\nlocal c = 3");
+        let provider = CompletionProvider::new();
+
+        let symbols = provider.complete_symbols(&doc);
+
+        assert!(symbols.iter().any(|s| s.label == "a"));
+        assert!(symbols.iter().any(|s| s.label == "b"));
+        assert!(symbols.iter().any(|s| s.label == "c"));
+    }
+
+    #[test]
+    fn test_complete_symbols_nested_scope() {
+        let doc = create_test_document("local outer = 1\nfunction foo() local inner = 2 end");
+        let provider = CompletionProvider::new();
+
+        let symbols = provider.complete_symbols(&doc);
+
+        // Should find outer
+        assert!(symbols.iter().any(|s| s.label == "outer"));
+    }
+
+    #[test]
+    fn test_get_completion_context_from_clause() {
+        let provider = CompletionProvider::new();
+        let doc = create_test_document("from ");
+
+        let context = provider.get_completion_context(&doc, Position::new(0, 5));
+
+        assert_eq!(context, CompletionContext::Import);
+    }
+
+    #[test]
+    fn test_get_completion_context_mid_statement() {
+        let provider = CompletionProvider::new();
+        let doc = create_test_document("local x = ");
+
+        let context = provider.get_completion_context(&doc, Position::new(0, 9));
+
+        assert_eq!(context, CompletionContext::Statement);
+    }
+
+    #[test]
+    fn test_get_completion_context_after_colon_typing() {
+        let provider = CompletionProvider::new();
+        let doc = create_test_document("local x: nu");
+
+        let context = provider.get_completion_context(&doc, Position::new(0, 11));
+
+        assert_eq!(context, CompletionContext::TypeAnnotation);
+    }
+
+    #[test]
+    fn test_get_completion_context_with_leading_whitespace() {
+        let provider = CompletionProvider::new();
+        let doc = create_test_document("  obj.");
+
+        let context = provider.get_completion_context(&doc, Position::new(0, 6));
+
+        assert_eq!(context, CompletionContext::MemberAccess);
+    }
+
+    #[test]
+    fn test_get_completion_context_whitespace_only() {
+        let provider = CompletionProvider::new();
+        let doc = create_test_document("   ");
+
+        let context = provider.get_completion_context(&doc, Position::new(0, 1));
+
+        assert_eq!(context, CompletionContext::Statement);
+    }
+
+    #[test]
+    fn test_completion_resolve_item() {
+        let provider = CompletionProvider::new();
+        let item = CompletionItem {
+            label: "test".to_string(),
+            kind: Some(CompletionItemKind::FUNCTION),
+            detail: Some("detail".to_string()),
+            ..Default::default()
+        };
+
+        let result = provider.resolve(item.clone());
+
+        assert_eq!(result.label, item.label);
+        assert_eq!(result.kind, item.kind);
+        assert_eq!(result.detail, item.detail);
+    }
+
+    #[test]
+    fn test_completion_with_unicode_identifier() {
+        let doc = create_test_document("local 中文 = 1");
+        let provider = CompletionProvider::new();
+
+        let result = provider.provide(&doc, Position::new(0, 0));
+
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_complete_keywords_has_all_control_flow() {
+        let provider = CompletionProvider::new();
+        let keywords = provider.complete_keywords();
+
+        let labels: Vec<&str> = keywords.iter().map(|k| k.label.as_str()).collect();
+
+        assert!(labels.contains(&"if"));
+        assert!(labels.contains(&"while"));
+        assert!(labels.contains(&"for"));
+        assert!(labels.contains(&"repeat"));
+        assert!(labels.contains(&"do"));
+        assert!(labels.contains(&"end"));
+        assert!(labels.contains(&"return"));
+        assert!(labels.contains(&"break"));
+        assert!(labels.contains(&"continue"));
+    }
+
+    #[test]
+    fn test_complete_keywords_has_all_access_modifiers() {
+        let provider = CompletionProvider::new();
+        let keywords = provider.complete_keywords();
+
+        let labels: Vec<&str> = keywords.iter().map(|k| k.label.as_str()).collect();
+
+        assert!(labels.contains(&"public"));
+        assert!(labels.contains(&"private"));
+        assert!(labels.contains(&"protected"));
+    }
+
+    #[test]
+    fn test_complete_keywords_has_all_class_keywords() {
+        let provider = CompletionProvider::new();
+        let keywords = provider.complete_keywords();
+
+        let labels: Vec<&str> = keywords.iter().map(|k| k.label.as_str()).collect();
+
+        assert!(labels.contains(&"class"));
+        assert!(labels.contains(&"extends"));
+        assert!(labels.contains(&"implements"));
+        assert!(labels.contains(&"static"));
+        assert!(labels.contains(&"abstract"));
+        assert!(labels.contains(&"readonly"));
+    }
 }

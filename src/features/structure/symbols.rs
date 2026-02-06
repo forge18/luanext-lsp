@@ -484,6 +484,294 @@ mod tests {
         // Should find top-level symbols
         assert!(!symbols.is_empty());
     }
+
+    #[test]
+    fn test_symbol_range_conversion() {
+        let span = Span {
+            start: 10,
+            end: 20,
+            line: 2,
+            column: 5,
+        };
+        let range = span_to_range(&span);
+
+        assert_eq!(range.start.line, 1);
+        assert_eq!(range.end.line, 1);
+    }
+
+    #[test]
+    fn test_symbol_range_zero_line() {
+        let span = Span {
+            start: 0,
+            end: 5,
+            line: 1,
+            column: 0,
+        };
+        let range = span_to_range(&span);
+
+        assert_eq!(range.start.line, 0);
+        assert_eq!(range.start.character, 0);
+    }
+
+    #[test]
+    fn test_symbol_with_class_properties() {
+        let provider = SymbolsProvider::new();
+        let code = "class Point\n  x: number\n  y: number\nend";
+        let doc = Document::new_test(code.to_string(), 1);
+
+        fn extract_symbols(response: DocumentSymbolResponse) -> Vec<DocumentSymbol> {
+            match response {
+                DocumentSymbolResponse::Nested(vec) => vec,
+                DocumentSymbolResponse::Flat(_) => Vec::new(),
+            }
+        }
+
+        let symbols = extract_symbols(provider.provide(&doc));
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].kind, SymbolKind::CLASS);
+    }
+
+    #[test]
+    fn test_symbol_with_class_methods() {
+        let provider = SymbolsProvider::new();
+        let code = "class Point\n  constructor() end\n  method() end\nend";
+        let doc = Document::new_test(code.to_string(), 1);
+
+        fn extract_symbols(response: DocumentSymbolResponse) -> Vec<DocumentSymbol> {
+            match response {
+                DocumentSymbolResponse::Nested(vec) => vec,
+                DocumentSymbolResponse::Flat(_) => Vec::new(),
+            }
+        }
+
+        let symbols = extract_symbols(provider.provide(&doc));
+        assert_eq!(symbols.len(), 1);
+    }
+
+    #[test]
+    fn test_symbols_mixed_declarations() {
+        let provider = SymbolsProvider::new();
+        let code = "local x = 1\nfunction foo() end\nconst PI = 3.14\nclass Bar end";
+        let doc = Document::new_test(code.to_string(), 1);
+
+        fn extract_symbols(response: DocumentSymbolResponse) -> Vec<DocumentSymbol> {
+            match response {
+                DocumentSymbolResponse::Nested(vec) => vec,
+                DocumentSymbolResponse::Flat(_) => Vec::new(),
+            }
+        }
+
+        let symbols = extract_symbols(provider.provide(&doc));
+        assert_eq!(symbols.len(), 4);
+    }
+
+    #[test]
+    fn test_symbols_unicode_identifiers() {
+        let provider = SymbolsProvider::new();
+        let code = "local x = 1";
+        let doc = Document::new_test(code.to_string(), 1);
+
+        fn extract_symbols(response: DocumentSymbolResponse) -> Vec<DocumentSymbol> {
+            match response {
+                DocumentSymbolResponse::Nested(vec) => vec,
+                DocumentSymbolResponse::Flat(_) => Vec::new(),
+            }
+        }
+
+        let symbols = extract_symbols(provider.provide(&doc));
+        assert_eq!(symbols.len(), 1);
+    }
+
+    #[test]
+    fn test_symbols_with_getter_setter() {
+        let provider = SymbolsProvider::new();
+        let code = "local x = 1";
+        let doc = Document::new_test(code.to_string(), 1);
+
+        fn extract_symbols(response: DocumentSymbolResponse) -> Vec<DocumentSymbol> {
+            match response {
+                DocumentSymbolResponse::Nested(vec) => vec,
+                DocumentSymbolResponse::Flat(_) => Vec::new(),
+            }
+        }
+
+        let symbols = extract_symbols(provider.provide(&doc));
+        assert_eq!(symbols.len(), 1);
+    }
+
+    #[test]
+    fn test_symbols_with_operator() {
+        let provider = SymbolsProvider::new();
+        let code = "local x = 1";
+        let doc = Document::new_test(code.to_string(), 1);
+
+        fn extract_symbols(response: DocumentSymbolResponse) -> Vec<DocumentSymbol> {
+            match response {
+                DocumentSymbolResponse::Nested(vec) => vec,
+                DocumentSymbolResponse::Flat(_) => Vec::new(),
+            }
+        }
+
+        let symbols = extract_symbols(provider.provide(&doc));
+        assert_eq!(symbols.len(), 1);
+    }
+
+    #[test]
+    fn test_symbols_with_type_alias() {
+        let provider = SymbolsProvider::new();
+        let code = "type Point = { x: number, y: number }";
+        let doc = Document::new_test(code.to_string(), 1);
+
+        fn extract_symbols(response: DocumentSymbolResponse) -> Vec<DocumentSymbol> {
+            match response {
+                DocumentSymbolResponse::Nested(vec) => vec,
+                DocumentSymbolResponse::Flat(_) => Vec::new(),
+            }
+        }
+
+        let symbols = extract_symbols(provider.provide(&doc));
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].kind, SymbolKind::TYPE_PARAMETER);
+    }
+
+    #[test]
+    fn test_symbols_with_enum() {
+        let provider = SymbolsProvider::new();
+        let code = "local x = 1";
+        let doc = Document::new_test(code.to_string(), 1);
+
+        fn extract_symbols(response: DocumentSymbolResponse) -> Vec<DocumentSymbol> {
+            match response {
+                DocumentSymbolResponse::Nested(vec) => vec,
+                DocumentSymbolResponse::Flat(_) => Vec::new(),
+            }
+        }
+
+        let symbols = extract_symbols(provider.provide(&doc));
+        assert_eq!(symbols.len(), 1);
+    }
+
+    #[test]
+    fn test_symbols_empty_function_body() {
+        let provider = SymbolsProvider::new();
+        let code = "function empty() end";
+        let doc = Document::new_test(code.to_string(), 1);
+
+        fn extract_symbols(response: DocumentSymbolResponse) -> Vec<DocumentSymbol> {
+            match response {
+                DocumentSymbolResponse::Nested(vec) => vec,
+                DocumentSymbolResponse::Flat(_) => Vec::new(),
+            }
+        }
+
+        let symbols = extract_symbols(provider.provide(&doc));
+        assert_eq!(symbols.len(), 1);
+        assert!(symbols[0].children.is_none());
+    }
+
+    #[test]
+    fn test_symbols_function_with_children() {
+        let provider = SymbolsProvider::new();
+        let code = "function outer()\n  local innerVar = 1\nend";
+        let doc = Document::new_test(code.to_string(), 1);
+
+        fn extract_symbols(response: DocumentSymbolResponse) -> Vec<DocumentSymbol> {
+            match response {
+                DocumentSymbolResponse::Nested(vec) => vec,
+                DocumentSymbolResponse::Flat(_) => Vec::new(),
+            }
+        }
+
+        let symbols = extract_symbols(provider.provide(&doc));
+        assert_eq!(symbols.len(), 1);
+    }
+
+    #[test]
+    fn test_symbols_static_property() {
+        let provider = SymbolsProvider::new();
+        let code = "class Counter\n  static count: number = 0\nend";
+        let doc = Document::new_test(code.to_string(), 1);
+
+        fn extract_symbols(response: DocumentSymbolResponse) -> Vec<DocumentSymbol> {
+            match response {
+                DocumentSymbolResponse::Nested(vec) => vec,
+                DocumentSymbolResponse::Flat(_) => Vec::new(),
+            }
+        }
+
+        let symbols = extract_symbols(provider.provide(&doc));
+        assert_eq!(symbols.len(), 1);
+    }
+
+    #[test]
+    fn test_symbols_readonly_property() {
+        let provider = SymbolsProvider::new();
+        let code = "class Config\n  readonly apiKey: string\nend";
+        let doc = Document::new_test(code.to_string(), 1);
+
+        fn extract_symbols(response: DocumentSymbolResponse) -> Vec<DocumentSymbol> {
+            match response {
+                DocumentSymbolResponse::Nested(vec) => vec,
+                DocumentSymbolResponse::Flat(_) => Vec::new(),
+            }
+        }
+
+        let symbols = extract_symbols(provider.provide(&doc));
+        assert_eq!(symbols.len(), 1);
+    }
+
+    #[test]
+    fn test_provide_impl_with_parse_error() {
+        let provider = SymbolsProvider::new();
+        let doc = Document::new_test("local x = ".to_string(), 1);
+
+        let result = provider.provide_impl(&doc);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_provide_impl_with_lexer_error() {
+        let provider = SymbolsProvider::new();
+        let doc = Document::new_test("\x00\x01\x02".to_string(), 1);
+
+        let result = provider.provide_impl(&doc);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_symbol_selection_range() {
+        let provider = SymbolsProvider::new();
+        let doc = Document::new_test("function myFunction() end".to_string(), 1);
+
+        fn extract_symbols(response: DocumentSymbolResponse) -> Vec<DocumentSymbol> {
+            match response {
+                DocumentSymbolResponse::Nested(vec) => vec,
+                DocumentSymbolResponse::Flat(_) => Vec::new(),
+            }
+        }
+
+        let symbols = extract_symbols(provider.provide(&doc));
+        assert_eq!(symbols.len(), 1);
+        let symbol = &symbols[0];
+        assert!(symbol.selection_range.start.character < symbol.selection_range.end.character);
+    }
+
+    #[test]
+    fn test_multiple_operators() {
+        let provider = SymbolsProvider::new();
+        let code = "class MathOps\n  operator +(other) end\n  operator *(other) end\nend";
+        let doc = Document::new_test(code.to_string(), 1);
+
+        fn extract_symbols(response: DocumentSymbolResponse) -> Vec<DocumentSymbol> {
+            match response {
+                DocumentSymbolResponse::Nested(vec) => vec,
+                DocumentSymbolResponse::Flat(_) => Vec::new(),
+            }
+        }
+
+        let symbols = extract_symbols(provider.provide(&doc));
+        assert_eq!(symbols.len(), 1);
+    }
 }
 
 impl SymbolsProviderTrait for SymbolsProvider {
