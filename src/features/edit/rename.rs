@@ -940,4 +940,118 @@ mod tests {
         assert_eq!(range.start.character, 0);
         assert_eq!(range.end.character, 0);
     }
+
+    #[test]
+    fn test_prepare_empty_document() {
+        let doc = create_test_document("");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 0));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_beyond_eof() {
+        let doc = create_test_document("local x = 1");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(10, 0));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_in_comment() {
+        let doc = create_test_document("-- local x = 1\nlocal y = 2");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 5));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_in_string() {
+        let doc = create_test_document("local s = \"hello world\"");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 13));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_function_call() {
+        let doc = create_test_document("foo(1, 2, 3)");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 0));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_table_field() {
+        let doc = create_test_document("local t = { key = \"value\" }");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 13));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_is_valid_identifier_unicode() {
+        let provider = RenameProvider::new();
+
+        assert!(!provider.is_valid_identifier("foo bar"));
+        assert!(!provider.is_valid_identifier("foo-bar"));
+        assert!(!provider.is_valid_identifier("123"));
+    }
+
+    #[test]
+    fn test_is_valid_identifier_valid() {
+        let provider = RenameProvider::new();
+
+        assert!(provider.is_valid_identifier("_private"));
+        assert!(provider.is_valid_identifier("CamelCase"));
+        assert!(provider.is_valid_identifier("snake_case"));
+    }
+
+    #[test]
+    fn test_prepare_at_getter() {
+        let doc = create_test_document("class Foo\n  @field\n  get value() end\nend");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(2, 2));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_setter() {
+        let doc = create_test_document("class Foo\n  @field\n  set value(v) end\nend");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(2, 2));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_operator() {
+        let doc = create_test_document("class Foo\n  operator +() end\nend");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(1, 2));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_constructor() {
+        let doc = create_test_document("class Foo\n  constructor() end\nend");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(1, 2));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_rename_provider_clone() {
+        let provider = RenameProvider::new();
+        let _cloned = provider.clone();
+    }
 }

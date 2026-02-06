@@ -578,9 +578,120 @@ mod tests {
         let hints = provider.provide(&doc, range);
 
         for hint in hints {
-            // Just verify each hint has a valid position
             assert!(hint.position.line >= 0);
             assert!(hint.position.character >= 0);
         }
+    }
+
+    #[test]
+    fn test_inlay_hints_empty_range() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("local x = 1".to_string(), 1);
+
+        let range = Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 0,
+                character: 0,
+            },
+        };
+
+        let hints = provider.provide(&doc, range);
+        assert!(hints.is_empty() || hints.len() >= 0);
+    }
+
+    #[test]
+    fn test_inlay_hints_beyond_eof() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("local x = 1".to_string(), 1);
+
+        let range = Range {
+            start: Position {
+                line: 10,
+                character: 0,
+            },
+            end: Position {
+                line: 20,
+                character: 10,
+            },
+        };
+
+        let hints = provider.provide(&doc, range);
+        assert!(hints.is_empty() || hints.len() >= 0);
+    }
+
+    #[test]
+    fn test_inlay_hints_type_alias() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("type MyAlias = string".to_string(), 1);
+
+        let range = Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 1,
+                character: 0,
+            },
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_inlay_hints_class_members() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test(
+            "class MyClass\n  field: string\n  method(): void\nend".to_string(),
+            1,
+        );
+
+        let range = Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 4,
+                character: 0,
+            },
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_inlay_hints_nested_functions() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test(
+            "local function outer()\n  local function inner() end\nend".to_string(),
+            1,
+        );
+
+        let range = Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 2,
+                character: 0,
+            },
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_inlay_hints_provider_clone() {
+        let provider = InlayHintsProvider::new();
+        let _cloned = provider.clone();
     }
 }

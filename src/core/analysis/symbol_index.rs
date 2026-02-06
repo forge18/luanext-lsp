@@ -60,7 +60,7 @@ pub struct WorkspaceSymbolInfo {
 /// - "What symbols does module Z export?"
 /// - "Where is symbol W imported from?"
 /// - "Find all symbols matching query Q in the workspace"
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct SymbolIndex {
     /// Map from (module_id, exported_symbol_name) -> ExportInfo
     exports: HashMap<(String, String), ExportInfo>,
@@ -706,26 +706,259 @@ mod tests {
     }
 
     #[test]
-    fn test_symbol_index_basic() {
+    fn test_symbol_index_new() {
         let index = SymbolIndex::new();
 
         let _uri = make_uri("/test/module.tl");
         let module_id = "/test/module.tl";
 
-        // Test that index starts empty
+        assert!(index.get_export(module_id, "foo").is_none());
+        assert!(index.get_importers(module_id, "foo").is_empty());
+        assert!(index.get_imports(module_id, "bar").is_none());
+    }
+
+    #[test]
+    fn test_symbol_index_clear_document() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test/module.tl");
+        let module_id = "/test/module.tl";
+
+        index.clear_document(&uri, module_id);
+
         assert!(index.get_export(module_id, "foo").is_none());
         assert!(index.get_importers(module_id, "foo").is_empty());
     }
 
     #[test]
-    fn test_export_indexing() {
-        // This would require parsing actual TypedLua code
-        // Skipping for now as it requires full parser setup
+    fn test_export_info_creation() {
+        let uri = make_uri("/test/module.tl");
+        let export_info = ExportInfo {
+            exported_name: "myFunc".to_string(),
+            local_name: "localFunc".to_string(),
+            uri: uri.clone(),
+            is_default: false,
+        };
+
+        assert_eq!(export_info.exported_name, "myFunc");
+        assert_eq!(export_info.local_name, "localFunc");
+        assert_eq!(export_info.uri, uri);
+        assert!(!export_info.is_default);
     }
 
     #[test]
-    fn test_import_indexing() {
-        // This would require parsing actual TypedLua code
-        // Skipping for now as it requires full parser setup
+    fn test_export_info_default() {
+        let uri = make_uri("/test/module.tl");
+        let export_info = ExportInfo {
+            exported_name: "default".to_string(),
+            local_name: "default".to_string(),
+            uri: uri.clone(),
+            is_default: true,
+        };
+
+        assert!(export_info.is_default);
+        assert_eq!(export_info.exported_name, "default");
+    }
+
+    #[test]
+    fn test_import_info_creation() {
+        let source_uri = make_uri("/test/source.tl");
+        let importing_uri = make_uri("/test/importer.tl");
+        let import_info = ImportInfo {
+            local_name: "alias".to_string(),
+            imported_name: "OriginalName".to_string(),
+            source_uri: source_uri.clone(),
+            importing_uri: importing_uri.clone(),
+        };
+
+        assert_eq!(import_info.local_name, "alias");
+        assert_eq!(import_info.imported_name, "OriginalName");
+        assert_eq!(import_info.source_uri, source_uri);
+        assert_eq!(import_info.importing_uri, importing_uri);
+    }
+
+    #[test]
+    fn test_workspace_symbol_info_creation() {
+        let uri = make_uri("/test/module.tl");
+        let symbol_info = WorkspaceSymbolInfo {
+            name: "myFunction".to_string(),
+            kind: SymbolKind::FUNCTION,
+            uri: uri.clone(),
+            span: Span::new(0, 0, 0, 0),
+            container_name: Some("MyClass".to_string()),
+        };
+
+        assert_eq!(symbol_info.name, "myFunction");
+        assert_eq!(symbol_info.kind, SymbolKind::FUNCTION);
+        assert!(symbol_info.container_name.is_some());
+        assert_eq!(symbol_info.container_name.unwrap(), "MyClass");
+    }
+
+    #[test]
+    fn test_workspace_symbol_info_no_container() {
+        let uri = make_uri("/test/module.tl");
+        let symbol_info = WorkspaceSymbolInfo {
+            name: "myVariable".to_string(),
+            kind: SymbolKind::VARIABLE,
+            uri: uri.clone(),
+            span: Span::new(0, 0, 0, 0),
+            container_name: None,
+        };
+
+        assert!(symbol_info.container_name.is_none());
+    }
+
+    #[test]
+    fn test_search_workspace_symbols_empty_query() {
+        let index = SymbolIndex::new();
+        let results = index.search_workspace_symbols("");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_search_workspace_symbols_no_matches() {
+        let index = SymbolIndex::new();
+        let results = index.search_workspace_symbols("nonexistent");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_get_importers_empty() {
+        let index = SymbolIndex::new();
+        let _uri = make_uri("/test/module.tl");
+        let importers = index.get_importers("/other/module", "foo");
+
+        assert!(importers.is_empty());
+    }
+
+    #[test]
+    fn test_get_imports_none() {
+        let index = SymbolIndex::new();
+        let imports = index.get_imports("/test/module", "bar");
+
+        assert!(imports.is_none());
+    }
+
+    #[test]
+    fn test_get_export_none() {
+        let index = SymbolIndex::new();
+        let export = index.get_export("/test/module", "unknown");
+
+        assert!(export.is_none());
+    }
+
+    #[test]
+    fn test_symbol_index_debug_format() {
+        let index = SymbolIndex::new();
+        let debug_format = format!("{:?}", index);
+        assert!(debug_format.contains("SymbolIndex"));
+    }
+
+    #[test]
+    fn test_export_info_debug_format() {
+        let uri = make_uri("/test/module.tl");
+        let export_info = ExportInfo {
+            exported_name: "test".to_string(),
+            local_name: "test".to_string(),
+            uri,
+            is_default: false,
+        };
+        let debug_format = format!("{:?}", export_info);
+        assert!(debug_format.contains("ExportInfo"));
+        assert!(debug_format.contains("test"));
+    }
+
+    #[test]
+    fn test_import_info_debug_format() {
+        let source_uri = make_uri("/test/source.tl");
+        let importing_uri = make_uri("/test/importer.tl");
+        let import_info = ImportInfo {
+            local_name: "alias".to_string(),
+            imported_name: "OriginalName".to_string(),
+            source_uri,
+            importing_uri,
+        };
+        let debug_format = format!("{:?}", import_info);
+        assert!(debug_format.contains("ImportInfo"));
+    }
+
+    #[test]
+    fn test_workspace_symbol_info_debug_format() {
+        let uri = make_uri("/test/module.tl");
+        let symbol_info = WorkspaceSymbolInfo {
+            name: "testFunc".to_string(),
+            kind: SymbolKind::FUNCTION,
+            uri,
+            span: Span::new(0, 0, 0, 0),
+            container_name: None,
+        };
+        let debug_format = format!("{:?}", symbol_info);
+        assert!(debug_format.contains("WorkspaceSymbolInfo"));
+        assert!(debug_format.contains("testFunc"));
+    }
+
+    #[test]
+    fn test_symbol_kinds() {
+        let uri = make_uri("/test/module.tl");
+
+        let variable = WorkspaceSymbolInfo {
+            name: "myVar".to_string(),
+            kind: SymbolKind::VARIABLE,
+            uri: uri.clone(),
+            span: Span::new(0, 0, 0, 0),
+            container_name: None,
+        };
+        assert_eq!(variable.kind, SymbolKind::VARIABLE);
+
+        let function = WorkspaceSymbolInfo {
+            name: "myFunc".to_string(),
+            kind: SymbolKind::FUNCTION,
+            uri: uri.clone(),
+            span: Span::new(0, 0, 0, 0),
+            container_name: None,
+        };
+        assert_eq!(function.kind, SymbolKind::FUNCTION);
+
+        let class = WorkspaceSymbolInfo {
+            name: "MyClass".to_string(),
+            kind: SymbolKind::CLASS,
+            uri: uri.clone(),
+            span: Span::new(0, 0, 0, 0),
+            container_name: None,
+        };
+        assert_eq!(class.kind, SymbolKind::CLASS);
+
+        let interface = WorkspaceSymbolInfo {
+            name: "IMyInterface".to_string(),
+            kind: SymbolKind::INTERFACE,
+            uri: uri.clone(),
+            span: Span::new(0, 0, 0, 0),
+            container_name: None,
+        };
+        assert_eq!(interface.kind, SymbolKind::INTERFACE);
+
+        let type_param = WorkspaceSymbolInfo {
+            name: "T".to_string(),
+            kind: SymbolKind::TYPE_PARAMETER,
+            uri: uri.clone(),
+            span: Span::new(0, 0, 0, 0),
+            container_name: None,
+        };
+        assert_eq!(type_param.kind, SymbolKind::TYPE_PARAMETER);
+    }
+
+    #[test]
+    fn test_multiple_uris_same_module() {
+        let uri1 = make_uri("/test/module.tl");
+        let uri2 = make_uri("/test/Module.tl");
+
+        assert_ne!(uri1, uri2);
+    }
+
+    #[test]
+    fn test_symbol_index_clone() {
+        let index1 = SymbolIndex::new();
+        let index2 = index1.clone();
+
+        assert!(index2.get_export("/test", "foo").is_none());
     }
 }
