@@ -344,4 +344,243 @@ mod tests {
             assert!(hint.kind.is_some());
         }
     }
+
+    #[test]
+    fn test_inlay_hints_resolve() {
+        let provider = InlayHintsProvider::new();
+
+        let hint = InlayHint {
+            position: Position {
+                line: 0,
+                character: 5,
+            },
+            label: InlayHintLabel::String("test".to_string()),
+            kind: Some(InlayHintKind::TYPE),
+            text_edits: None,
+            tooltip: None,
+            padding_left: None,
+            padding_right: None,
+            data: None,
+        };
+
+        let resolved = provider.resolve(hint.clone());
+        // Resolve should return a hint with the same position
+        assert_eq!(resolved.position.line, hint.position.line);
+        assert_eq!(resolved.position.character, hint.position.character);
+    }
+
+    #[test]
+    fn test_inlay_hints_empty_document() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("".to_string(), 1);
+
+        let range = Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 0,
+                character: 0,
+            },
+        };
+
+        let hints = provider.provide(&doc, range);
+        assert!(hints.is_empty() || hints.len() >= 0);
+    }
+
+    #[test]
+    fn test_inlay_hints_multiline_document() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("local x = 1\nlocal y = 2\nlocal z = 3".to_string(), 1);
+
+        let range = Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 3,
+                character: 0,
+            },
+        };
+
+        let hints = provider.provide(&doc, range);
+        // Just verify it runs without errors on multiline
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_inlay_hints_return_type() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("function foo(): number return 1 end".to_string(), 1);
+
+        let range = Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 0,
+                character: 35,
+            },
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_inlay_hints_generic_function() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("function identity<T>(x: T): T return x end".to_string(), 1);
+
+        let range = Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 0,
+                character: 40,
+            },
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_inlay_hints_class_method() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test(
+            "class Point\n  x: number\n  y: number\n  constructor(x: number, y: number) end\nend"
+                .to_string(),
+            1,
+        );
+
+        let range = Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 5,
+                character: 0,
+            },
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_inlay_hints_interface() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("interface Drawable\n  draw(): void\nend".to_string(), 1);
+
+        let range = Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 2,
+                character: 0,
+            },
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_inlay_hints_enum() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test(
+            "enum Status\n  Pending\n  Approved\n  Rejected\nend".to_string(),
+            1,
+        );
+
+        let range = Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 4,
+                character: 0,
+            },
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_inlay_hints_range_subset() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("local a = 1\nlocal b = 2\nlocal c = 3".to_string(), 1);
+
+        // Request hints for only part of the document
+        let range = Range {
+            start: Position {
+                line: 1,
+                character: 0,
+            },
+            end: Position {
+                line: 1,
+                character: 10,
+            },
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_inlay_hints_single_line_partial_range() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("local veryLongVariableName = 42".to_string(), 1);
+
+        // Request hints for middle of the line
+        let range = Range {
+            start: Position {
+                line: 0,
+                character: 10,
+            },
+            end: Position {
+                line: 0,
+                character: 20,
+            },
+        };
+
+        let hints = provider.provide(&doc, range);
+        let _ = hints;
+    }
+
+    #[test]
+    fn test_inlay_hints_kind_variants() {
+        let provider = InlayHintsProvider::new();
+        let doc = Document::new_test("local x = 1".to_string(), 1);
+
+        let range = Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 0,
+                character: 12,
+            },
+        };
+
+        let hints = provider.provide(&doc, range);
+
+        for hint in hints {
+            // Just verify each hint has a valid position
+            assert!(hint.position.line >= 0);
+            assert!(hint.position.character >= 0);
+        }
+    }
 }

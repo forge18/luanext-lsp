@@ -623,7 +623,7 @@ mod tests {
 
     #[test]
     fn test_format_symbol_detail_variable() {
-        let provider = CompletionProvider::new();
+        let _provider = CompletionProvider::new();
 
         // Create a symbol representing a number variable
         let symbol = Symbol {
@@ -647,7 +647,7 @@ mod tests {
 
     #[test]
     fn test_format_symbol_detail_function() {
-        let provider = CompletionProvider::new();
+        let _provider = CompletionProvider::new();
 
         let symbol = Symbol {
             name: "testFunc".to_string(),

@@ -718,6 +718,318 @@ mod tests {
     }
 
     #[test]
+    fn test_symbol_index_default() {
+        let index: SymbolIndex = Default::default();
+        let _uri = make_uri("/test.lua");
+
+        // Default should create empty index
+        assert!(index.get_export("test", "foo").is_none());
+        assert!(index.search_workspace_symbols("foo").is_empty());
+    }
+
+    #[test]
+    fn test_new_symbol_index() {
+        let index = SymbolIndex::new();
+        let _uri = make_uri("/module.lua");
+
+        // New index should be empty
+        assert!(index.get_export("/module.lua", "symbol").is_none());
+        assert!(index.get_importers("/module.lua", "symbol").is_empty());
+        assert!(index.get_imports("/module.lua", "local").is_none());
+    }
+
+    #[test]
+    fn test_export_info_creation() {
+        let uri = make_uri("/test.lua");
+        let export = ExportInfo {
+            exported_name: "foo".to_string(),
+            local_name: "foo".to_string(),
+            uri: uri.clone(),
+            is_default: false,
+        };
+
+        assert_eq!(export.exported_name, "foo");
+        assert_eq!(export.local_name, "foo");
+        assert!(!export.is_default);
+    }
+
+    #[test]
+    fn test_export_info_default_export() {
+        let uri = make_uri("/test.lua");
+        let export = ExportInfo {
+            exported_name: "default".to_string(),
+            local_name: "MyClass".to_string(),
+            uri: uri.clone(),
+            is_default: true,
+        };
+
+        assert!(export.is_default);
+        assert_eq!(export.exported_name, "default");
+        assert_eq!(export.local_name, "MyClass");
+    }
+
+    #[test]
+    fn test_import_info_creation() {
+        let source_uri = make_uri("/source.lua");
+        let importing_uri = make_uri("/importer.lua");
+
+        let import = ImportInfo {
+            local_name: "foo".to_string(),
+            imported_name: "foo".to_string(),
+            source_uri: source_uri.clone(),
+            importing_uri: importing_uri.clone(),
+        };
+
+        assert_eq!(import.local_name, "foo");
+        assert_eq!(import.imported_name, "foo");
+    }
+
+    #[test]
+    fn test_import_info_renamed() {
+        let source_uri = make_uri("/source.lua");
+        let importing_uri = make_uri("/importer.lua");
+
+        let import = ImportInfo {
+            local_name: "localFoo".to_string(),
+            imported_name: "exportedFoo".to_string(),
+            source_uri: source_uri.clone(),
+            importing_uri: importing_uri.clone(),
+        };
+
+        assert_eq!(import.local_name, "localFoo");
+        assert_eq!(import.imported_name, "exportedFoo");
+    }
+
+    #[test]
+    fn test_workspace_symbol_info_creation() {
+        let uri = make_uri("/test.lua");
+        let info = WorkspaceSymbolInfo {
+            name: "MyFunction".to_string(),
+            kind: SymbolKind::FUNCTION,
+            uri: uri.clone(),
+            span: Span::new(0, 20, 1, 1),
+            container_name: None,
+        };
+
+        assert_eq!(info.name, "MyFunction");
+        assert_eq!(info.kind, SymbolKind::FUNCTION);
+        assert!(info.container_name.is_none());
+    }
+
+    #[test]
+    fn test_workspace_symbol_info_with_container() {
+        let uri = make_uri("/test.lua");
+        let info = WorkspaceSymbolInfo {
+            name: "myMethod".to_string(),
+            kind: SymbolKind::METHOD,
+            uri: uri.clone(),
+            span: Span::new(50, 70, 5, 2),
+            container_name: Some("MyClass".to_string()),
+        };
+
+        assert_eq!(info.name, "myMethod");
+        assert_eq!(info.kind, SymbolKind::METHOD);
+        assert_eq!(info.container_name, Some("MyClass".to_string()));
+    }
+
+    #[test]
+    fn test_clear_document_empty() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test.lua");
+
+        // Clearing empty index should not panic
+        index.clear_document(&uri, "/test.lua");
+
+        // Index should still be empty
+        assert!(index.get_export("/test.lua", "foo").is_none());
+    }
+
+    #[test]
+    fn test_search_workspace_symbols_empty() {
+        let index = SymbolIndex::new();
+
+        let results = index.search_workspace_symbols("foo");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_search_workspace_symbols_empty_query() {
+        let index = SymbolIndex::new();
+
+        // Empty query should return all symbols
+        let results = index.search_workspace_symbols("");
+        assert!(results.is_empty()); // No symbols indexed yet
+    }
+
+    #[test]
+    fn test_get_export_nonexistent() {
+        let index = SymbolIndex::new();
+
+        assert!(index.get_export("nonexistent", "symbol").is_none());
+    }
+
+    #[test]
+    fn test_get_importers_nonexistent() {
+        let index = SymbolIndex::new();
+
+        let importers = index.get_importers("nonexistent", "symbol");
+        assert!(importers.is_empty());
+    }
+
+    #[test]
+    fn test_get_imports_nonexistent() {
+        let index = SymbolIndex::new();
+
+        assert!(index.get_imports("nonexistent", "local").is_none());
+    }
+
+    #[test]
+    fn test_symbol_index_debug() {
+        let index = SymbolIndex::new();
+        let debug_str = format!("{:?}", index);
+
+        // Should be able to format debug output
+        assert!(debug_str.contains("SymbolIndex"));
+    }
+
+    #[test]
+    fn test_export_info_debug() {
+        let uri = make_uri("/test.lua");
+        let export = ExportInfo {
+            exported_name: "foo".to_string(),
+            local_name: "foo".to_string(),
+            uri,
+            is_default: false,
+        };
+
+        let debug_str = format!("{:?}", export);
+        assert!(debug_str.contains("ExportInfo"));
+    }
+
+    #[test]
+    fn test_import_info_debug() {
+        let source_uri = make_uri("/source.lua");
+        let importing_uri = make_uri("/importer.lua");
+
+        let import = ImportInfo {
+            local_name: "foo".to_string(),
+            imported_name: "foo".to_string(),
+            source_uri,
+            importing_uri,
+        };
+
+        let debug_str = format!("{:?}", import);
+        assert!(debug_str.contains("ImportInfo"));
+    }
+
+    #[test]
+    fn test_workspace_symbol_info_debug() {
+        let uri = make_uri("/test.lua");
+        let info = WorkspaceSymbolInfo {
+            name: "test".to_string(),
+            kind: SymbolKind::VARIABLE,
+            uri,
+            span: Span::new(0, 10, 1, 1),
+            container_name: None,
+        };
+
+        let debug_str = format!("{:?}", info);
+        assert!(debug_str.contains("WorkspaceSymbolInfo"));
+    }
+
+    #[test]
+    fn test_symbol_kind_variants() {
+        // Test all symbol kinds exist
+        let _ = SymbolKind::FILE;
+        let _ = SymbolKind::MODULE;
+        let _ = SymbolKind::NAMESPACE;
+        let _ = SymbolKind::PACKAGE;
+        let _ = SymbolKind::CLASS;
+        let _ = SymbolKind::METHOD;
+        let _ = SymbolKind::PROPERTY;
+        let _ = SymbolKind::FIELD;
+        let _ = SymbolKind::CONSTRUCTOR;
+        let _ = SymbolKind::ENUM;
+        let _ = SymbolKind::INTERFACE;
+        let _ = SymbolKind::FUNCTION;
+        let _ = SymbolKind::VARIABLE;
+        let _ = SymbolKind::CONSTANT;
+        let _ = SymbolKind::STRING;
+        let _ = SymbolKind::NUMBER;
+        let _ = SymbolKind::BOOLEAN;
+        let _ = SymbolKind::ARRAY;
+        let _ = SymbolKind::OBJECT;
+        let _ = SymbolKind::KEY;
+        let _ = SymbolKind::NULL;
+        let _ = SymbolKind::ENUM_MEMBER;
+        let _ = SymbolKind::STRUCT;
+        let _ = SymbolKind::EVENT;
+        let _ = SymbolKind::OPERATOR;
+        let _ = SymbolKind::TYPE_PARAMETER;
+    }
+
+    #[test]
+    fn test_multiple_module_ids() {
+        let mut index = SymbolIndex::new();
+        let uri1 = make_uri("/module1.lua");
+        let uri2 = make_uri("/module2.lua");
+
+        // Clear both documents (even though empty)
+        index.clear_document(&uri1, "/module1.lua");
+        index.clear_document(&uri2, "/module2.lua");
+
+        // Both should be clear
+        assert!(index.get_export("/module1.lua", "foo").is_none());
+        assert!(index.get_export("/module2.lua", "bar").is_none());
+    }
+
+    #[test]
+    fn test_symbol_info_clone() {
+        let uri = make_uri("/test.lua");
+        let export = ExportInfo {
+            exported_name: "foo".to_string(),
+            local_name: "foo".to_string(),
+            uri,
+            is_default: false,
+        };
+
+        let cloned = export.clone();
+        assert_eq!(cloned.exported_name, "foo");
+    }
+
+    #[test]
+    fn test_import_info_clone() {
+        let source_uri = make_uri("/source.lua");
+        let importing_uri = make_uri("/importer.lua");
+
+        let import = ImportInfo {
+            local_name: "foo".to_string(),
+            imported_name: "foo".to_string(),
+            source_uri,
+            importing_uri,
+        };
+
+        let cloned = import.clone();
+        assert_eq!(cloned.local_name, "foo");
+    }
+
+    #[test]
+    fn test_workspace_symbol_info_clone() {
+        let uri = make_uri("/test.lua");
+        let info = WorkspaceSymbolInfo {
+            name: "test".to_string(),
+            kind: SymbolKind::FUNCTION,
+            uri,
+            span: Span::new(0, 10, 1, 1),
+            container_name: Some("Class".to_string()),
+        };
+
+        let cloned = info.clone();
+        assert_eq!(cloned.name, "test");
+        assert_eq!(cloned.container_name, Some("Class".to_string()));
+    }
+
+    #[test]
     fn test_export_indexing() {
         // This would require parsing actual TypedLua code
         // Skipping for now as it requires full parser setup

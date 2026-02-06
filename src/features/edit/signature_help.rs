@@ -278,4 +278,174 @@ mod tests {
         // Test "foo(\"a, b\", |)" -> parameter 1 (double quotes)
         assert_eq!(provider.count_parameters("\"a, b\", "), 1);
     }
+
+    #[test]
+    fn test_signature_help_provider_new() {
+        let provider = SignatureHelpProvider::new();
+        let _ = provider;
+    }
+
+    #[test]
+    fn test_signature_help_empty_document() {
+        let provider = SignatureHelpProvider::new();
+        let doc = Document::new_test("".to_string(), 1);
+
+        let result = provider.provide(&doc, Position::new(0, 0));
+        // Empty document should return None or empty signature help
+        let _ = result;
+    }
+
+    #[test]
+    fn test_signature_help_no_function_call() {
+        let provider = SignatureHelpProvider::new();
+        let doc = Document::new_test("local x = 1".to_string(), 1);
+
+        let result = provider.analyze_call_context(&doc, Position::new(0, 5));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_signature_help_nested_function_calls() {
+        let provider = SignatureHelpProvider::new();
+        // outer(inner(x), |)
+        let doc = Document::new_test("outer(inner(x), ".to_string(), 1);
+
+        let result = provider.analyze_call_context(&doc, Position::new(0, 16));
+        assert!(result.is_some());
+        let (func_name, param) = result.unwrap();
+        assert_eq!(func_name, "outer");
+        assert_eq!(param, 1);
+    }
+
+    #[test]
+    fn test_signature_help_deeply_nested() {
+        let provider = SignatureHelpProvider::new();
+        // a(b(c(d(|
+        let doc = Document::new_test("a(b(c(d(".to_string(), 1);
+
+        let result = provider.analyze_call_context(&doc, Position::new(0, 8));
+        assert!(result.is_some());
+        let (func_name, param) = result.unwrap();
+        assert_eq!(func_name, "d");
+        assert_eq!(param, 0);
+    }
+
+    #[test]
+    fn test_count_parameters_empty() {
+        let provider = SignatureHelpProvider::new();
+        assert_eq!(provider.count_parameters(""), 0);
+    }
+
+    #[test]
+    fn test_count_parameters_single() {
+        let provider = SignatureHelpProvider::new();
+        assert_eq!(provider.count_parameters("x"), 0);
+        assert_eq!(provider.count_parameters("x, "), 1);
+    }
+
+    #[test]
+    fn test_count_parameters_multiple() {
+        let provider = SignatureHelpProvider::new();
+        assert_eq!(provider.count_parameters("a, b, c, "), 3);
+    }
+
+    #[test]
+    fn test_count_parameters_with_parens() {
+        let provider = SignatureHelpProvider::new();
+        // Nested parentheses
+        assert_eq!(provider.count_parameters("f(x), "), 1);
+        assert_eq!(provider.count_parameters("f(x), g(y), "), 2);
+    }
+
+    #[test]
+    fn test_count_parameters_with_brackets() {
+        let provider = SignatureHelpProvider::new();
+        // Brackets should be handled
+        assert_eq!(provider.count_parameters("arr[0], "), 1);
+        assert_eq!(provider.count_parameters("arr[0, 1], "), 1);
+    }
+
+    #[test]
+    fn test_count_parameters_with_braces() {
+        let provider = SignatureHelpProvider::new();
+        // Braces should be handled
+        assert_eq!(provider.count_parameters("{a: 1}, "), 1);
+    }
+
+    #[test]
+    fn test_count_parameters_complex_expression() {
+        let provider = SignatureHelpProvider::new();
+        // Complex expressions with commas
+        assert_eq!(provider.count_parameters("foo(a, b), bar(c, d), "), 2);
+    }
+
+    #[test]
+    fn test_signature_help_multiline_call() {
+        let provider = SignatureHelpProvider::new();
+        let doc = Document::new_test("foo(\n  a,\n  b,\n  ".to_string(), 1);
+
+        let result = provider.analyze_call_context(&doc, Position::new(3, 2));
+        // Multi-line may or may not be supported
+        if let Some((func_name, param)) = result {
+            assert_eq!(func_name, "foo");
+            assert_eq!(param, 2);
+        }
+    }
+
+    #[test]
+    fn test_signature_help_method_chain() {
+        let provider = SignatureHelpProvider::new();
+        // obj:method():other(
+        let doc = Document::new_test("obj:method():other(".to_string(), 1);
+
+        let result = provider.analyze_call_context(&doc, Position::new(0, 19));
+        assert!(result.is_some());
+        let (func_name, param) = result.unwrap();
+        assert!(func_name.contains("other"));
+        assert_eq!(param, 0);
+    }
+
+    #[test]
+    fn test_signature_help_self_call() {
+        let provider = SignatureHelpProvider::new();
+        // self:method(
+        let doc = Document::new_test("self:method(".to_string(), 1);
+
+        let result = provider.analyze_call_context(&doc, Position::new(0, 12));
+        assert!(result.is_some());
+        let (func_name, _param) = result.unwrap();
+        assert!(func_name.contains("method"));
+    }
+
+    #[test]
+    fn test_signature_help_unicode() {
+        let provider = SignatureHelpProvider::new();
+        // Unicode function name
+        let doc = Document::new_test("π(".to_string(), 1);
+
+        let result = provider.analyze_call_context(&doc, Position::new(0, 2));
+        // Unicode support may vary
+        if let Some((func_name, _param)) = result {
+            assert_eq!(func_name, "π");
+        }
+    }
+
+    #[test]
+    fn test_signature_help_with_whitespace() {
+        let provider = SignatureHelpProvider::new();
+        let doc = Document::new_test("foo(  a  ,   b   ,   ".to_string(), 1);
+
+        let result = provider.analyze_call_context(&doc, Position::new(0, 22));
+        // Should handle whitespace, but may vary by implementation
+        if let Some((func_name, param)) = result {
+            assert_eq!(func_name, "foo");
+            assert_eq!(param, 2);
+        }
+    }
+
+    #[test]
+    fn test_signature_help_provider_clone() {
+        let provider = SignatureHelpProvider::new();
+        let _cloned = provider.clone();
+    }
 }

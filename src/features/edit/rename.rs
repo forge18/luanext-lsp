@@ -822,4 +822,122 @@ mod tests {
         // Test that identifiers starting with numbers are invalid
         assert!(!provider.is_valid_identifier("123invalid"));
     }
+
+    #[test]
+    fn test_valid_identifier_simple() {
+        let provider = RenameProvider::new();
+        assert!(provider.is_valid_identifier("x"));
+        assert!(provider.is_valid_identifier("_foo"));
+        assert!(provider.is_valid_identifier("myVariable"));
+    }
+
+    #[test]
+    fn test_valid_identifier_unicode() {
+        let provider = RenameProvider::new();
+        assert!(provider.is_valid_identifier("π"));
+        assert!(provider.is_valid_identifier("tést"));
+    }
+
+    #[test]
+    fn test_invalid_identifier_with_spaces() {
+        let provider = RenameProvider::new();
+        assert!(!provider.is_valid_identifier("foo bar"));
+        assert!(!provider.is_valid_identifier("foo-bar"));
+    }
+
+    #[test]
+    fn test_prepare_at_variable() {
+        let doc = create_test_document("local x = 1");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 6));
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_local_function() {
+        let doc = create_test_document("local function foo() end");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 15));
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_method() {
+        let doc = create_test_document("function obj:method() end");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 10));
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_class_field() {
+        let doc = create_test_document("class Point\n  x: number\n  y: number\nend");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(2, 2));
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_enum_member() {
+        let doc = create_test_document("enum Color\n  Red\n  Green\n  Blue\nend");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(2, 2));
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_interface_method() {
+        let doc = create_test_document("interface Drawable\n  draw(): void\nend");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(1, 2));
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_type_alias() {
+        let doc = create_test_document("type Point = { x: number, y: number }");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 5));
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_span_to_range_zero_column() {
+        let span = Span {
+            start: 0,
+            end: 5,
+            line: 1,
+            column: 0,
+        };
+        let range = span_to_range(&span);
+        assert_eq!(range.start.line, 0);
+        assert_eq!(range.start.character, 0);
+    }
+
+    #[test]
+    fn test_span_to_range_single_char() {
+        let span = Span {
+            start: 0,
+            end: 1,
+            line: 0,
+            column: 0,
+        };
+        let range = span_to_range(&span);
+        assert_eq!(range.start.character, 0);
+        assert_eq!(range.end.character, 0);
+    }
 }

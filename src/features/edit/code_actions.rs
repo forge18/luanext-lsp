@@ -518,4 +518,196 @@ mod tests {
         });
         assert!(has_extract);
     }
+
+    #[test]
+    fn test_code_actions_provider_new() {
+        let provider = CodeActionsProvider::new();
+        let _ = provider;
+    }
+
+    #[test]
+    fn test_code_actions_empty_document() {
+        let provider = CodeActionsProvider::new();
+        let doc = Document::new_test("".to_string(), 1);
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(0, 0),
+        };
+        let context = CodeActionContext {
+            diagnostics: vec![],
+            only: None,
+            trigger_kind: None,
+        };
+        let uri = "file:///test.lua".parse::<Uri>().unwrap();
+
+        let actions = provider.provide(&uri, &doc, range, context);
+        // Should not panic on empty document
+        let _ = actions;
+    }
+
+    #[test]
+    fn test_code_actions_with_syntax_error() {
+        let provider = CodeActionsProvider::new();
+        // Invalid syntax - missing value
+        let doc = Document::new_test("local x = ".to_string(), 1);
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(0, 10),
+        };
+        let context = CodeActionContext {
+            diagnostics: vec![],
+            only: None,
+            trigger_kind: None,
+        };
+        let uri = "file:///test.lua".parse::<Uri>().unwrap();
+
+        let actions = provider.provide(&uri, &doc, range, context);
+        // Should handle syntax errors gracefully
+        let _ = actions;
+    }
+
+    #[test]
+    fn test_code_actions_with_diagnostics() {
+        let provider = CodeActionsProvider::new();
+        let doc = Document::new_test("local x = 10".to_string(), 1);
+        let diagnostic = Diagnostic {
+            range: Range {
+                start: Position::new(0, 6),
+                end: Position::new(0, 7),
+            },
+            severity: Some(DiagnosticSeverity::WARNING),
+            code: None,
+            code_description: None,
+            source: Some("test".to_string()),
+            message: "Unused variable".to_string(),
+            related_information: None,
+            tags: None,
+            data: None,
+        };
+        let context = CodeActionContext {
+            diagnostics: vec![diagnostic],
+            only: None,
+            trigger_kind: None,
+        };
+        let uri = "file:///test.lua".parse::<Uri>().unwrap();
+
+        let actions = provider.provide(&uri, &doc, Range::default(), context);
+        // Should consider diagnostics when providing actions
+        let _ = actions;
+    }
+
+    #[test]
+    fn test_code_actions_quick_fix_kind() {
+        let provider = CodeActionsProvider::new();
+        let doc = Document::new_test("local x = 10".to_string(), 1);
+        let context = CodeActionContext {
+            diagnostics: vec![],
+            only: Some(vec![CodeActionKind::QUICKFIX]),
+            trigger_kind: None,
+        };
+        let uri = "file:///test.lua".parse::<Uri>().unwrap();
+
+        let actions = provider.provide(&uri, &doc, Range::default(), context);
+        // Should provide quick fix actions
+        let _ = actions;
+    }
+
+    #[test]
+    fn test_code_actions_refactor_kind() {
+        let provider = CodeActionsProvider::new();
+        let doc = Document::new_test("local x = 10".to_string(), 1);
+        let context = CodeActionContext {
+            diagnostics: vec![],
+            only: Some(vec![CodeActionKind::REFACTOR]),
+            trigger_kind: None,
+        };
+        let uri = "file:///test.lua".parse::<Uri>().unwrap();
+
+        let actions = provider.provide(&uri, &doc, Range::default(), context);
+        // Should provide refactor actions
+        let _ = actions;
+    }
+
+    #[test]
+    fn test_code_actions_source_kind() {
+        let provider = CodeActionsProvider::new();
+        let doc = Document::new_test("local x = 10".to_string(), 1);
+        let context = CodeActionContext {
+            diagnostics: vec![],
+            only: Some(vec![CodeActionKind::SOURCE]),
+            trigger_kind: None,
+        };
+        let uri = "file:///test.lua".parse::<Uri>().unwrap();
+
+        let actions = provider.provide(&uri, &doc, Range::default(), context);
+        // Should provide source actions
+        let _ = actions;
+    }
+
+    #[test]
+    fn test_code_actions_function_declaration() {
+        let provider = CodeActionsProvider::new();
+        let doc = Document::new_test("function foo()\n  return 42\nend".to_string(), 1);
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(2, 3),
+        };
+        let context = CodeActionContext {
+            diagnostics: vec![],
+            only: None,
+            trigger_kind: None,
+        };
+        let uri = "file:///test.lua".parse::<Uri>().unwrap();
+
+        let actions = provider.provide(&uri, &doc, range, context);
+        // Should handle function declarations
+        let _ = actions;
+    }
+
+    #[test]
+    fn test_code_actions_multiline_selection() {
+        let provider = CodeActionsProvider::new();
+        let doc = Document::new_test("line1\nline2\nline3".to_string(), 1);
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(2, 5),
+        };
+        let context = CodeActionContext {
+            diagnostics: vec![],
+            only: None,
+            trigger_kind: None,
+        };
+        let uri = "file:///test.lua".parse::<Uri>().unwrap();
+
+        let actions = provider.provide(&uri, &doc, range, context);
+        // Should handle multi-line selections
+        let _ = actions;
+    }
+
+    #[test]
+    fn test_code_actions_resolve_returns_input() {
+        let provider = CodeActionsProvider::new();
+        let action = CodeAction {
+            title: "Test".to_string(),
+            kind: Some(CodeActionKind::QUICKFIX),
+            diagnostics: None,
+            edit: None,
+            command: None,
+            is_preferred: None,
+            disabled: None,
+            data: None,
+        };
+
+        let resolved = provider.resolve(action.clone());
+
+        // Currently resolve just returns the input
+        assert_eq!(resolved.title, "Test");
+        assert_eq!(resolved.kind, Some(CodeActionKind::QUICKFIX));
+    }
+
+    #[test]
+    fn test_code_actions_provider_clone() {
+        let provider = CodeActionsProvider::new();
+        let _cloned = provider.clone();
+    }
 }

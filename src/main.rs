@@ -39,16 +39,13 @@ impl LspConnection for ConnectionWrapper<'_> {
 }
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
-    // Initialize tracing for LSP server
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
-        .with_writer(std::io::stderr) // LSP uses stdout for protocol, log to stderr
+        .with_writer(std::io::stderr)
         .init();
 
-    // Create the LSP connection
     let (connection, io_threads) = Connection::stdio();
 
-    // Server capabilities
     let server_capabilities = serde_json::to_value(ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Kind(
             TextDocumentSyncKind::INCREMENTAL,
@@ -131,7 +128,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
             },
         ))),
         document_on_type_formatting_provider: Some(DocumentOnTypeFormattingOptions {
-            first_trigger_character: "d".to_string(), // Trigger when typing 'end'
+            first_trigger_character: "d".to_string(),
             more_trigger_character: Some(vec![]),
         }),
         folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
@@ -139,22 +136,18 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     })
     .unwrap();
 
-    // Initialize the connection
     let initialization_params = connection.initialize(server_capabilities)?;
     let _params: InitializeParams = serde_json::from_value(initialization_params)?;
 
-    // Run the main loop
     main_loop(connection, _params)?;
 
-    // Wait for IO threads to finish
     io_threads.join()?;
 
     Ok(())
 }
 
 fn main_loop(connection: Connection, params: InitializeParams) -> Result<()> {
-    // Get workspace root from initialization params
-    #[allow(deprecated)] // root_uri is deprecated but still widely used
+    #[allow(deprecated)]
     let workspace_root = params
         .root_uri
         .and_then(|uri| uri.as_str().strip_prefix("file://").map(PathBuf::from))
@@ -162,12 +155,10 @@ fn main_loop(connection: Connection, params: InitializeParams) -> Result<()> {
 
     tracing::info!("LSP workspace root: {:?}", workspace_root);
 
-    // Initialize module system infrastructure
     let fs = Arc::new(RealFileSystem);
     let compiler_options = CompilerOptions::default();
     let module_config = ModuleConfig::from_compiler_options(&compiler_options, &workspace_root);
 
-    // Create module system components
     let module_registry = Arc::new(ModuleRegistry::new());
     let module_resolver = Arc::new(ModuleResolver::new(
         fs,
@@ -175,7 +166,6 @@ fn main_loop(connection: Connection, params: InitializeParams) -> Result<()> {
         workspace_root.clone(),
     ));
 
-    // Create document manager with module system support
     let mut document_manager =
         DocumentManager::new(workspace_root, module_registry, module_resolver);
     let mut message_handler = MessageHandler::new();
@@ -187,7 +177,6 @@ fn main_loop(connection: Connection, params: InitializeParams) -> Result<()> {
                 if connection.handle_shutdown(&req)? {
                     return Ok(());
                 }
-
                 message_handler.handle_request(&connection_wrapper, req, &document_manager)?;
             }
             Message::Notification(not) => {
@@ -197,11 +186,80 @@ fn main_loop(connection: Connection, params: InitializeParams) -> Result<()> {
                     &mut document_manager,
                 )?;
             }
-            Message::Response(_resp) => {
-                // Client responses to our requests - we don't currently send any
-            }
+            Message::Response(_resp) => {}
         }
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lsp_server::{Request, RequestId};
+    use std::str::FromStr;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    #[derive(Clone)]
+    struct MockConnection {
+        notification_count: Arc<AtomicUsize>,
+        response_count: Arc<AtomicUsize>,
+    }
+
+    impl MockConnection {
+        fn new() -> (Self, Arc<AtomicUsize>, Arc<AtomicUsize>) {
+            let notification_count = Arc::new(AtomicUsize::new(0));
+            let response_count = Arc::new(AtomicUsize::new(0));
+            (
+                Self {
+                    notification_count: notification_count.clone(),
+                    response_count: response_count.clone(),
+                },
+                notification_count,
+                response_count,
+            )
+        }
+    }
+
+    impl LspConnection for MockConnection {
+        fn send_response(&self, _response: Response) -> Result<()> {
+            self.notification_count.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn send_notification(&self, _notification: Notification) -> Result<()> {
+            self.response_count.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_mock_connection_new() {
+        let (conn, not_count, resp_count) = MockConnection::new();
+        assert_eq!(conn.notification_count.load(Ordering::SeqCst), 0);
+        assert_eq!(conn.response_count.load(Ordering::SeqCst), 0);
+        assert_eq!(not_count.load(Ordering::SeqCst), 0);
+        assert_eq!(resp_count.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn test_mock_connection_send_response() {
+        let (conn, _, _) = MockConnection::new();
+        let response = Response {
+            id: RequestId::from(1),
+            result: Some(serde_json::json!({"test": true})),
+            error: None,
+        };
+        let result = conn.send_response(response);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_mock_connection_send_notification() {
+        let (conn, _, _) = MockConnection::new();
+        let notification = Notification::new("test".to_string(), serde_json::json!({"data": 42}));
+        let result = conn.send_notification(notification);
+        assert!(result.is_ok());
+    }
 }

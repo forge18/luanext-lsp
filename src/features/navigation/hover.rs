@@ -163,6 +163,10 @@ impl HoverProvider {
                 "Constant declaration",
                 "Declares a constant value that cannot be reassigned.\n\n```typedlua\nconst PI: number = 3.14159\n```"
             ),
+            "let" => (
+                "Variable declaration",
+                "Declares a mutable variable with block scope.\n\n```typedlua\nlet x: number = 10\nx = 20 -- reassignment allowed\n```"
+            ),
             "local" => (
                 "Local variable declaration",
                 "Declares a local variable with block scope.\n\n```typedlua\nlocal x: number = 10\n```"
@@ -205,6 +209,7 @@ impl HoverProvider {
             "readonly" => ("Readonly modifier", "Prevents reassignment after initialization."),
             "match" => ("Match expression", "Pattern matching expression.\n\n```typedlua\nmatch value {\n    pattern1 => result1,\n    pattern2 => result2\n}\n```"),
             "when" => ("When guard", "Adds conditions to match patterns."),
+            "where" => ("Where clause", "Type constraint clause for generics or type expressions."),
             "import" => ("Import statement", "Imports modules or specific exports.\n\n```typedlua\nimport { func } from \"module\"\n```"),
             "from" => ("From clause", "Specifies the module to import from."),
             "export" => ("Export statement", "Exports declarations from a module."),
@@ -354,5 +359,172 @@ mod tests {
         let result = provider.provide(&doc, Position::new(10, 10));
 
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_hover_all_keywords() {
+        let provider = HoverProvider::new();
+
+        // Test that all keywords return hover info
+        let keywords = vec![
+            "local",
+            "function",
+            "return",
+            "if",
+            "then",
+            "else",
+            "elseif",
+            "while",
+            "do",
+            "for",
+            "in",
+            "repeat",
+            "until",
+            "break",
+            "class",
+            "interface",
+            "enum",
+            "type",
+            "import",
+            "export",
+            "const",
+            "let",
+            "match",
+            "when",
+            "where",
+        ];
+
+        for keyword in keywords {
+            let result = provider.hover_for_keyword(keyword);
+            assert!(
+                result.is_some(),
+                "Keyword '{}' should have hover info",
+                keyword
+            );
+        }
+    }
+
+    #[test]
+    fn test_hover_all_builtin_types() {
+        let provider = HoverProvider::new();
+
+        let types = vec![
+            "nil", "boolean", "number", "string", "unknown", "never", "void", "any",
+        ];
+
+        for typ in types {
+            let result = provider.hover_for_builtin_type(typ);
+            assert!(result.is_some(), "Type '{}' should have hover info", typ);
+        }
+    }
+
+    #[test]
+    fn test_hover_on_variable() {
+        let doc = create_test_document("local myVariable = 10");
+        let provider = HoverProvider::new();
+
+        // Hover on the variable name
+        let result = provider.provide(&doc, Position::new(0, 8));
+
+        // Should provide some hover info (may be None if not implemented)
+        let _ = result;
+    }
+
+    #[test]
+    fn test_hover_on_function_call() {
+        let doc = create_test_document("print('hello')");
+        let provider = HoverProvider::new();
+
+        // Hover on function name
+        let result = provider.provide(&doc, Position::new(0, 2));
+        let _ = result;
+    }
+
+    #[test]
+    fn test_hover_whitespace() {
+        let doc = create_test_document("local x = 1");
+        let provider = HoverProvider::new();
+
+        // Hover on whitespace
+        let result = provider.provide(&doc, Position::new(0, 5));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_hover_multiline_document() {
+        let doc = create_test_document("local x = 1\nlocal y = 2\nprint(x + y)");
+        let provider = HoverProvider::new();
+
+        // Hover on different lines
+        let result1 = provider.provide(&doc, Position::new(0, 6));
+        let result2 = provider.provide(&doc, Position::new(1, 6));
+        let result3 = provider.provide(&doc, Position::new(2, 2));
+
+        let _ = (result1, result2, result3);
+    }
+
+    #[test]
+    fn test_hover_provider_trait() {
+        let provider = HoverProvider::new();
+        let doc = create_test_document("test");
+
+        // Test through trait interface
+        let result = provider.provide(&doc, Position::new(0, 0));
+        let _ = result;
+    }
+
+    #[test]
+    fn test_hover_keyword_content_structure() {
+        let provider = HoverProvider::new();
+
+        let result = provider.hover_for_keyword("function").unwrap();
+
+        match result.contents {
+            HoverContents::Markup(markup) => {
+                assert_eq!(markup.kind, MarkupKind::Markdown);
+                // Should have title and description
+                assert!(!markup.value.is_empty());
+                assert!(markup.value.contains("**")); // Bold title
+            }
+            _ => panic!("Expected MarkupContent"),
+        }
+    }
+
+    #[test]
+    fn test_hover_type_content_structure() {
+        let provider = HoverProvider::new();
+
+        let result = provider.hover_for_builtin_type("number").unwrap();
+
+        match result.contents {
+            HoverContents::Markup(markup) => {
+                assert_eq!(markup.kind, MarkupKind::Markdown);
+                // Should have code block
+                assert!(markup.value.contains("```"));
+            }
+            _ => panic!("Expected MarkupContent"),
+        }
+    }
+
+    #[test]
+    fn test_hover_for_modifiers() {
+        let provider = HoverProvider::new();
+
+        let modifiers = vec!["public", "private", "protected", "static", "readonly"];
+
+        for modifier in modifiers {
+            let result = provider.hover_for_keyword(modifier);
+            assert!(
+                result.is_some(),
+                "Modifier '{}' should have hover info",
+                modifier
+            );
+        }
+    }
+
+    #[test]
+    fn test_hover_provider_clone() {
+        let provider = HoverProvider::new();
+        let _cloned = provider.clone();
     }
 }

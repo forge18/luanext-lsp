@@ -28,6 +28,9 @@ pub mod di;
 // Message handler (LSP protocol routing)
 pub mod message_handler;
 
+// Testing utilities with mock providers
+pub mod testing;
+
 // Re-export commonly used types
 pub use crate::protocol::LspConnection;
 pub use core::{DiagnosticsProvider, Document, DocumentManager};
