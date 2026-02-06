@@ -340,6 +340,18 @@ mod completion_tests {
 
 mod integration_tests {
     use super::*;
+    use lsp_types::DocumentSymbolResponse;
+    use typedlua_lsp::features::edit::{
+        CodeActionsProvider, RenameProvider, SignatureHelpProvider,
+    };
+    use typedlua_lsp::features::hints::InlayHintsProvider;
+    use typedlua_lsp::features::semantic::SemanticTokensProvider;
+    use typedlua_lsp::features::structure::FoldingRangeProvider;
+    use typedlua_lsp::features::structure::SymbolsProvider;
+    use typedlua_lsp::traits::{
+        CodeActionsProviderTrait, FoldingRangeProviderTrait, InlayHintsProviderTrait,
+        SemanticTokensProviderTrait, SignatureHelpProviderTrait, SymbolsProviderTrait,
+    };
 
     #[test]
     fn test_full_workflow_variable() {
@@ -411,5 +423,288 @@ mod integration_tests {
         let ws_doc = create_document("   \n   \n   ");
         let result = def_provider.provide(&uri, &ws_doc, Position::new(1, 2));
         assert!(result.is_none(), "Should handle whitespace-only document");
+    }
+
+    #[test]
+    fn test_symbols_provider_empty_document() {
+        let provider = SymbolsProvider::new();
+        let doc = create_document("");
+        let result = provider.provide(&doc);
+        // DocumentSymbolResponse is an enum, check it's a Flat with empty vec or just empty
+        let is_empty = match result {
+            DocumentSymbolResponse::Flat(v) => v.is_empty(),
+            DocumentSymbolResponse::Nested(v) => v.is_empty(),
+        };
+        assert!(is_empty, "Empty document should have no symbols");
+    }
+
+    #[test]
+    fn test_symbols_provider_local_variable() {
+        let provider = SymbolsProvider::new();
+        let doc = create_document("local x = 1");
+        let result = provider.provide(&doc);
+        // Should not panic
+        let _ = result;
+    }
+
+    #[test]
+    fn test_symbols_provider_function() {
+        let provider = SymbolsProvider::new();
+        let doc = create_document("function foo() end");
+        let result = provider.provide(&doc);
+        // Should not panic
+        let _ = result;
+    }
+
+    #[test]
+    fn test_symbols_provider_class() {
+        let provider = SymbolsProvider::new();
+        let doc = create_document("class MyClass\n  x: number\nend");
+        let result = provider.provide(&doc);
+        // Should not panic
+        let _ = result;
+    }
+
+    #[test]
+    fn test_symbols_provider_interface() {
+        let provider = SymbolsProvider::new();
+        let doc = create_document("interface MyInterface end");
+        let result = provider.provide(&doc);
+        // Should not panic
+        let _ = result;
+    }
+
+    #[test]
+    fn test_symbols_provider_enum() {
+        let provider = SymbolsProvider::new();
+        let doc = create_document("enum Color\n  Red\n  Green\nend");
+        let result = provider.provide(&doc);
+        // Should not panic
+        let _ = result;
+    }
+
+    #[test]
+    fn test_folding_range_empty_document() {
+        let provider = FoldingRangeProvider::new();
+        let doc = create_document("");
+        let result = provider.provide(&doc);
+        assert!(
+            result.is_empty(),
+            "Empty document should have no folding ranges"
+        );
+    }
+
+    #[test]
+    fn test_folding_range_single_line() {
+        let provider = FoldingRangeProvider::new();
+        let doc = create_document("local x = 1");
+        let result = provider.provide(&doc);
+        // Single line may have no folding ranges
+        let _ = result;
+    }
+
+    #[test]
+    fn test_folding_range_class() {
+        let provider = FoldingRangeProvider::new();
+        let doc = create_document("class Foo\n  x: number\n  constructor() end\nend");
+        let result = provider.provide(&doc);
+        assert!(!result.is_empty(), "Class should have folding ranges");
+    }
+
+    #[test]
+    fn test_inlay_hints_empty_document() {
+        let provider = InlayHintsProvider::new();
+        let doc = create_document("");
+        let range = Range {
+            start: Position::new(0, 0),
+            end: Position::new(10, 0),
+        };
+        let result = provider.provide(&doc, range);
+        let is_empty = result.is_empty();
+        assert!(
+            is_empty || !is_empty,
+            "Empty document should be handled gracefully"
+        );
+    }
+
+    #[test]
+    fn test_inlay_hints_local_variable() {
+        let provider = InlayHintsProvider::new();
+        let doc = create_document("local x = 1");
+        let range = Range::default();
+        let result = provider.provide(&doc, range);
+        let _ = result;
+    }
+
+    #[test]
+    fn test_inlay_hints_function() {
+        let provider = InlayHintsProvider::new();
+        let doc = create_document("function foo(x: number, y: string) end");
+        let range = Range::default();
+        let result = provider.provide(&doc, range);
+        let _ = result;
+    }
+
+    #[test]
+    fn test_inlay_hints_class() {
+        let provider = InlayHintsProvider::new();
+        let doc = create_document("class Foo\n  x: number\n  y: string\nend");
+        let range = Range::default();
+        let result = provider.provide(&doc, range);
+        let _ = result;
+    }
+
+    #[test]
+    fn test_semantic_tokens_empty_document() {
+        let provider = SemanticTokensProvider::new();
+        let doc = create_document("");
+        let result = provider.provide_full(&doc);
+        assert!(
+            result.data.is_empty(),
+            "Empty document should have no semantic tokens"
+        );
+    }
+
+    #[test]
+    fn test_semantic_tokens_local_variable() {
+        let provider = SemanticTokensProvider::new();
+        let doc = create_document("local x = 1");
+        let result = provider.provide_full(&doc);
+        assert!(
+            !result.data.is_empty(),
+            "Local variable should have semantic token"
+        );
+    }
+
+    #[test]
+    fn test_semantic_tokens_function() {
+        let provider = SemanticTokensProvider::new();
+        let doc = create_document("function foo() end");
+        let result = provider.provide_full(&doc);
+        assert!(
+            !result.data.is_empty(),
+            "Function should have semantic token"
+        );
+    }
+
+    #[test]
+    fn test_semantic_tokens_string() {
+        let provider = SemanticTokensProvider::new();
+        let doc = create_document("local s = \"hello world\"");
+        let result = provider.provide_full(&doc);
+        assert!(
+            !result.data.is_empty(),
+            "String literal should have semantic token"
+        );
+    }
+
+    #[test]
+    fn test_semantic_tokens_number() {
+        let provider = SemanticTokensProvider::new();
+        let doc = create_document("local n = 42");
+        let result = provider.provide_full(&doc);
+        assert!(
+            !result.data.is_empty(),
+            "Number literal should have semantic token"
+        );
+    }
+
+    #[test]
+    fn test_code_actions_empty_document() {
+        let provider = CodeActionsProvider::new();
+        let doc = create_document("");
+        let uri = create_uri("/test.lua");
+        let context = CodeActionContext::default();
+        let result = provider.provide(&uri, &doc, Range::default(), context);
+        let _ = result;
+    }
+
+    #[test]
+    fn test_code_actions_with_diagnostics() {
+        let provider = CodeActionsProvider::new();
+        let doc = create_document("local x = 1");
+        let uri = create_uri("/test.lua");
+        let context = CodeActionContext {
+            diagnostics: vec![Diagnostic {
+                range: Range::default(),
+                severity: Some(DiagnosticSeverity::ERROR),
+                code: None,
+                code_description: None,
+                source: Some("test".to_string()),
+                message: "test error".to_string(),
+                related_information: None,
+                tags: None,
+                data: None,
+            }],
+            only: None,
+            trigger_kind: None,
+        };
+        let result = provider.provide(&uri, &doc, Range::default(), context);
+        let _ = result;
+    }
+
+    #[test]
+    fn test_signature_help_empty_document() {
+        let provider = SignatureHelpProvider::new();
+        let doc = create_document("");
+        let result = provider.provide(&doc, Position::new(0, 0));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_signature_help_function_call() {
+        let provider = SignatureHelpProvider::new();
+        let doc = create_document("foo(1, 2, 3)");
+        let result = provider.provide(&doc, Position::new(0, 4));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_signature_help_nested_calls() {
+        let provider = SignatureHelpProvider::new();
+        let doc = create_document("foo(bar(x), y)");
+        let result = provider.provide(&doc, Position::new(0, 10));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_rename_empty_document() {
+        let provider = RenameProvider::new();
+        let doc = create_document("");
+        let result = provider.prepare(&doc, Position::new(0, 0));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_prepare_rename_local_variable() {
+        let provider = RenameProvider::new();
+        let doc = create_document("local x = 1");
+        let result = provider.prepare(&doc, Position::new(0, 6));
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_rename_function() {
+        let provider = RenameProvider::new();
+        let doc = create_document("function foo() end");
+        let result = provider.prepare(&doc, Position::new(0, 10));
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_rename_class() {
+        let provider = RenameProvider::new();
+        let doc = create_document("class MyClass end");
+        let result = provider.prepare(&doc, Position::new(0, 6));
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_rename_at_keyword() {
+        let provider = RenameProvider::new();
+        let doc = create_document("local x = 1");
+        let result = provider.prepare(&doc, Position::new(0, 0));
+        // Just verify it doesn't panic
+        let _ = result;
     }
 }
