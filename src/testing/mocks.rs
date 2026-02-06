@@ -385,6 +385,52 @@ impl DiagnosticsProviderTrait for MockDiagnosticsProvider {
     }
 }
 
+use crate::core::analysis::SymbolIndex;
+use lsp_types::Uri;
+use std::collections::HashMap;
+use typedlua_typechecker::module_resolver::ModuleId;
+
+#[derive(Clone)]
+pub struct MockDocumentManager {
+    documents: HashMap<Uri, String>,
+    symbol_index: SymbolIndex,
+}
+
+impl MockDocumentManager {
+    pub fn new() -> Self {
+        Self {
+            documents: HashMap::new(),
+            symbol_index: SymbolIndex::new(),
+        }
+    }
+
+    pub fn add_document(&mut self, uri: Uri, text: String) {
+        self.documents.insert(uri, text);
+    }
+
+    pub fn get_text(&self, uri: &Uri) -> Option<&String> {
+        self.documents.get(uri)
+    }
+}
+
+impl crate::core::document::DocumentManagerTrait for MockDocumentManager {
+    fn get(&self, _uri: &Uri) -> Option<&crate::core::document::Document> {
+        None
+    }
+
+    fn symbol_index(&self) -> &SymbolIndex {
+        &self.symbol_index
+    }
+
+    fn module_id_to_uri(&self, _module_id: &ModuleId) -> Option<&Uri> {
+        None
+    }
+
+    fn uri_to_module_id(&self, _uri: &Uri) -> Option<&ModuleId> {
+        None
+    }
+}
+
 fn extract_word_at_position(line: &str, char_pos: usize) -> String {
     let chars: Vec<char> = line.chars().collect();
     if char_pos > chars.len() {

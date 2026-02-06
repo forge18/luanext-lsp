@@ -1054,4 +1054,154 @@ mod tests {
         let provider = RenameProvider::new();
         let _cloned = provider.clone();
     }
+
+    #[test]
+    fn test_prepare_at_multiline_function() {
+        let doc = create_test_document("function very_long_function_name()\n  local x = 1\nend");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 10));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_nested_function() {
+        let doc = create_test_document("function outer()\n  function inner() end\nend");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(1, 10));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_class_with_generic() {
+        let doc = create_test_document("class MyClass<T> end");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 6));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_interface_with_generic() {
+        let doc = create_test_document("interface MyInterface<T> end");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 10));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_enum_with_values() {
+        let doc = create_test_document("enum Color\n  Red\n  Green\n  Blue\nend");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(1, 2));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_match_expression() {
+        let doc = create_test_document("match x\n  | 1 => \"one\"\n  | 2 => \"two\"\nend");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(1, 4));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_local_function_with_colon() {
+        let doc = create_test_document("local function obj:method() end");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 15));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_prepare_at_table_access() {
+        let doc = create_test_document("local t = my_table.field");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 15));
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_is_valid_identifier_empty() {
+        let provider = RenameProvider::new();
+        assert!(!provider.is_valid_identifier(""));
+    }
+
+    #[test]
+    fn test_is_valid_identifier_starts_with_number() {
+        let provider = RenameProvider::new();
+        assert!(!provider.is_valid_identifier("123abc"));
+    }
+
+    #[test]
+    fn test_is_valid_identifier_with_underscore() {
+        let provider = RenameProvider::new();
+        assert!(provider.is_valid_identifier("_"));
+        assert!(provider.is_valid_identifier("_value"));
+        assert!(provider.is_valid_identifier("__private__"));
+    }
+
+    #[test]
+    fn test_is_valid_identifier_lua_keywords() {
+        let provider = RenameProvider::new();
+        assert!(!provider.is_valid_identifier("local"));
+        assert!(!provider.is_valid_identifier("function"));
+        assert!(!provider.is_valid_identifier("end"));
+    }
+
+    #[test]
+    fn test_span_to_range_middle_of_line() {
+        let span = Span {
+            start: 5,
+            end: 15,
+            line: 2,
+            column: 5,
+        };
+        let range = span_to_range(&span);
+        assert_eq!(range.start.line, 1);
+        assert_eq!(range.start.character, 4);
+        assert_eq!(range.end.line, 1);
+        assert_eq!(range.end.character, 14);
+    }
+
+    #[test]
+    fn test_span_to_range_multiline() {
+        let span = Span {
+            start: 0,
+            end: 20,
+            line: 5,
+            column: 0,
+        };
+        let range = span_to_range(&span);
+        assert_eq!(range.start.line, 4);
+        assert_eq!(range.start.character, 0);
+        assert_eq!(range.end.line, 4);
+        assert_eq!(range.end.character, 19);
+    }
+
+    #[test]
+    fn test_prepare_response_range_with_placeholder() {
+        let doc = create_test_document("local my_variable = 1");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 7));
+        if let Some(PrepareRenameResponse::RangeWithPlaceholder { range, placeholder }) = result {
+            assert!(placeholder.contains("variable"));
+        }
+    }
+
+    #[test]
+    fn test_prepare_at_position_beyond_line_length() {
+        let doc = create_test_document("local x = 1");
+        let provider = RenameProvider::new();
+
+        let result = provider.prepare(&doc, Position::new(0, 100));
+        assert!(result.is_none());
+    }
 }

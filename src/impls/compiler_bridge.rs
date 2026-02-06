@@ -722,4 +722,257 @@ mod tests {
         assert!(matches!(warn_diag.level, DiagnosticLevel::Warning));
         assert!(matches!(info_diag.level, DiagnosticLevel::Info));
     }
+
+    #[test]
+    fn test_diagnostic_new_with_empty_message() {
+        let span = Span {
+            start: 0,
+            end: 0,
+            line: 1,
+            column: 0,
+        };
+        let diag = Diagnostic::new(span, DiagnosticLevel::Error, "".to_string());
+
+        assert_eq!(diag.message, "");
+        assert!(matches!(diag.level, DiagnosticLevel::Error));
+    }
+
+    #[test]
+    fn test_diagnostic_with_multiple_related() {
+        let span = Span {
+            start: 0,
+            end: 5,
+            line: 1,
+            column: 0,
+        };
+
+        let related1 = Span {
+            start: 10,
+            end: 15,
+            line: 2,
+            column: 0,
+        };
+        let related2 = Span {
+            start: 20,
+            end: 25,
+            line: 3,
+            column: 0,
+        };
+
+        let diag = Diagnostic::new(span, DiagnosticLevel::Error, "Test".to_string())
+            .with_related(RelatedInformation {
+                span: related1,
+                message: "First related".to_string(),
+            })
+            .with_related(RelatedInformation {
+                span: related2,
+                message: "Second related".to_string(),
+            });
+
+        assert_eq!(diag.related.len(), 2);
+        assert_eq!(diag.related[0].message, "First related");
+        assert_eq!(diag.related[1].message, "Second related");
+    }
+
+    #[test]
+    fn test_diagnostic_with_code_and_related() {
+        let span = Span {
+            start: 0,
+            end: 5,
+            line: 1,
+            column: 0,
+        };
+
+        let related = Span {
+            start: 10,
+            end: 15,
+            line: 2,
+            column: 0,
+        };
+
+        let diag = Diagnostic::new(span, DiagnosticLevel::Warning, "Test".to_string())
+            .with_code("W002")
+            .with_related(RelatedInformation {
+                span,
+                message: "Related".to_string(),
+            });
+
+        assert_eq!(diag.code, Some("W002".to_string()));
+        assert_eq!(diag.related.len(), 1);
+    }
+
+    #[test]
+    fn test_span_new() {
+        let span = Span {
+            start: 0,
+            end: 10,
+            line: 5,
+            column: 3,
+        };
+
+        assert_eq!(span.start, 0);
+        assert_eq!(span.end, 10);
+        assert_eq!(span.line, 5);
+        assert_eq!(span.column, 3);
+    }
+
+    #[test]
+    fn test_span_zero_length() {
+        let span = Span {
+            start: 5,
+            end: 5,
+            line: 1,
+            column: 0,
+        };
+
+        assert_eq!(span.start, span.end);
+    }
+
+    #[test]
+    fn test_symbol_info_creation() {
+        let span = Span {
+            start: 0,
+            end: 5,
+            line: 1,
+            column: 0,
+        };
+
+        let symbol = SymbolInfo {
+            name: "test".to_string(),
+            kind: SymbolKind::Function,
+            type_annotation: Some("number".to_string()),
+            span,
+            is_exported: false,
+            references: vec![],
+        };
+
+        assert_eq!(symbol.name, "test");
+        assert_eq!(symbol.kind, SymbolKind::Function);
+        assert!(symbol.type_annotation.is_some());
+    }
+
+    #[test]
+    fn test_symbol_info_clone() {
+        let span = Span {
+            start: 0,
+            end: 5,
+            line: 1,
+            column: 0,
+        };
+
+        let symbol1 = SymbolInfo {
+            name: "test".to_string(),
+            kind: SymbolKind::Function,
+            type_annotation: None,
+            span,
+            is_exported: true,
+            references: vec![],
+        };
+
+        let symbol2 = symbol1.clone();
+
+        assert_eq!(symbol2.name, symbol1.name);
+        assert_eq!(symbol2.kind, symbol1.kind);
+        assert_eq!(symbol2.is_exported, symbol1.is_exported);
+    }
+
+    #[test]
+    fn test_type_check_result_creation() {
+        let result = TypeCheckResult {
+            diagnostics: vec![],
+            symbol_info: None,
+        };
+
+        assert!(result.diagnostics.is_empty());
+        assert!(result.symbol_info.is_none());
+    }
+
+    #[test]
+    fn test_type_check_result_with_diagnostics() {
+        let span = Span {
+            start: 0,
+            end: 5,
+            line: 1,
+            column: 0,
+        };
+        let diag = Diagnostic::new(span, DiagnosticLevel::Error, "Error".to_string());
+
+        let result = TypeCheckResult {
+            diagnostics: vec![diag],
+            symbol_info: None,
+        };
+
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_symbol_kind_variants() {
+        use crate::traits::type_analysis::SymbolKind;
+
+        let kinds = vec![
+            SymbolKind::Variable,
+            SymbolKind::Const,
+            SymbolKind::Function,
+            SymbolKind::Class,
+            SymbolKind::Interface,
+            SymbolKind::Type,
+            SymbolKind::Enum,
+            SymbolKind::Property,
+            SymbolKind::Method,
+            SymbolKind::Parameter,
+            SymbolKind::Namespace,
+        ];
+
+        assert_eq!(kinds.len(), 11);
+    }
+}
+
+#[test]
+fn test_type_check_result_creation() {
+    let result = TypeCheckResult {
+        diagnostics: vec![],
+        symbol_info: None,
+    };
+
+    assert!(result.diagnostics.is_empty());
+    assert!(result.symbol_info.is_none());
+}
+
+#[test]
+fn test_type_check_result_with_diagnostics() {
+    let span = Span {
+        start: 0,
+        end: 5,
+        line: 1,
+        column: 0,
+    };
+    let diag = Diagnostic::new(span, DiagnosticLevel::Error, "Error".to_string());
+
+    let result = TypeCheckResult {
+        diagnostics: vec![diag],
+        symbol_info: None,
+    };
+
+    assert_eq!(result.diagnostics.len(), 1);
+}
+
+#[test]
+fn test_symbol_kind_variants() {
+    use crate::traits::type_analysis::SymbolKind;
+
+    let kinds = vec![
+        SymbolKind::Variable,
+        SymbolKind::Const,
+        SymbolKind::Function,
+        SymbolKind::Class,
+        SymbolKind::Interface,
+        SymbolKind::Type,
+        SymbolKind::Enum,
+        SymbolKind::Property,
+        SymbolKind::Method,
+        SymbolKind::Parameter,
+        SymbolKind::Namespace,
+    ];
+
+    assert_eq!(kinds.len(), 11);
 }

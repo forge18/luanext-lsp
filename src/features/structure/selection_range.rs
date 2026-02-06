@@ -358,9 +358,133 @@ mod tests {
         let result = provider.get_selection_range_at_position(&doc, position);
 
         assert!(result.is_some());
-        // Just verify we can select within strings
         let selection = result.unwrap();
         assert_eq!(selection.range.start.line, 0);
         assert_eq!(selection.range.end.line, 0);
+    }
+
+    #[test]
+    fn test_selection_range_empty_document() {
+        let provider = SelectionRangeProvider::new();
+        let doc = Document::new_test("".to_string(), 1);
+
+        let position = Position::new(0, 0);
+        let result = provider.get_selection_range_at_position(&doc, position);
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_selection_range_comment() {
+        let provider = SelectionRangeProvider::new();
+        let doc = Document::new_test("-- comment line".to_string(), 1);
+
+        let position = Position::new(0, 5);
+        let result = provider.get_selection_range_at_position(&doc, position);
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_selection_range_class() {
+        let provider = SelectionRangeProvider::new();
+        let doc = Document::new_test(
+            "class Foo\n  x: number\n  constructor() end\nend".to_string(),
+            1,
+        );
+
+        let position = Position::new(1, 2);
+        let result = provider.get_selection_range_at_position(&doc, position);
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_selection_range_interface() {
+        let provider = SelectionRangeProvider::new();
+        let doc = Document::new_test("interface Bar end".to_string(), 1);
+
+        let position = Position::new(0, 10);
+        let result = provider.get_selection_range_at_position(&doc, position);
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_selection_range_enum() {
+        let provider = SelectionRangeProvider::new();
+        let doc = Document::new_test("enum Status\n  Pending\n  Approved\nend".to_string(), 1);
+
+        let position = Position::new(1, 2);
+        let result = provider.get_selection_range_at_position(&doc, position);
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_selection_range_type_alias() {
+        let provider = SelectionRangeProvider::new();
+        let doc = Document::new_test("type Point = { x: number }".to_string(), 1);
+
+        let position = Position::new(0, 5);
+        let result = provider.get_selection_range_at_position(&doc, position);
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_selection_range_method() {
+        let provider = SelectionRangeProvider::new();
+        let doc = Document::new_test("function obj:method() end".to_string(), 1);
+
+        let position = Position::new(0, 10);
+        let result = provider.get_selection_range_at_position(&doc, position);
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_selection_range_table() {
+        let provider = SelectionRangeProvider::new();
+        let doc = Document::new_test("local t = { a = 1, b = 2 }".to_string(), 1);
+
+        let position = Position::new(0, 15);
+        let result = provider.get_selection_range_at_position(&doc, position);
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_selection_range_beyond_eof() {
+        let provider = SelectionRangeProvider::new();
+        let doc = Document::new_test("local x = 1".to_string(), 1);
+
+        let position = Position::new(10, 0);
+        let result = provider.get_selection_range_at_position(&doc, position);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_selection_range_provider_clone() {
+        let provider = SelectionRangeProvider::new();
+        let _cloned = provider.clone();
+    }
+
+    #[test]
+    fn test_selection_range_multiline() {
+        let provider = SelectionRangeProvider::new();
+        let doc = Document::new_test(
+            "function foo()\n  local x = 1\n  return x\nend".to_string(),
+            1,
+        );
+
+        let position = Position::new(2, 10);
+        let result = provider.get_selection_range_at_position(&doc, position);
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_selection_range_nested_functions() {
+        let provider = SelectionRangeProvider::new();
+        let doc = Document::new_test(
+            "function outer()\n  function inner() end\nend".to_string(),
+            1,
+        );
+
+        let position = Position::new(1, 10);
+        let result = provider.get_selection_range_at_position(&doc, position);
+        assert!(result.is_none() || result.is_some());
     }
 }

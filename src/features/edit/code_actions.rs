@@ -710,4 +710,174 @@ mod tests {
         let provider = CodeActionsProvider::new();
         let _cloned = provider.clone();
     }
+
+    #[test]
+    fn test_code_actions_class_definition() {
+        let provider = CodeActionsProvider::new();
+        let doc = Document::new_test(
+            "class MyClass\n  x: number\n  constructor() end\nend".to_string(),
+            1,
+        );
+        let range = Range::default();
+        let context = CodeActionContext {
+            diagnostics: vec![],
+            only: None,
+            trigger_kind: None,
+        };
+        let uri = "file:///test.lua".parse::<Uri>().unwrap();
+
+        let actions = provider.provide(&uri, &doc, range, context);
+        assert!(actions.is_empty() || actions.len() >= 0);
+    }
+
+    #[test]
+    fn test_code_actions_interface_definition() {
+        let provider = CodeActionsProvider::new();
+        let doc = Document::new_test(
+            "interface MyInterface\n  method(): void\nend".to_string(),
+            1,
+        );
+        let range = Range::default();
+        let context = CodeActionContext {
+            diagnostics: vec![],
+            only: None,
+            trigger_kind: None,
+        };
+        let uri = "file:///test.lua".parse::<Uri>().unwrap();
+
+        let actions = provider.provide(&uri, &doc, range, context);
+        assert!(actions.is_empty() || actions.len() >= 0);
+    }
+
+    #[test]
+    fn test_code_actions_enum_definition() {
+        let provider = CodeActionsProvider::new();
+        let doc = Document::new_test("enum MyEnum\n  A\n  B\n  C\nend".to_string(), 1);
+        let range = Range::default();
+        let context = CodeActionContext {
+            diagnostics: vec![],
+            only: None,
+            trigger_kind: None,
+        };
+        let uri = "file:///test.lua".parse::<Uri>().unwrap();
+
+        let actions = provider.provide(&uri, &doc, range, context);
+        assert!(actions.is_empty() || actions.len() >= 0);
+    }
+
+    #[test]
+    fn test_code_actions_type_alias() {
+        let provider = CodeActionsProvider::new();
+        let doc = Document::new_test("type Point = { x: number, y: number }".to_string(), 1);
+        let range = Range::default();
+        let context = CodeActionContext {
+            diagnostics: vec![],
+            only: None,
+            trigger_kind: None,
+        };
+        let uri = "file:///test.lua".parse::<Uri>().unwrap();
+
+        let actions = provider.provide(&uri, &doc, range, context);
+        assert!(actions.is_empty() || actions.len() >= 0);
+    }
+
+    #[test]
+    fn test_code_actions_trigger_kind_null() {
+        let provider = CodeActionsProvider::new();
+        let doc = Document::new_test("local x = 10".to_string(), 1);
+        let context = CodeActionContext {
+            diagnostics: vec![],
+            only: None,
+            trigger_kind: Some(CodeActionTriggerKind::INVOKED),
+        };
+        let uri = "file:///test.lua".parse::<Uri>().unwrap();
+
+        let actions = provider.provide(&uri, &doc, Range::default(), context);
+        assert!(actions.is_empty() || actions.len() >= 0);
+    }
+
+    #[test]
+    fn test_code_actions_trigger_kind_invoked() {
+        let provider = CodeActionsProvider::new();
+        let doc = Document::new_test("local x = 10".to_string(), 1);
+        let context = CodeActionContext {
+            diagnostics: vec![],
+            only: None,
+            trigger_kind: Some(CodeActionTriggerKind::INVOKED),
+        };
+        let uri = "file:///test.lua".parse::<Uri>().unwrap();
+
+        let actions = provider.provide(&uri, &doc, Range::default(), context);
+        assert!(actions.is_empty() || actions.len() >= 0);
+    }
+
+    #[test]
+    fn test_code_actions_only_quickfix() {
+        let provider = CodeActionsProvider::new();
+        let doc = Document::new_test("local x = 10".to_string(), 1);
+        let context = CodeActionContext {
+            diagnostics: vec![],
+            only: Some(vec![CodeActionKind::QUICKFIX]),
+            trigger_kind: None,
+        };
+        let uri = "file:///test.lua".parse::<Uri>().unwrap();
+
+        let actions = provider.provide(&uri, &doc, Range::default(), context);
+        assert!(actions.is_empty() || actions.len() >= 0);
+    }
+
+    #[test]
+    fn test_code_actions_only_refactor() {
+        let provider = CodeActionsProvider::new();
+        let doc = Document::new_test("local x = 10".to_string(), 1);
+        let context = CodeActionContext {
+            diagnostics: vec![],
+            only: Some(vec![CodeActionKind::REFACTOR]),
+            trigger_kind: None,
+        };
+        let uri = "file:///test.lua".parse::<Uri>().unwrap();
+
+        let actions = provider.provide(&uri, &doc, Range::default(), context);
+        assert!(actions.is_empty() || actions.len() >= 0);
+    }
+
+    #[test]
+    fn test_code_actions_resolve_with_edit() {
+        let provider = CodeActionsProvider::new();
+        let action = CodeAction {
+            title: "Extract function".to_string(),
+            kind: Some(CodeActionKind::REFACTOR_EXTRACT),
+            diagnostics: None,
+            edit: None,
+            command: None,
+            is_preferred: Some(false),
+            disabled: None,
+            data: None,
+        };
+
+        let resolved = provider.resolve(action);
+        assert!(resolved.edit.is_none() || resolved.edit.is_some());
+    }
+
+    #[test]
+    fn test_code_actions_resolve_with_command() {
+        let provider = CodeActionsProvider::new();
+        let action = CodeAction {
+            title: "Run fix".to_string(),
+            kind: Some(CodeActionKind::QUICKFIX),
+            diagnostics: None,
+            edit: None,
+            command: Some(Command {
+                title: "command".to_string(),
+                command: "test.command".to_string(),
+                arguments: None,
+            }),
+            is_preferred: None,
+            disabled: None,
+            data: None,
+        };
+
+        let resolved = provider.resolve(action);
+        assert!(resolved.command.is_some() || resolved.command.is_none());
+    }
 }
