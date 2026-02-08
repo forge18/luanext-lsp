@@ -59,7 +59,7 @@ impl RenameProvider {
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
 
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
         let ast = parser.parse().ok()?;
 
         // Create a map to store edits for each file
@@ -116,7 +116,7 @@ impl RenameProvider {
                 let handler = Arc::new(CollectingDiagnosticHandler::new());
                 let mut lexer = Lexer::new(&source_doc.text, handler.clone(), &interner);
                 if let Ok(tokens) = lexer.tokenize() {
-                    let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+                    let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
                     if let Ok(ast) = parser.parse() {
                         let mut source_occurrences = Vec::new();
                         self.find_all_occurrences(
@@ -180,7 +180,7 @@ impl RenameProvider {
                         specifiers,
                         source: _,
                     } => {
-                        for spec in specifiers {
+                        for spec in specifiers.iter() {
                             let exported_name = spec.exported.as_ref().unwrap_or(&spec.local);
                             if interner.resolve(exported_name.node) == symbol_name
                                 || interner.resolve(spec.local.node) == symbol_name
@@ -632,14 +632,14 @@ impl RenameProvider {
                 self.find_occurrences_in_expression(&var_decl.initializer, name, refs, interner);
             }
             Statement::Function(func_decl) => {
-                for stmt in &func_decl.body.statements {
+                for stmt in func_decl.body.statements.iter() {
                     self.find_occurrences_in_statement(stmt, name, refs, interner);
                 }
             }
             Statement::If(if_stmt) => {
                 self.find_occurrences_in_expression(&if_stmt.condition, name, refs, interner);
                 self.find_all_occurrences(&if_stmt.then_block.statements, name, refs, interner);
-                for else_if in &if_stmt.else_ifs {
+                for else_if in if_stmt.else_ifs.iter() {
                     self.find_occurrences_in_expression(&else_if.condition, name, refs, interner);
                     self.find_all_occurrences(&else_if.block.statements, name, refs, interner);
                 }
@@ -652,7 +652,7 @@ impl RenameProvider {
                 self.find_all_occurrences(&while_stmt.body.statements, name, refs, interner);
             }
             Statement::Return(ret) => {
-                for expr in &ret.values {
+                for expr in ret.values.iter() {
                     self.find_occurrences_in_expression(expr, name, refs, interner);
                 }
             }
@@ -685,7 +685,7 @@ impl RenameProvider {
             }
             ExpressionKind::Call(callee, args, _type_args) => {
                 self.find_occurrences_in_expression(callee, name, refs, interner);
-                for arg in args {
+                for arg in args.iter() {
                     self.find_occurrences_in_expression(&arg.value, name, refs, interner);
                 }
             }

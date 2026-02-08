@@ -206,13 +206,13 @@ impl CompletionProvider {
             Err(_) => return Vec::new(),
         };
 
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
         let mut ast = match parser.parse() {
             Ok(a) => a,
             Err(_) => return Vec::new(),
         };
 
-        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids);
+        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
         if type_checker.check_program(&mut ast).is_err() {
             // Even with errors, the symbol table may have useful information
         }

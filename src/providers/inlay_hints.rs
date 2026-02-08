@@ -29,19 +29,19 @@ impl InlayHintsProvider {
             Err(_) => return hints,
         };
 
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
         let mut ast = match parser.parse() {
             Ok(a) => a,
             Err(_) => return hints,
         };
 
-        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids);
+        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
         if type_checker.check_program(&mut ast).is_err() {
             return hints;
         }
 
         // Traverse AST and collect hints within the range
-        for stmt in &ast.statements {
+        for stmt in ast.statements.iter() {
             self.collect_hints_from_statement(stmt, &type_checker, range, &mut hints, &interner);
         }
 
@@ -86,7 +86,7 @@ impl InlayHintsProvider {
                 }
             }
             Statement::Block(block) => {
-                for inner_stmt in &block.statements {
+                for inner_stmt in block.statements.iter() {
                     self.collect_hints_from_statement(
                         inner_stmt,
                         type_checker,

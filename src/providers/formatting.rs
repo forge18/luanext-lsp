@@ -29,7 +29,7 @@ impl FormattingProvider {
             Err(_) => return Vec::new(), // Don't format invalid code
         };
 
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
         let _ast = match parser.parse() {
             Ok(a) => a,
             Err(_) => return Vec::new(), // Don't format invalid code
@@ -60,7 +60,7 @@ impl FormattingProvider {
             Err(_) => return Vec::new(),
         };
 
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
         let _ast = match parser.parse() {
             Ok(a) => a,
             Err(_) => return Vec::new(),

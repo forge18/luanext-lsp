@@ -190,6 +190,9 @@ impl Default for CoreTypeChecker {
 
 impl TypeChecker for CoreTypeChecker {
     fn check_document(&self, text: &str) -> TypeCheckResult {
+        // Use Box::leak for 'static arena (memory leak but acceptable for LSP)
+        let arena: &'static bumpalo::Bump = Box::leak(Box::new(bumpalo::Bump::new()));
+
         // Create string interner and common identifiers
         let (interner, common) = StringInterner::new_with_common_identifiers();
 
@@ -226,6 +229,7 @@ impl TypeChecker for CoreTypeChecker {
             diagnostic_handler.clone() as Arc<dyn typedlua_parser::DiagnosticHandler>,
             &interner,
             &common,
+            arena,
         );
 
         let mut ast = match parser.parse() {
@@ -252,6 +256,7 @@ impl TypeChecker for CoreTypeChecker {
                 as Arc<dyn typedlua_typechecker::cli::diagnostics::DiagnosticHandler>,
             &interner,
             &common,
+            arena,
         );
         match type_checker.check_program(&mut ast) {
             Ok(_) => {
@@ -312,6 +317,9 @@ impl Default for CoreDiagnosticCollector {
 
 impl DiagnosticCollector for CoreDiagnosticCollector {
     fn collect_diagnostics(&self, text: &str) -> Vec<Diagnostic> {
+        // Use Box::leak for 'static arena (memory leak but acceptable for LSP)
+        let arena: &'static bumpalo::Bump = Box::leak(Box::new(bumpalo::Bump::new()));
+
         let (interner, common) = StringInterner::new_with_common_identifiers();
         let diagnostic_handler = Arc::new(CollectingDiagnosticHandler::new());
 
@@ -338,6 +346,7 @@ impl DiagnosticCollector for CoreDiagnosticCollector {
             diagnostic_handler.clone() as Arc<dyn typedlua_parser::DiagnosticHandler>,
             &interner,
             &common,
+            arena,
         );
         let _ast = parser.parse();
 

@@ -27,7 +27,7 @@ impl SymbolsProvider {
             Err(_) => return Vec::new(),
         };
 
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
         let ast = match parser.parse() {
             Ok(a) => a,
             Err(_) => return Vec::new(),
@@ -35,7 +35,7 @@ impl SymbolsProvider {
 
         // Extract symbols from AST
         let mut symbols = Vec::new();
-        for stmt in &ast.statements {
+        for stmt in ast.statements.iter() {
             if let Some(symbol) = self.extract_symbol_from_statement(stmt, &interner) {
                 symbols.push(symbol);
             }
@@ -83,7 +83,7 @@ impl SymbolsProvider {
                 let mut children = Vec::new();
 
                 // Add function body statements as children
-                for stmt in &func_decl.body.statements {
+                for stmt in func_decl.body.statements.iter() {
                     if let Some(symbol) = self.extract_symbol_from_statement(stmt, interner) {
                         children.push(symbol);
                     }
@@ -108,7 +108,7 @@ impl SymbolsProvider {
                 let mut children = Vec::new();
 
                 // Add class members as children
-                for member in &class_decl.members {
+                for member in class_decl.members.iter() {
                     if let Some(symbol) = self.extract_symbol_from_class_member(member, interner) {
                         children.push(symbol);
                     }

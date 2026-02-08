@@ -36,14 +36,14 @@ impl CodeActionsProvider {
             Err(_) => return actions,
         };
 
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
         let ast = match parser.parse() {
             Ok(a) => a,
             Err(_) => return actions,
         };
 
         // Get diagnostics from context
-        for diagnostic in &context.diagnostics {
+        for diagnostic in context.diagnostics.iter() {
             // Quick fix: Add type annotation for variables without types
             if diagnostic.message.contains("type annotation") {
                 if let Some(action) = self.quick_fix_add_type_annotation(uri, diagnostic) {
@@ -236,7 +236,7 @@ impl CodeActionsProvider {
         let mut edits = Vec::new();
 
         // Find all variables without type annotations
-        for stmt in &ast.statements {
+        for stmt in ast.statements.iter() {
             self.collect_missing_type_annotations(stmt, &mut edits);
         }
 
@@ -359,32 +359,32 @@ impl CodeActionsProvider {
             }
             Statement::Function(func_decl) => {
                 // Recursively check function body
-                for body_stmt in &func_decl.body.statements {
+                for body_stmt in func_decl.body.statements.iter() {
                     self.collect_missing_type_annotations(body_stmt, edits);
                 }
             }
             Statement::If(if_stmt) => {
-                for then_stmt in &if_stmt.then_block.statements {
+                for then_stmt in if_stmt.then_block.statements.iter() {
                     self.collect_missing_type_annotations(then_stmt, edits);
                 }
-                for else_if in &if_stmt.else_ifs {
-                    for stmt in &else_if.block.statements {
+                for else_if in if_stmt.else_ifs.iter() {
+                    for stmt in else_if.block.statements.iter() {
                         self.collect_missing_type_annotations(stmt, edits);
                     }
                 }
                 if let Some(else_block) = &if_stmt.else_block {
-                    for stmt in &else_block.statements {
+                    for stmt in else_block.statements.iter() {
                         self.collect_missing_type_annotations(stmt, edits);
                     }
                 }
             }
             Statement::While(while_stmt) => {
-                for body_stmt in &while_stmt.body.statements {
+                for body_stmt in while_stmt.body.statements.iter() {
                     self.collect_missing_type_annotations(body_stmt, edits);
                 }
             }
             Statement::Block(block) => {
-                for body_stmt in &block.statements {
+                for body_stmt in block.statements.iter() {
                     self.collect_missing_type_annotations(body_stmt, edits);
                 }
             }

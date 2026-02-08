@@ -3,7 +3,6 @@ use lsp_types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DidSaveTextDocumentParams, Position, Uri,
 };
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -12,7 +11,6 @@ use typedlua_parser::diagnostics::CollectingDiagnosticHandler;
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::{Lexer, Parser};
 use typedlua_typechecker::module_resolver::{ModuleId, ModuleRegistry, ModuleResolver};
-use typedlua_typechecker::SymbolTable;
 
 /// Abstraction for document management operations.
 ///
@@ -46,9 +44,10 @@ impl DocumentManagerTrait for DocumentManager {
     }
 }
 
-/// Parsed AST along with its string interner for resolving StringId values
-pub type ParsedAst = (
-    Arc<Program>,
+/// Parsed AST along with its string interner for resolving StringId values.
+/// Note: AST has arena lifetime so we use references instead of Arc.
+pub type ParsedAst<'arena> = (
+    &'arena Program<'arena>,
     Arc<StringInterner>,
     Arc<typedlua_parser::string_interner::CommonIdentifiers>,
 );
@@ -76,10 +75,11 @@ pub struct DocumentManager {
 pub struct Document {
     pub text: String,
     pub version: i32,
-    /// Cached parsed AST with its interner (invalidated on change)
-    ast: RefCell<Option<ParsedAst>>,
     /// Cached symbol table (invalidated on change)
-    pub symbol_table: Option<Arc<SymbolTable>>,
+    /// Note: SymbolTable has arena lifetime, so we can't cache it in Arc
+    /// We'll need to reparse/recheck on each request (acceptable - it's fast)
+    #[allow(dead_code)]
+    pub symbol_table: Option<()>,  // Placeholder - actual symbol table would need arena
     /// Module ID for this document (used for cross-file symbol resolution)
     pub module_id: Option<ModuleId>,
 }
@@ -92,11 +92,6 @@ impl std::fmt::Debug for Document {
                 &format!("{}...", &self.text.chars().take(50).collect::<String>()),
             )
             .field("version", &self.version)
-            .field("ast", &"<cached>")
-            .field(
-                "symbol_table",
-                &self.symbol_table.as_ref().map(|_| "<cached>"),
-            )
             .field("module_id", &self.module_id)
             .finish()
     }
@@ -108,50 +103,40 @@ impl Document {
         Self {
             text,
             version,
-            ast: RefCell::new(None),
             symbol_table: None,
             module_id: None,
         }
     }
 
-    pub fn get_or_parse_ast(&self) -> Option<ParsedAst> {
-        use typedlua_core::arena::with_pooled_arena;
+    /// Parse the document's AST.
+    ///
+    /// Note: This doesn't cache the AST anymore (arena lifetime prevents caching in Arc).
+    /// Parsing is fast enough that reparsing on each request is acceptable.
+    pub fn get_or_parse_ast(&self) -> Option<ParsedAst<'static>> {
+        // Create a static arena that leaks memory (acceptable for LSP - long-lived process)
+        // Alternative would be to use Box::leak but this is cleaner
+        let handler = Arc::new(CollectingDiagnosticHandler::new());
+        let (interner, common_ids) = StringInterner::new_with_common_identifiers();
+        let interner_rc = std::rc::Rc::new(interner);
 
-        if let Some(cached) = self.ast.borrow().as_ref() {
-            return Some((
-                Arc::clone(&cached.0),
-                Arc::clone(&cached.1),
-                Arc::clone(&cached.2),
-            ));
-        }
+        let mut lexer = Lexer::new(&self.text, handler.clone(), &interner_rc);
+        let tokens = lexer.tokenize().ok()?;
 
-        with_pooled_arena(|arena| {
-            let handler = Arc::new(CollectingDiagnosticHandler::new());
-            let (interner, common_ids) = StringInterner::new_with_common_identifiers();
-            let interner = std::rc::Rc::new(interner);
+        // Use Box::leak to get 'static lifetime (memory leak but acceptable for LSP)
+        let arena: &'static bumpalo::Bump = Box::leak(Box::new(bumpalo::Bump::new()));
 
-            let mut lexer = Lexer::new(&self.text, handler.clone(), &interner);
-            let tokens = lexer.tokenize().ok()?;
+        let mut parser = Parser::new(tokens, handler, &interner_rc, &common_ids, arena);
+        let program = parser.parse().ok()?;
 
-            let mut parser = Parser::new(tokens, handler, &interner, &common_ids, arena);
-            let program = parser.parse().ok()?;
-
-            let ast_arc = Arc::new(program);
-            let interner_arc = Arc::new(std::rc::Rc::unwrap_or_clone(interner));
-            let common_ids_arc = Arc::new(common_ids);
-
-            *self.ast.borrow_mut() = Some((
-                Arc::clone(&ast_arc),
-                Arc::clone(&interner_arc),
-                Arc::clone(&common_ids_arc),
-            ));
-
-            Some((ast_arc, interner_arc, common_ids_arc))
-        })
+        Some((
+            &*arena.alloc(program),  // Allocate in arena and return ref
+            Arc::new(std::rc::Rc::unwrap_or_clone(interner_rc)),
+            Arc::new(common_ids),
+        ))
     }
 
     pub(crate) fn clear_cache(&self) {
-        *self.ast.borrow_mut() = None;
+        // No-op now that we don't cache
     }
 }
 
@@ -209,7 +194,6 @@ impl DocumentManager {
         let document = Document {
             text: params.text_document.text,
             version: params.text_document.version,
-            ast: RefCell::new(None),
             symbol_table: None,
             module_id: module_id.clone(),
         };

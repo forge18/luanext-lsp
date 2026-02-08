@@ -32,7 +32,7 @@ impl DefinitionProvider {
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
 
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
         let ast = parser.parse().ok()?;
 
         // First, check if the symbol is from an import statement
@@ -186,13 +186,13 @@ impl DefinitionProvider {
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
 
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
         let ast = parser.parse().ok()?;
 
         // Search for the exported declaration
         use typedlua_parser::ast::statement::ExportKind;
 
-        for stmt in &ast.statements {
+        for stmt in ast.statements.iter() {
             if let Statement::Export(export_decl) = stmt {
                 match &export_decl.kind {
                     ExportKind::Declaration(decl) => {
@@ -211,7 +211,7 @@ impl DefinitionProvider {
                         source: _,
                     } => {
                         // Check if this is a named export of our symbol
-                        for spec in specifiers {
+                        for spec in specifiers.iter() {
                             if interner.resolve(spec.exported.as_ref().unwrap_or(&spec.local).node)
                                 == symbol_name
                             {

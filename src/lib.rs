@@ -5,7 +5,7 @@
 #![allow(deprecated)]
 
 // Arena pooling for LSP
-mod arena_pool;
+pub mod arena_pool;
 
 // Trait abstractions for type system components
 pub mod traits;

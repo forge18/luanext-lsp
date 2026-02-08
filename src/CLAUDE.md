@@ -7,7 +7,16 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #7849 | 6:42 PM | ✅ | Added Arena Pool Module to LSP Crate | ~316 |
+| #7888 | 6:48 PM | ✅ | Made arena_pool Module Public in LSP Library | ~275 |
+| #7875 | 6:46 PM | 🔄 | Fixed Iterator Pattern Usage Across LSP Crate | ~360 |
+| #7866 | 6:45 PM | 🔴 | Fixed Iterator Patterns for Arena-Allocated AST Statements | ~307 |
+| #7855 | 6:43 PM | 🔄 | Removed AST Caching from Document Structure | ~304 |
+| #7854 | " | 🔵 | LSP Already Uses Arena Pooling for AST Parsing | ~498 |
+| #7853 | " | 🔄 | Removed Unused AST and Symbol Table Fields from Document Debug Implementation | ~87 |
+| #7852 | 6:42 PM | 🔄 | Removed AST Cache and Symbol Table from Document Struct | ~429 |
+| #7851 | " | 🔄 | Updated ParsedAst Type to Use Arena Lifetimes | ~299 |
+| #7850 | " | 🔵 | LSP Document Manager Architecture and AST Caching | ~479 |
+| #7849 | " | ✅ | Added Arena Pool Module to LSP Crate | ~316 |
 | #7848 | " | 🟣 | Created Arena Pooling Module for LSP Server | ~436 |
 | #7845 | 6:41 PM | 🔄 | Updated Config Module Import Paths in LSP Crate | ~297 |
 | #7844 | " | 🔄 | Updated Diagnostics Import Paths in LSP Crate | ~294 |
