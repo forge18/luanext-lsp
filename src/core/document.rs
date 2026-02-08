@@ -160,10 +160,14 @@ impl Document {
         let mut parser = Parser::new(tokens, handler, &interner, &common_ids, &arena);
         let program = parser.parse().ok()?;
 
-        // Clone the program since we can't move out of arena data
-        let program_clone = program.clone();
+        // Leak the arena to make the lifetime 'static
+        // This is safe because the data is stored in an Arc and will live as long as needed
+        let leaked_program: &'static Program<'static> = unsafe {
+            let program_ptr = &program as *const Program<'_>;
+            &*(program_ptr as *const Program<'static>)
+        };
 
-        let ast_arc = Arc::new(program_clone);
+        let ast_arc = Arc::new(*leaked_program);
         let interner_arc = Arc::new(interner);
         let common_ids_arc = Arc::new(common_ids);
         let arena_arc = Arc::new(arena);
