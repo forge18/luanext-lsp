@@ -6,7 +6,7 @@ use std::sync::Arc;
 use typedlua_parser::ast::statement::{ClassMember, OperatorKind, Statement};
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::{Lexer, Parser, Span};
-use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
+use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
 /// Provides document symbols (outline view)
 pub struct SymbolsProvider;

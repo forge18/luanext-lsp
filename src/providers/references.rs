@@ -9,7 +9,7 @@ use typedlua_parser::ast::{
 };
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::{Lexer, Parser, Span};
-use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
+use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
 /// Provides find-references functionality
 pub struct ReferencesProvider;
@@ -664,8 +664,8 @@ impl ReferencesProviderTrait for ReferencesProvider {
         position: Position,
         include_declaration: bool,
     ) -> Vec<Location> {
-        use typedlua_typechecker::config::CompilerOptions;
-        use typedlua_typechecker::fs::MockFileSystem;
+        use typedlua_typechecker::cli::config::CompilerOptions;
+        use typedlua_typechecker::cli::fs::MockFileSystem;
         use typedlua_typechecker::module_resolver::{ModuleRegistry, ModuleResolver};
 
         let workspace_root = std::path::PathBuf::from("/test");

@@ -115,6 +115,8 @@ impl Document {
     }
 
     pub fn get_or_parse_ast(&self) -> Option<ParsedAst> {
+        use typedlua_core::arena::with_pooled_arena;
+
         if let Some(cached) = self.ast.borrow().as_ref() {
             return Some((
                 Arc::clone(&cached.0),
@@ -123,24 +125,29 @@ impl Document {
             ));
         }
 
-        let handler = Arc::new(CollectingDiagnosticHandler::new());
-        let (mut interner, common_ids) = StringInterner::new_with_common_identifiers();
-        let mut lexer = Lexer::new(&self.text, handler.clone(), &mut interner);
-        let tokens = lexer.tokenize().ok()?;
+        with_pooled_arena(|arena| {
+            let handler = Arc::new(CollectingDiagnosticHandler::new());
+            let (interner, common_ids) = StringInterner::new_with_common_identifiers();
+            let interner = std::rc::Rc::new(interner);
 
-        let mut parser = Parser::new(tokens, handler, &mut interner, &common_ids);
-        let program = parser.parse().ok()?;
+            let mut lexer = Lexer::new(&self.text, handler.clone(), &interner);
+            let tokens = lexer.tokenize().ok()?;
 
-        let ast_arc = Arc::new(program);
-        let interner_arc = Arc::new(interner);
-        let common_ids_arc = Arc::new(common_ids);
-        *self.ast.borrow_mut() = Some((
-            Arc::clone(&ast_arc),
-            Arc::clone(&interner_arc),
-            Arc::clone(&common_ids_arc),
-        ));
+            let mut parser = Parser::new(tokens, handler, &interner, &common_ids, arena);
+            let program = parser.parse().ok()?;
 
-        Some((ast_arc, interner_arc, common_ids_arc))
+            let ast_arc = Arc::new(program);
+            let interner_arc = Arc::new(std::rc::Rc::unwrap_or_clone(interner));
+            let common_ids_arc = Arc::new(common_ids);
+
+            *self.ast.borrow_mut() = Some((
+                Arc::clone(&ast_arc),
+                Arc::clone(&interner_arc),
+                Arc::clone(&common_ids_arc),
+            ));
+
+            Some((ast_arc, interner_arc, common_ids_arc))
+        })
     }
 
     pub(crate) fn clear_cache(&self) {
@@ -168,8 +175,8 @@ impl DocumentManager {
     /// Create a test document manager with mock module system
     #[cfg(test)]
     pub fn new_test() -> Self {
-        use typedlua_typechecker::config::CompilerOptions;
-        use typedlua_typechecker::fs::MockFileSystem;
+        use typedlua_typechecker::cli::config::CompilerOptions;
+        use typedlua_typechecker::cli::fs::MockFileSystem;
 
         let workspace_root = PathBuf::from("/test");
         let fs = Arc::new(MockFileSystem::new());

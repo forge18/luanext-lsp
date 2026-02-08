@@ -7,7 +7,7 @@ use typedlua_parser::ast::expression::{Expression, ExpressionKind};
 use typedlua_parser::ast::statement::Statement;
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::{Lexer, Parser, Span};
-use typedlua_typechecker::diagnostics::CollectingDiagnosticHandler;
+use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
 /// Provides rename functionality
 pub struct RenameProvider;

@@ -4,7 +4,7 @@ use lsp_types::*;
 use std::sync::Arc;
 use typedlua_parser::string_interner::StringInterner;
 use typedlua_parser::{Lexer, Parser, Span};
-use typedlua_typechecker::diagnostics::{
+use typedlua_typechecker::cli::diagnostics::{
     CollectingDiagnosticHandler, DiagnosticHandler, DiagnosticLevel,
 };
 use typedlua_typechecker::TypeChecker;
