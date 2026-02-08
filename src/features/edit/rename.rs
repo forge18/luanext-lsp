@@ -181,7 +181,7 @@ impl RenameProvider {
                         specifiers,
                         source: _,
                     } => {
-                        for spec in specifiers {
+                        for spec in specifiers.iter() {
                             let exported_name = spec.exported.as_ref().unwrap_or(&spec.local);
                             if interner.resolve(exported_name.node) == symbol_name
                                 || interner.resolve(spec.local.node) == symbol_name
@@ -633,14 +633,14 @@ impl RenameProvider {
                 self.find_occurrences_in_expression(&var_decl.initializer, name, refs, interner);
             }
             Statement::Function(func_decl) => {
-                for stmt in &func_decl.body.statements {
+                for stmt in func_decl.body.statements.iter() {
                     self.find_occurrences_in_statement(stmt, name, refs, interner);
                 }
             }
             Statement::If(if_stmt) => {
                 self.find_occurrences_in_expression(&if_stmt.condition, name, refs, interner);
                 self.find_all_occurrences(&if_stmt.then_block.statements, name, refs, interner);
-                for else_if in &if_stmt.else_ifs {
+                for else_if in if_stmt.else_ifs.iter() {
                     self.find_occurrences_in_expression(&else_if.condition, name, refs, interner);
                     self.find_all_occurrences(&else_if.block.statements, name, refs, interner);
                 }
@@ -653,7 +653,7 @@ impl RenameProvider {
                 self.find_all_occurrences(&while_stmt.body.statements, name, refs, interner);
             }
             Statement::Return(ret) => {
-                for expr in &ret.values {
+                for expr in ret.values.iter() {
                     self.find_occurrences_in_expression(expr, name, refs, interner);
                 }
             }
@@ -686,7 +686,7 @@ impl RenameProvider {
             }
             ExpressionKind::Call(callee, args, _typeargs) => {
                 self.find_occurrences_in_expression(callee, name, refs, interner);
-                for arg in args {
+                for arg in args.iter() {
                     self.find_occurrences_in_expression(&arg.value, name, refs, interner);
                 }
             }

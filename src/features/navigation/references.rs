@@ -112,7 +112,7 @@ impl ReferencesProvider {
         references: &mut Vec<Location>,
         interner: &StringInterner,
     ) {
-        for param in &func.parameters {
+        for param in func.parameters.iter() {
             if let Pattern::Identifier(ident) = &param.pattern {
                 if interner.resolve(ident.node) == word {
                     references.push(Location {
@@ -132,7 +132,7 @@ impl ReferencesProvider {
         references: &mut Vec<Location>,
         interner: &StringInterner,
     ) {
-        for stmt in &block.statements {
+        for stmt in block.statements.iter() {
             self.find_references_in_statement(stmt, word, references, interner);
         }
     }
@@ -174,7 +174,7 @@ impl ReferencesProvider {
                 self.find_references_in_arguments(args, word, references, interner);
             }
             ExpressionKind::Object(properties) => {
-                for prop in properties {
+                for prop in properties.iter() {
                     match prop {
                         ObjectProperty::Property { key, value, .. } => {
                             if interner.resolve(key.node) == word {

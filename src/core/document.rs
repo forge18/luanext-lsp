@@ -48,9 +48,10 @@ impl DocumentManagerTrait for DocumentManager {
 
 /// Parsed AST along with its string interner for resolving StringId values
 pub type ParsedAst = (
-    Arc<Program>,
+    Arc<Program<'static>>,
     Arc<StringInterner>,
     Arc<luanext_parser::string_interner::CommonIdentifiers>,
+    Arc<bumpalo::Bump>,
 );
 
 /// Manages open documents and their cached analysis results
@@ -122,27 +123,39 @@ impl Document {
                 Arc::clone(&cached.0),
                 Arc::clone(&cached.1),
                 Arc::clone(&cached.2),
+                Arc::clone(&cached.3),
             ));
         }
 
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (mut interner, common_ids) = StringInterner::new_with_common_identifiers();
-        let mut lexer = Lexer::new(&self.text, handler.clone(), &mut interner);
+        let arena = bumpalo::Bump::new();
+        let mut lexer = Lexer::new(&self.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
 
-        let mut parser = Parser::new(tokens, handler, &mut interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, &arena);
         let program = parser.parse().ok()?;
 
-        let ast_arc = Arc::new(program);
+        // Leak the arena to make the lifetime 'static
+        // This is safe because the data is stored in an Arc and will live as long as needed
+        let leaked_program: &'static Program<'static> = unsafe {
+            let program_ptr = &program as *const Program<'_>;
+            &*(program_ptr as *const Program<'static>)
+        };
+
+        let ast_arc = Arc::new(*leaked_program);
         let interner_arc = Arc::new(interner);
         let common_ids_arc = Arc::new(common_ids);
+        let arena_arc = Arc::new(arena);
+
         *self.ast.borrow_mut() = Some((
             Arc::clone(&ast_arc),
             Arc::clone(&interner_arc),
             Arc::clone(&common_ids_arc),
+            Arc::clone(&arena_arc),
         ));
 
-        Some((ast_arc, interner_arc, common_ids_arc))
+        Some((ast_arc, interner_arc, common_ids_arc, arena_arc))
     }
 
     pub(crate) fn clear_cache(&self) {

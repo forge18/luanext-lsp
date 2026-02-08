@@ -167,7 +167,7 @@ impl SymbolIndex {
                         specifiers,
                         source: _,
                     } => {
-                        for spec in specifiers {
+                        for spec in specifiers.iter() {
                             let local_name = interner.resolve(spec.local.node);
                             let exported_name = spec
                                 .exported
@@ -219,7 +219,7 @@ impl SymbolIndex {
                 {
                     match &import_decl.clause {
                         ImportClause::Named(specs) => {
-                            for spec in specs {
+                            for spec in specs.iter() {
                                 let imported_name = interner.resolve(spec.imported.node);
                                 let local_name = spec
                                     .local
@@ -293,7 +293,7 @@ impl SymbolIndex {
                                 .insert(uri.clone());
 
                             // Handle named imports
-                            for spec in named {
+                            for spec in named.iter() {
                                 let imported_name = interner.resolve(spec.imported.node);
                                 let local_name = spec
                                     .local
@@ -394,7 +394,7 @@ impl SymbolIndex {
                     .push(symbol);
 
                 // Index class members
-                for member in &class_decl.members {
+                for member in class_decl.members.iter() {
                     match member {
                         ClassMember::Property(prop) => {
                             let name = interner.resolve(prop.name.node);
