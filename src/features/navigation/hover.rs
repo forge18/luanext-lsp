@@ -54,10 +54,10 @@ impl HoverProvider {
             let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, arena);
             type_checker.check_program(&mut ast).ok()?;
 
-            // Look up the symbol
-            let symbol = type_checker.lookup_symbol(word)?.clone();
+            // Look up the symbol and format the information while we still have access to it
+            let symbol = type_checker.lookup_symbol(word)?;
 
-            // Format the type information
+            // Format the type information while still in the arena scope (avoid cloning)
             let type_str = Self::format_type(&symbol.typ, &interner);
             let kind_str = match symbol.kind {
                 SymbolKind::Const => "const",
