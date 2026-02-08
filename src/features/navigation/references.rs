@@ -68,7 +68,7 @@ impl ReferencesProvider {
         references: &mut Vec<Location>,
         interner: &StringInterner,
     ) {
-        for stmt in &statements {
+        for stmt in *statements {
             self.find_references_in_statement(stmt, word, references, interner);
         }
     }
@@ -248,7 +248,7 @@ impl ReferencesProvider {
         name: &str,
         interner: &StringInterner,
     ) -> Option<Span> {
-        for stmt in &statements {
+        for stmt in *statements {
             match stmt {
                 Statement::Variable(var_decl) => {
                     if let Pattern::Identifier(ident) = &var_decl.pattern {
