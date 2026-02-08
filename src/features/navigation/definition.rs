@@ -100,16 +100,23 @@ impl DefinitionProvider {
                     }
                     ImportClause::Namespace(ident) => {
                         if interner.resolve(ident.node) == symbol_name {
-                            // For namespace imports, we'd need to handle property access
-                            // For now, just return None
-                            None
+                            // Namespace imports bring the entire module into scope
+                            // Navigate to the module file itself
+                            Some("*".to_string())
                         } else {
                             None
                         }
                     }
-                    ImportClause::TypeOnly(_) => {
-                        // Type-only imports - could handle similarly to Named
-                        None
+                    ImportClause::TypeOnly(specs) => {
+                        // Type-only imports work like named imports for navigation purposes
+                        specs.iter().find_map(|spec| {
+                            let local_name = spec.local.as_ref().unwrap_or(&spec.imported);
+                            if interner.resolve(local_name.node) == symbol_name {
+                                Some(interner.resolve(spec.imported.node))
+                            } else {
+                                None
+                            }
+                        })
                     }
                     ImportClause::Mixed { default, named } => {
                         // Check default import first
@@ -141,6 +148,23 @@ impl DefinitionProvider {
                                 if let Some(target_uri) =
                                     document_manager.module_id_to_uri(&target_module_id)
                                 {
+                                    // For namespace imports ("*"), just return the module location
+                                    if exported_name == "*" {
+                                        return Some(Location {
+                                            uri: target_uri.clone(),
+                                            range: Range {
+                                                start: Position {
+                                                    line: 0,
+                                                    character: 0,
+                                                },
+                                                end: Position {
+                                                    line: 0,
+                                                    character: 0,
+                                                },
+                                            },
+                                        });
+                                    }
+
                                     // Try to get the target document if it's open
                                     if let Some(target_doc) = document_manager.get(target_uri) {
                                         // Parse the target document and find the export
