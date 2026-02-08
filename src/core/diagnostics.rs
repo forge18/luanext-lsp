@@ -39,8 +39,9 @@ impl DiagnosticsProvider {
         };
 
         // Parse the document
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids);
-        let mut ast = match parser.parse() {
+        let arena = Box::leak(Box::new(bumpalo::Bump::new()));
+        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
+        let ast = match parser.parse() {
             Ok(a) => a,
             Err(_) => {
                 // Collect parser diagnostics
@@ -49,8 +50,8 @@ impl DiagnosticsProvider {
         };
 
         // Type check the document
-        let mut type_checker = TypeChecker::new(handler.clone(), &interner, &common_ids);
-        if let Err(_) = type_checker.check_program(&mut ast) {
+        let mut type_checker = TypeChecker::new(handler.clone(), &interner, &common_ids, arena);
+        if let Err(_) = type_checker.check_program(&ast) {
             return Self::convert_diagnostics(handler);
         }
 

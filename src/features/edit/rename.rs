@@ -60,7 +60,8 @@ impl RenameProvider {
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
 
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let arena = Box::leak(Box::new(bumpalo::Bump::new()));
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, arena);
         let ast = parser.parse().ok()?;
 
         // Create a map to store edits for each file
@@ -117,7 +118,8 @@ impl RenameProvider {
                 let handler = Arc::new(CollectingDiagnosticHandler::new());
                 let mut lexer = Lexer::new(&source_doc.text, handler.clone(), &interner);
                 if let Ok(tokens) = lexer.tokenize() {
-                    let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+                    let arena = Box::leak(Box::new(bumpalo::Bump::new()));
+                    let mut parser = Parser::new(tokens, handler, &interner, &common_ids, arena);
                     if let Ok(ast) = parser.parse() {
                         let mut source_occurrences = Vec::new();
                         self.find_all_occurrences(
@@ -280,7 +282,7 @@ impl RenameProvider {
                                     && import_info.imported_name == symbol_name
                                 {
                                     // Parse the document to find all occurrences
-                                    if let Some((ast, interner, _)) = doc.get_or_parse_ast() {
+                                    if let Some((ast, interner, _, _)) = doc.get_or_parse_ast() {
                                         let mut occurrences = Vec::new();
                                         self.find_all_occurrences(
                                             &ast.statements,

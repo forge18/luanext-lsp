@@ -30,13 +30,14 @@ impl InlayHintsProvider {
             Err(_) => return hints,
         };
 
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids);
+        let arena = Box::leak(Box::new(bumpalo::Bump::new()));
+        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
         let mut ast = match parser.parse() {
             Ok(a) => a,
             Err(_) => return hints,
         };
 
-        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids);
+        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, arena);
         if type_checker.check_program(&mut ast).is_err() {
             return hints;
         }

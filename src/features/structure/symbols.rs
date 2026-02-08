@@ -28,7 +28,8 @@ impl SymbolsProvider {
             Err(_) => return Vec::new(),
         };
 
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let arena = Box::leak(Box::new(bumpalo::Bump::new()));
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, arena);
         let ast = match parser.parse() {
             Ok(a) => a,
             Err(_) => return Vec::new(),

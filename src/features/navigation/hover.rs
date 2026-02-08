@@ -46,10 +46,11 @@ impl HoverProvider {
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
 
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids);
+        let arena = Box::leak(Box::new(bumpalo::Bump::new()));
+        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
         let mut ast = parser.parse().ok()?;
 
-        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids);
+        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, arena);
         type_checker.check_program(&mut ast).ok()?;
 
         // Look up the symbol

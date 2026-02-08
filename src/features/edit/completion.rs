@@ -207,14 +207,15 @@ impl CompletionProvider {
             Err(_) => return Vec::new(),
         };
 
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids);
-        let mut ast = match parser.parse() {
+        let arena = Box::leak(Box::new(bumpalo::Bump::new()));
+        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
+        let ast = match parser.parse() {
             Ok(a) => a,
             Err(_) => return Vec::new(),
         };
 
-        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids);
-        if type_checker.check_program(&mut ast).is_err() {
+        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, arena);
+        if type_checker.check_program(&ast).is_err() {
             // Even with errors, the symbol table may have useful information
         }
 

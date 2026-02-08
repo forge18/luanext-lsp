@@ -38,7 +38,8 @@ impl ReferencesProvider {
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
 
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let arena = Box::leak(Box::new(bumpalo::Bump::new()));
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, arena);
         let ast = parser.parse().ok()?;
 
         let mut references = Vec::new();

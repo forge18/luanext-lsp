@@ -48,7 +48,7 @@ impl DocumentManagerTrait for DocumentManager {
 
 /// Parsed AST along with its string interner for resolving StringId values
 pub type ParsedAst = (
-    Arc<Program<'static>>,
+    &'static Program<'static>,
     Arc<StringInterner>,
     Arc<luanext_parser::string_interner::CommonIdentifiers>,
     Arc<bumpalo::Bump>,
@@ -80,7 +80,7 @@ pub struct Document {
     /// Cached parsed AST with its interner (invalidated on change)
     ast: RefCell<Option<ParsedAst>>,
     /// Cached symbol table (invalidated on change)
-    pub symbol_table: Option<Arc<SymbolTable>>,
+    pub symbol_table: Option<Arc<SymbolTable<'static>>>,
     /// Module ID for this document (used for cross-file symbol resolution)
     pub module_id: Option<ModuleId>,
 }
@@ -120,7 +120,7 @@ impl Document {
     pub fn get_or_parse_ast(&self) -> Option<ParsedAst> {
         if let Some(cached) = self.ast.borrow().as_ref() {
             return Some((
-                Arc::clone(&cached.0),
+                cached.0,
                 Arc::clone(&cached.1),
                 Arc::clone(&cached.2),
                 Arc::clone(&cached.3),
@@ -128,7 +128,7 @@ impl Document {
         }
 
         let handler = Arc::new(CollectingDiagnosticHandler::new());
-        let (mut interner, common_ids) = StringInterner::new_with_common_identifiers();
+        let (interner, common_ids) = StringInterner::new_with_common_identifiers();
         let arena = bumpalo::Bump::new();
         let mut lexer = Lexer::new(&self.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
@@ -143,19 +143,18 @@ impl Document {
             &*(program_ptr as *const Program<'static>)
         };
 
-        let ast_arc = Arc::new(leaked_program);
         let interner_arc = Arc::new(interner);
         let common_ids_arc = Arc::new(common_ids);
         let arena_arc = Arc::new(arena);
 
         *self.ast.borrow_mut() = Some((
-            Arc::clone(&ast_arc),
+            leaked_program,
             Arc::clone(&interner_arc),
             Arc::clone(&common_ids_arc),
             Arc::clone(&arena_arc),
         ));
 
-        Some((ast_arc, interner_arc, common_ids_arc, arena_arc))
+        Some((leaked_program, interner_arc, common_ids_arc, arena_arc))
     }
 
     pub(crate) fn clear_cache(&self) {
@@ -255,7 +254,7 @@ impl DocumentManager {
             doc.clear_cache();
 
             if let Some(module_id) = &doc.module_id {
-                if let Some((ast, interner, _common_ids)) = doc.get_or_parse_ast() {
+                if let Some((ast, interner, _common_ids, _arena)) = doc.get_or_parse_ast() {
                     self.symbol_index.update_document(
                         &uri,
                         module_id.as_str(),
