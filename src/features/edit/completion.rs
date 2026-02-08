@@ -1,12 +1,11 @@
 use crate::core::document::Document;
 use crate::traits::CompletionProviderTrait;
-use bumpalo::Bump;
 use lsp_types::*;
+use std::sync::Arc;
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 use luanext_typechecker::{Symbol, SymbolKind, TypeChecker};
-use std::sync::Arc;
 
 /// Provides code completion (IntelliSense)
 #[derive(Clone)]
@@ -202,20 +201,19 @@ impl CompletionProvider {
         // Parse and type check the document
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
-        let arena = Bump::new();
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = match lexer.tokenize() {
             Ok(t) => t,
             Err(_) => return Vec::new(),
         };
 
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, &arena);
+        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids);
         let mut ast = match parser.parse() {
             Ok(a) => a,
             Err(_) => return Vec::new(),
         };
 
-        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, &arena);
+        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids);
         if type_checker.check_program(&mut ast).is_err() {
             // Even with errors, the symbol table may have useful information
         }

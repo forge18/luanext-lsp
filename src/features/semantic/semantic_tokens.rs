@@ -78,7 +78,7 @@ impl SemanticTokensProvider {
         let mut last_line = 0;
         let mut last_char = 0;
 
-        for stmt in ast.statements {
+        for stmt in ast.statements.iter() {
             self.collect_tokens_from_statement(
                 stmt,
                 &mut tokens_data,

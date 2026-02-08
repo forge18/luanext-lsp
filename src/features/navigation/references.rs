@@ -2,7 +2,8 @@ use crate::core::document::{Document, DocumentManager};
 use crate::traits::ReferencesProviderTrait;
 use lsp_types::{Uri, *};
 
-use bumpalo::Bump;
+use std::str::FromStr;
+use std::sync::Arc;
 use luanext_parser::ast::statement::{Block, Statement};
 use luanext_parser::ast::{
     expression::{Argument, Expression, ExpressionKind, ObjectProperty},
@@ -11,8 +12,6 @@ use luanext_parser::ast::{
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser, Span};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
-use std::str::FromStr;
-use std::sync::Arc;
 
 /// Provides find-references functionality
 #[derive(Clone)]
@@ -36,11 +35,10 @@ impl ReferencesProvider {
 
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
-        let arena = Bump::new();
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
 
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, &arena);
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
         let ast = parser.parse().ok()?;
 
         let mut references = Vec::new();
@@ -114,7 +112,7 @@ impl ReferencesProvider {
         references: &mut Vec<Location>,
         interner: &StringInterner,
     ) {
-        for param in func.parameters {
+        for param in &func.parameters {
             if let Pattern::Identifier(ident) = &param.pattern {
                 if interner.resolve(ident.node) == word {
                     references.push(Location {
@@ -134,7 +132,7 @@ impl ReferencesProvider {
         references: &mut Vec<Location>,
         interner: &StringInterner,
     ) {
-        for stmt in block.statements {
+        for stmt in &block.statements {
             self.find_references_in_statement(stmt, word, references, interner);
         }
     }
@@ -176,7 +174,7 @@ impl ReferencesProvider {
                 self.find_references_in_arguments(args, word, references, interner);
             }
             ExpressionKind::Object(properties) => {
-                for prop in *properties {
+                for prop in properties {
                     match prop {
                         ObjectProperty::Property { key, value, .. } => {
                             if interner.resolve(key.node) == word {

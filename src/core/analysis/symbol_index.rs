@@ -1,9 +1,9 @@
 use lsp_types::{SymbolInformation, SymbolKind, Uri};
+use std::collections::{HashMap, HashSet};
 use luanext_parser::ast::statement::{ExportKind, ImportClause, OperatorKind, Statement};
 use luanext_parser::ast::Program;
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::Span;
-use std::collections::{HashMap, HashSet};
 
 /// Information about an exported symbol
 #[derive(Debug, Clone)]
@@ -699,11 +699,10 @@ impl SymbolIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bumpalo::Bump;
-    use luanext_parser::{Lexer, Parser};
-    use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
     use std::str::FromStr;
     use std::sync::Arc;
+    use luanext_parser::{Lexer, Parser};
+    use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
     fn make_uri(path: &str) -> Uri {
         Uri::from_str(&format!("file://{}", path)).unwrap()
@@ -968,8 +967,8 @@ mod tests {
 
     #[test]
     fn test_symbol_index_with_parsed_ast() {
-        use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
         use std::sync::Arc;
+        use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
         let mut index = SymbolIndex::new();
         let uri = make_uri("/test/module.tl");
@@ -977,10 +976,9 @@ mod tests {
 
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
-        let arena = Bump::new();
         let mut lexer = Lexer::new("local myVar = 42", handler.clone(), &interner);
         let tokens = lexer.tokenize().unwrap();
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, &arena);
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
         let ast = parser.parse().unwrap();
 
         index.update_document(&uri, module_id, &ast, &interner, |_, _| None);
@@ -991,8 +989,8 @@ mod tests {
 
     #[test]
     fn test_update_document_clears_previous() {
-        use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
         use std::sync::Arc;
+        use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
         let mut index = SymbolIndex::new();
         let uri = make_uri("/test.lua");
@@ -1001,20 +999,18 @@ mod tests {
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
 
-        let arena1 = Bump::new();
         let text1 = "local oldVar = 1";
         let mut lexer1 = Lexer::new(text1, handler.clone(), &interner);
         let tokens1 = lexer1.tokenize().unwrap();
-        let mut parser1 = Parser::new(tokens1, handler.clone(), &interner, &common_ids, &arena1);
+        let mut parser1 = Parser::new(tokens1, handler.clone(), &interner, &common_ids);
         let ast1 = parser1.parse().unwrap();
 
         index.update_document(&uri, module_id, &ast1, &interner, |_, _| None);
 
-        let arena2 = Bump::new();
         let text2 = "local newVar = 2";
         let mut lexer2 = Lexer::new(text2, handler.clone(), &interner);
         let tokens2 = lexer2.tokenize().unwrap();
-        let mut parser2 = Parser::new(tokens2, handler.clone(), &interner, &common_ids, &arena2);
+        let mut parser2 = Parser::new(tokens2, handler.clone(), &interner, &common_ids);
         let ast2 = parser2.parse().unwrap();
 
         index.update_document(&uri, module_id, &ast2, &interner, |_, _| None);

@@ -237,7 +237,7 @@ impl CodeActionsProvider {
         let mut edits = Vec::new();
 
         // Find all variables without type annotations
-        for stmt in ast.statements {
+        for stmt in ast.statements.iter() {
             self.collect_missing_type_annotations(stmt, &mut edits);
         }
 
