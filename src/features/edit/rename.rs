@@ -1,3 +1,4 @@
+use crate::arena_pool::with_pooled_arena;
 use crate::core::document::{Document, DocumentManager};
 use lsp_types::{Uri, *};
 
@@ -60,102 +61,103 @@ impl RenameProvider {
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
 
-        let arena = Box::leak(Box::new(bumpalo::Bump::new()));
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, arena);
-        let ast = parser.parse().ok()?;
+        with_pooled_arena(|arena| {
+            let mut parser = Parser::new(tokens, handler, &interner, &common_ids, arena);
+            let ast = parser.parse().ok()?;
 
-        // Create a map to store edits for each file
-        let mut all_edits: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
+            // Create a map to store edits for each file
+            let mut all_edits: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
 
-        // Find all occurrences in the current file (including declaration)
-        let mut current_file_occurrences = Vec::new();
-        self.find_all_occurrences(
-            &ast.statements,
-            &word,
-            &mut current_file_occurrences,
-            &interner,
-        );
+            // Find all occurrences in the current file (including declaration)
+            let mut current_file_occurrences = Vec::new();
+            self.find_all_occurrences(
+                &ast.statements,
+                &word,
+                &mut current_file_occurrences,
+                &interner,
+            );
 
-        // Find the declaration to include it
-        if let Some(decl_span) = self.find_declaration(&ast.statements, &word, &interner) {
-            current_file_occurrences.push(decl_span);
-        }
-
-        // Convert spans to text edits for current file
-        let current_edits: Vec<TextEdit> = current_file_occurrences
-            .into_iter()
-            .map(|span| TextEdit {
-                range: span_to_range(&span),
-                new_text: new_name.to_string(),
-            })
-            .collect();
-
-        all_edits.insert(uri.clone(), current_edits);
-
-        // Check if this symbol is exported - if so, rename in all importing files
-        if self.is_symbol_exported(&ast.statements, &word, &interner) {
-            if let Some(module_id) = &document.module_id {
-                self.collect_renames_in_importing_files(
-                    module_id,
-                    &word,
-                    new_name,
-                    document_manager,
-                    &mut all_edits,
-                );
+            // Find the declaration to include it
+            if let Some(decl_span) = self.find_declaration(&ast.statements, &word, &interner) {
+                current_file_occurrences.push(decl_span);
             }
-        }
 
-        // Check if this symbol is imported - if so, rename in the source file
-        if let Some((source_uri, exported_name)) = self.find_import_source(
-            &ast.statements,
-            &word,
-            document,
-            document_manager,
-            &interner,
-        ) {
-            if let Some(source_doc) = document_manager.get(&source_uri) {
-                // Parse source document
-                let handler = Arc::new(CollectingDiagnosticHandler::new());
-                let mut lexer = Lexer::new(&source_doc.text, handler.clone(), &interner);
-                if let Ok(tokens) = lexer.tokenize() {
-                    let arena = Box::leak(Box::new(bumpalo::Bump::new()));
-                    let mut parser = Parser::new(tokens, handler, &interner, &common_ids, arena);
-                    if let Ok(ast) = parser.parse() {
-                        let mut source_occurrences = Vec::new();
-                        self.find_all_occurrences(
-                            &ast.statements,
-                            &exported_name,
-                            &mut source_occurrences,
-                            &interner,
-                        );
+            // Convert spans to text edits for current file
+            let current_edits: Vec<TextEdit> = current_file_occurrences
+                .into_iter()
+                .map(|span| TextEdit {
+                    range: span_to_range(&span),
+                    new_text: new_name.to_string(),
+                })
+                .collect();
 
-                        // Include declaration in source file
-                        if let Some(decl_span) =
-                            self.find_declaration(&ast.statements, &exported_name, &interner)
-                        {
-                            source_occurrences.push(decl_span);
+            all_edits.insert(uri.clone(), current_edits);
+
+            // Check if this symbol is exported - if so, rename in all importing files
+            if self.is_symbol_exported(&ast.statements, &word, &interner) {
+                if let Some(module_id) = &document.module_id {
+                    self.collect_renames_in_importing_files(
+                        module_id,
+                        &word,
+                        new_name,
+                        document_manager,
+                        &mut all_edits,
+                    );
+                }
+            }
+
+            // Check if this symbol is imported - if so, rename in the source file
+            if let Some((source_uri, exported_name)) = self.find_import_source(
+                &ast.statements,
+                &word,
+                document,
+                document_manager,
+                &interner,
+            ) {
+                if let Some(source_doc) = document_manager.get(&source_uri) {
+                    // Parse source document (reuses the same pooled arena)
+                    let handler = Arc::new(CollectingDiagnosticHandler::new());
+                    let mut lexer = Lexer::new(&source_doc.text, handler.clone(), &interner);
+                    if let Ok(tokens) = lexer.tokenize() {
+                        let mut parser =
+                            Parser::new(tokens, handler, &interner, &common_ids, arena);
+                        if let Ok(ast) = parser.parse() {
+                            let mut source_occurrences = Vec::new();
+                            self.find_all_occurrences(
+                                &ast.statements,
+                                &exported_name,
+                                &mut source_occurrences,
+                                &interner,
+                            );
+
+                            // Include declaration in source file
+                            if let Some(decl_span) =
+                                self.find_declaration(&ast.statements, &exported_name, &interner)
+                            {
+                                source_occurrences.push(decl_span);
+                            }
+
+                            // Convert to text edits
+                            let source_edits: Vec<TextEdit> = source_occurrences
+                                .into_iter()
+                                .map(|span| TextEdit {
+                                    range: span_to_range(&span),
+                                    new_text: new_name.to_string(),
+                                })
+                                .collect();
+
+                            all_edits.insert(source_uri, source_edits);
                         }
-
-                        // Convert to text edits
-                        let source_edits: Vec<TextEdit> = source_occurrences
-                            .into_iter()
-                            .map(|span| TextEdit {
-                                range: span_to_range(&span),
-                                new_text: new_name.to_string(),
-                            })
-                            .collect();
-
-                        all_edits.insert(source_uri, source_edits);
                     }
                 }
             }
-        }
 
-        // Create workspace edit
-        Some(WorkspaceEdit {
-            changes: Some(all_edits),
-            document_changes: None,
-            change_annotations: None,
+            // Create workspace edit
+            Some(WorkspaceEdit {
+                changes: Some(all_edits),
+                document_changes: None,
+                change_annotations: None,
+            })
         })
     }
 

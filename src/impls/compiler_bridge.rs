@@ -2,6 +2,7 @@
 
 #![allow(dead_code)]
 
+use crate::arena_pool::with_pooled_arena;
 use crate::traits::{
     diagnostics::RelatedInformation,
     type_analysis::{Span, SymbolInfo, SymbolKind, SymbolStore, TypeCheckResult, TypeChecker},
@@ -190,9 +191,6 @@ impl Default for CoreTypeChecker {
 
 impl TypeChecker for CoreTypeChecker {
     fn check_document(&self, text: &str) -> TypeCheckResult {
-        // Use Box::leak for 'static arena (memory leak but acceptable for LSP)
-        let arena: &'static bumpalo::Bump = Box::leak(Box::new(bumpalo::Bump::new()));
-
         // Create string interner and common identifiers
         let (interner, common) = StringInterner::new_with_common_identifiers();
 
@@ -223,72 +221,74 @@ impl TypeChecker for CoreTypeChecker {
             }
         };
 
-        // Parse the tokens
-        let mut parser = Parser::new(
-            tokens,
-            diagnostic_handler.clone() as Arc<dyn luanext_parser::DiagnosticHandler>,
-            &interner,
-            &common,
-            arena,
-        );
+        // Parse and type check within a pooled arena
+        with_pooled_arena(|arena| {
+            let mut parser = Parser::new(
+                tokens,
+                diagnostic_handler.clone() as Arc<dyn luanext_parser::DiagnosticHandler>,
+                &interner,
+                &common,
+                arena,
+            );
 
-        let mut ast = match parser.parse() {
-            Ok(ast) => ast,
-            Err(_) => {
-                // Parse failed, return diagnostics
-                use luanext_typechecker::cli::diagnostics::DiagnosticHandler;
-                let diagnostics = diagnostic_handler
-                    .get_diagnostics()
-                    .iter()
-                    .map(convert_diagnostic)
-                    .collect();
+            let mut ast = match parser.parse() {
+                Ok(ast) => ast,
+                Err(_) => {
+                    // Parse failed, return diagnostics
+                    use luanext_typechecker::cli::diagnostics::DiagnosticHandler;
+                    let diagnostics = diagnostic_handler
+                        .get_diagnostics()
+                        .iter()
+                        .map(convert_diagnostic)
+                        .collect();
 
-                return TypeCheckResult {
-                    diagnostics,
-                    symbol_info: None,
-                };
-            }
-        };
+                    return TypeCheckResult {
+                        diagnostics,
+                        symbol_info: None,
+                    };
+                }
+            };
 
-        // Type check the AST
-        let mut type_checker = CoreTypeCheckerType::new(
-            diagnostic_handler.clone()
-                as Arc<dyn luanext_typechecker::cli::diagnostics::DiagnosticHandler>,
-            &interner,
-            &common,
-            arena,
-        );
-        match type_checker.check_program(&mut ast) {
-            Ok(_) => {
-                use luanext_typechecker::cli::diagnostics::DiagnosticHandler;
-                let diagnostics = diagnostic_handler
-                    .get_diagnostics()
-                    .iter()
-                    .map(convert_diagnostic)
-                    .collect();
+            // Type check the AST
+            let mut type_checker = CoreTypeCheckerType::new(
+                diagnostic_handler.clone()
+                    as Arc<dyn luanext_typechecker::cli::diagnostics::DiagnosticHandler>,
+                &interner,
+                &common,
+                arena,
+            );
+            match type_checker.check_program(&mut ast) {
+                Ok(_) => {
+                    use luanext_typechecker::cli::diagnostics::DiagnosticHandler;
+                    let diagnostics = diagnostic_handler
+                        .get_diagnostics()
+                        .iter()
+                        .map(convert_diagnostic)
+                        .collect();
 
-                let symbol_store =
-                    Box::new(CoreSymbolStore::new(type_checker.symbol_table(), &interner));
+                    let symbol_store =
+                        Box::new(CoreSymbolStore::new(type_checker.symbol_table(), &interner));
 
-                TypeCheckResult {
-                    diagnostics,
-                    symbol_info: Some(symbol_store),
+                    TypeCheckResult {
+                        diagnostics,
+                        symbol_info: Some(symbol_store),
+                    }
+                }
+                Err(_) => {
+                    use luanext_typechecker::cli::diagnostics::DiagnosticHandler;
+                    let diagnostics = diagnostic_handler
+                        .get_diagnostics()
+                        .iter()
+                        .map(convert_diagnostic)
+                        .collect();
+
+                    TypeCheckResult {
+                        diagnostics,
+                        symbol_info: None,
+                    }
                 }
             }
-            Err(_) => {
-                use luanext_typechecker::cli::diagnostics::DiagnosticHandler;
-                let diagnostics = diagnostic_handler
-                    .get_diagnostics()
-                    .iter()
-                    .map(convert_diagnostic)
-                    .collect();
-
-                TypeCheckResult {
-                    diagnostics,
-                    symbol_info: None,
-                }
-            }
-        }
+        })
     }
 }
 
@@ -317,9 +317,6 @@ impl Default for CoreDiagnosticCollector {
 
 impl DiagnosticCollector for CoreDiagnosticCollector {
     fn collect_diagnostics(&self, text: &str) -> Vec<Diagnostic> {
-        // Use Box::leak for 'static arena (memory leak but acceptable for LSP)
-        let arena: &'static bumpalo::Bump = Box::leak(Box::new(bumpalo::Bump::new()));
-
         let (interner, common) = StringInterner::new_with_common_identifiers();
         let diagnostic_handler = Arc::new(CollectingDiagnosticHandler::new());
 
@@ -341,21 +338,23 @@ impl DiagnosticCollector for CoreDiagnosticCollector {
             }
         };
 
-        let mut parser = Parser::new(
-            tokens,
-            diagnostic_handler.clone() as Arc<dyn luanext_parser::DiagnosticHandler>,
-            &interner,
-            &common,
-            arena,
-        );
-        let _ast = parser.parse();
+        with_pooled_arena(|arena| {
+            let mut parser = Parser::new(
+                tokens,
+                diagnostic_handler.clone() as Arc<dyn luanext_parser::DiagnosticHandler>,
+                &interner,
+                &common,
+                arena,
+            );
+            let _ast = parser.parse();
 
-        use luanext_typechecker::cli::diagnostics::DiagnosticHandler;
-        diagnostic_handler
-            .get_diagnostics()
-            .iter()
-            .map(convert_diagnostic)
-            .collect()
+            use luanext_typechecker::cli::diagnostics::DiagnosticHandler;
+            diagnostic_handler
+                .get_diagnostics()
+                .iter()
+                .map(convert_diagnostic)
+                .collect()
+        })
     }
 }
 

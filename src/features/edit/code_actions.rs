@@ -1,3 +1,4 @@
+use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use lsp_types::*;
 
@@ -37,42 +38,44 @@ impl CodeActionsProvider {
             Err(_) => return actions,
         };
 
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
-        let ast = match parser.parse() {
-            Ok(a) => a,
-            Err(_) => return actions,
-        };
+        with_pooled_arena(|arena| {
+            let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
+            let ast = match parser.parse() {
+                Ok(a) => a,
+                Err(_) => return actions,
+            };
 
-        // Get diagnostics from context
-        for diagnostic in context.diagnostics.iter() {
-            // Quick fix: Add type annotation for variables without types
-            if diagnostic.message.contains("type annotation") {
-                if let Some(action) = self.quick_fix_add_type_annotation(uri, diagnostic) {
+            // Get diagnostics from context
+            for diagnostic in context.diagnostics.iter() {
+                // Quick fix: Add type annotation for variables without types
+                if diagnostic.message.contains("type annotation") {
+                    if let Some(action) = self.quick_fix_add_type_annotation(uri, diagnostic) {
+                        actions.push(CodeActionOrCommand::CodeAction(action));
+                    }
+                }
+
+                // Quick fix: Remove unused variable
+                if diagnostic.message.contains("unused") {
+                    if let Some(action) = self.quick_fix_unused_variable(uri, diagnostic) {
+                        actions.push(CodeActionOrCommand::CodeAction(action));
+                    }
+                }
+            }
+
+            // Refactoring: Extract variable (if there's a selection)
+            if range.start != range.end {
+                if let Some(action) = self.refactor_extract_variable(uri, document, range, &ast) {
                     actions.push(CodeActionOrCommand::CodeAction(action));
                 }
             }
 
-            // Quick fix: Remove unused variable
-            if diagnostic.message.contains("unused") {
-                if let Some(action) = self.quick_fix_unused_variable(uri, diagnostic) {
-                    actions.push(CodeActionOrCommand::CodeAction(action));
-                }
-            }
-        }
-
-        // Refactoring: Extract variable (if there's a selection)
-        if range.start != range.end {
-            if let Some(action) = self.refactor_extract_variable(uri, document, range, &ast) {
+            // Source action: Add missing type annotations
+            if let Some(action) = self.source_action_add_type_annotations(uri, &ast) {
                 actions.push(CodeActionOrCommand::CodeAction(action));
             }
-        }
 
-        // Source action: Add missing type annotations
-        if let Some(action) = self.source_action_add_type_annotations(uri, &ast) {
-            actions.push(CodeActionOrCommand::CodeAction(action));
-        }
-
-        actions
+            actions
+        })
     }
 
     /// Resolve additional details for a code action

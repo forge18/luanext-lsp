@@ -1,3 +1,4 @@
+use crate::arena_pool::with_pooled_arena;
 use crate::core::document::{Document, DocumentManager};
 use crate::traits::ReferencesProviderTrait;
 use lsp_types::{Uri, *};
@@ -38,26 +39,27 @@ impl ReferencesProvider {
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
 
-        let arena = Box::leak(Box::new(bumpalo::Bump::new()));
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, arena);
-        let ast = parser.parse().ok()?;
+        with_pooled_arena(|arena| {
+            let mut parser = Parser::new(tokens, handler, &interner, &common_ids, arena);
+            let ast = parser.parse().ok()?;
 
-        let mut references = Vec::new();
-        self.find_references_in_statements(&ast.statements, &word, &mut references, &interner);
+            let mut references = Vec::new();
+            self.find_references_in_statements(&ast.statements, &word, &mut references, &interner);
 
-        if include_declaration {
-            if let Some(decl_span) = self.find_declaration(&ast.statements, &word, &interner) {
-                references.insert(
-                    0,
-                    Location {
-                        uri: uri.clone(),
-                        range: span_to_range(&decl_span),
-                    },
-                );
+            if include_declaration {
+                if let Some(decl_span) = self.find_declaration(&ast.statements, &word, &interner) {
+                    references.insert(
+                        0,
+                        Location {
+                            uri: uri.clone(),
+                            range: span_to_range(&decl_span),
+                        },
+                    );
+                }
             }
-        }
 
-        Some(references)
+            Some(references)
+        })
     }
 
     fn find_references_in_statements(

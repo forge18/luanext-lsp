@@ -1,3 +1,4 @@
+use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use crate::traits::SymbolsProviderTrait;
 use lsp_types::*;
@@ -28,22 +29,23 @@ impl SymbolsProvider {
             Err(_) => return Vec::new(),
         };
 
-        let arena = Box::leak(Box::new(bumpalo::Bump::new()));
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, arena);
-        let ast = match parser.parse() {
-            Ok(a) => a,
-            Err(_) => return Vec::new(),
-        };
+        with_pooled_arena(|arena| {
+            let mut parser = Parser::new(tokens, handler, &interner, &common_ids, arena);
+            let ast = match parser.parse() {
+                Ok(a) => a,
+                Err(_) => return Vec::new(),
+            };
 
-        // Extract symbols from AST
-        let mut symbols = Vec::new();
-        for stmt in ast.statements.iter() {
-            if let Some(symbol) = self.extract_symbol_from_statement(stmt, &interner) {
-                symbols.push(symbol);
+            // Extract symbols from AST
+            let mut symbols = Vec::new();
+            for stmt in ast.statements.iter() {
+                if let Some(symbol) = self.extract_symbol_from_statement(stmt, &interner) {
+                    symbols.push(symbol);
+                }
             }
-        }
 
-        symbols
+            symbols
+        })
     }
 
     /// Extract a document symbol from a statement

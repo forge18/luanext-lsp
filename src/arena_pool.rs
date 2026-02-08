@@ -35,3 +35,50 @@ where
 
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_with_pooled_arena_returns_value() {
+        let result = with_pooled_arena(|_arena| 42);
+        assert_eq!(result, 42);
+    }
+
+    #[test]
+    fn test_pool_size_never_exceeds_max() {
+        // Pool size should never exceed MAX_POOL_SIZE regardless of concurrent usage
+        for _ in 0..MAX_POOL_SIZE + 10 {
+            with_pooled_arena(|_arena| {});
+        }
+        assert!(ARENA_POOL.lock().len() <= MAX_POOL_SIZE);
+    }
+
+    #[test]
+    fn test_nested_calls_use_separate_arenas() {
+        let result = with_pooled_arena(|outer| {
+            let inner_result = with_pooled_arena(|inner| {
+                assert!(!std::ptr::eq(outer, inner));
+                "inner"
+            });
+            (inner_result, "outer")
+        });
+
+        assert_eq!(result, ("inner", "outer"));
+    }
+
+    #[test]
+    fn test_arena_allocation_works() {
+        // Verify arena is usable for allocation and doesn't panic on reuse
+        with_pooled_arena(|arena| {
+            let val = arena.alloc(42u64);
+            assert_eq!(*val, 42);
+        });
+
+        with_pooled_arena(|arena| {
+            let val = arena.alloc(99u64);
+            assert_eq!(*val, 99);
+        });
+    }
+}

@@ -1,3 +1,4 @@
+use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use lsp_types::*;
 use std::sync::Arc;
@@ -62,41 +63,43 @@ impl SemanticTokensProvider {
             }
         };
 
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
-        let ast = match parser.parse() {
-            Ok(a) => a,
-            Err(_) => {
-                return SemanticTokens {
-                    result_id: None,
-                    data: vec![],
+        with_pooled_arena(|arena| {
+            let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
+            let ast = match parser.parse() {
+                Ok(a) => a,
+                Err(_) => {
+                    return SemanticTokens {
+                        result_id: None,
+                        data: vec![],
+                    }
                 }
+            };
+    
+            // Collect semantic tokens from AST
+            let mut tokens_data = Vec::new();
+            let mut last_line = 0;
+            let mut last_char = 0;
+    
+            for stmt in ast.statements.iter() {
+                self.collect_tokens_from_statement(
+                    stmt,
+                    &mut tokens_data,
+                    &mut last_line,
+                    &mut last_char,
+                );
             }
-        };
-
-        // Collect semantic tokens from AST
-        let mut tokens_data = Vec::new();
-        let mut last_line = 0;
-        let mut last_char = 0;
-
-        for stmt in ast.statements.iter() {
-            self.collect_tokens_from_statement(
-                stmt,
-                &mut tokens_data,
-                &mut last_line,
-                &mut last_char,
-            );
-        }
-
-        SemanticTokens {
-            result_id: Some(format!(
-                "{}",
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
-            )),
-            data: tokens_data,
-        }
+    
+            SemanticTokens {
+                result_id: Some(format!(
+                    "{}",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs()
+                )),
+                data: tokens_data,
+            }
+        })
     }
 
     /// Provide semantic tokens for a specific range in the document

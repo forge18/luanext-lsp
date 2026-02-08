@@ -1,3 +1,4 @@
+use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use lsp_types::*;
 use std::sync::Arc;
@@ -26,22 +27,24 @@ impl SignatureHelpProvider {
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
 
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
-        let mut ast = parser.parse().ok()?;
+        with_pooled_arena(|arena| {
+            let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
+            let mut ast = parser.parse().ok()?;
 
-        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
-        type_checker.check_program(&mut ast).ok()?;
+            let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, arena);
+            type_checker.check_program(&mut ast).ok()?;
 
-        // Look up the function symbol
-        let symbol = type_checker.lookup_symbol(&function_name)?;
+            // Look up the function symbol
+            let symbol = type_checker.lookup_symbol(&function_name)?;
 
-        // Format the signature
-        let signature = self.format_signature(&function_name, symbol, &interner)?;
+            // Format the signature
+            let signature = self.format_signature(&function_name, symbol, &interner)?;
 
-        Some(SignatureHelp {
-            signatures: vec![signature],
-            active_signature: Some(0),
-            active_parameter: Some(active_parameter),
+            Some(SignatureHelp {
+                signatures: vec![signature],
+                active_signature: Some(0),
+                active_parameter: Some(active_parameter),
+            })
         })
     }
 

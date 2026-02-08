@@ -1,3 +1,4 @@
+use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use lsp_types::*;
 use std::sync::Arc;
@@ -30,24 +31,25 @@ impl InlayHintsProvider {
             Err(_) => return hints,
         };
 
-        let arena = Box::leak(Box::new(bumpalo::Bump::new()));
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
-        let mut ast = match parser.parse() {
-            Ok(a) => a,
-            Err(_) => return hints,
-        };
+        with_pooled_arena(|arena| {
+            let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
+            let mut ast = match parser.parse() {
+                Ok(a) => a,
+                Err(_) => return hints,
+            };
 
-        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, arena);
-        if type_checker.check_program(&mut ast).is_err() {
-            return hints;
-        }
+            let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, arena);
+            if type_checker.check_program(&mut ast).is_err() {
+                return hints;
+            }
 
-        // Traverse AST and collect hints within the range
-        for stmt in ast.statements.iter() {
-            self.collect_hints_from_statement(stmt, &type_checker, range, &mut hints, &interner);
-        }
+            // Traverse AST and collect hints within the range
+            for stmt in ast.statements.iter() {
+                self.collect_hints_from_statement(stmt, &type_checker, range, &mut hints, &interner);
+            }
 
-        hints
+            hints
+        })
     }
 
     /// Resolve additional details for an inlay hint

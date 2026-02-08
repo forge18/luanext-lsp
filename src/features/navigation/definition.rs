@@ -1,3 +1,4 @@
+use crate::arena_pool::with_pooled_arena;
 use crate::core::document::{Document, DocumentManager};
 use crate::traits::DefinitionProviderTrait;
 use lsp_types::{GotoDefinitionResponse, Location, Position, Range, Uri};
@@ -33,30 +34,32 @@ impl DefinitionProvider {
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
 
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
-        let ast = parser.parse().ok()?;
+        with_pooled_arena(|arena| {
+            let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
+            let ast = parser.parse().ok()?;
 
-        // First, check if the symbol is from an import statement
-        if let Some(import_location) = self.find_import_definition(
-            &ast.statements,
-            &word,
-            document,
-            document_manager,
-            &interner,
-        ) {
-            return Some(GotoDefinitionResponse::Scalar(import_location));
-        }
+            // First, check if the symbol is from an import statement
+            if let Some(import_location) = self.find_import_definition(
+                &ast.statements,
+                &word,
+                document,
+                document_manager,
+                &interner,
+            ) {
+                return Some(GotoDefinitionResponse::Scalar(import_location));
+            }
 
-        // Otherwise, search for local declaration
-        let def_span = self.find_declaration(&ast.statements, &word, &interner)?;
+            // Otherwise, search for local declaration
+            let def_span = self.find_declaration(&ast.statements, &word, &interner)?;
 
-        // Convert span to LSP Location
-        let location = Location {
-            uri: uri.clone(),
-            range: span_to_range(&def_span),
-        };
+            // Convert span to LSP Location
+            let location = Location {
+                uri: uri.clone(),
+                range: span_to_range(&def_span),
+            };
 
-        Some(GotoDefinitionResponse::Scalar(location))
+            Some(GotoDefinitionResponse::Scalar(location))
+        })
     }
 
     /// Find definition for symbols imported from other files
@@ -187,62 +190,65 @@ impl DefinitionProvider {
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
 
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
-        let ast = parser.parse().ok()?;
+        with_pooled_arena(|arena| {
+            let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
+            let ast = parser.parse().ok()?;
 
-        // Search for the exported declaration
-        use luanext_parser::ast::statement::ExportKind;
+            // Search for the exported declaration
+            use luanext_parser::ast::statement::ExportKind;
 
-        for stmt in ast.statements.iter() {
-            if let Statement::Export(export_decl) = stmt {
-                match &export_decl.kind {
-                    ExportKind::Declaration(decl) => {
-                        // Check if this declaration exports our symbol
-                        if let Some(span) =
-                            self.get_declaration_name_span(decl, symbol_name, &interner)
-                        {
-                            return Some(Location {
-                                uri: uri.clone(),
-                                range: span_to_range(&span),
-                            });
-                        }
-                    }
-                    ExportKind::Named {
-                        specifiers,
-                        source: _,
-                    } => {
-                        // Check if this is a named export of our symbol
-                        for spec in specifiers.iter() {
-                            if interner.resolve(spec.exported.as_ref().unwrap_or(&spec.local).node)
-                                == symbol_name
+            for stmt in ast.statements.iter() {
+                if let Statement::Export(export_decl) = stmt {
+                    match &export_decl.kind {
+                        ExportKind::Declaration(decl) => {
+                            // Check if this declaration exports our symbol
+                            if let Some(span) =
+                                self.get_declaration_name_span(decl, symbol_name, &interner)
                             {
-                                // Find the local declaration
-                                if let Some(local_span) = self.find_declaration(
-                                    &ast.statements,
-                                    &interner.resolve(spec.local.node),
-                                    &interner,
-                                ) {
-                                    return Some(Location {
-                                        uri: uri.clone(),
-                                        range: span_to_range(&local_span),
-                                    });
+                                return Some(Location {
+                                    uri: uri.clone(),
+                                    range: span_to_range(&span),
+                                });
+                            }
+                        }
+                        ExportKind::Named {
+                            specifiers,
+                            source: _,
+                        } => {
+                            // Check if this is a named export of our symbol
+                            for spec in specifiers.iter() {
+                                if interner
+                                    .resolve(spec.exported.as_ref().unwrap_or(&spec.local).node)
+                                    == symbol_name
+                                {
+                                    // Find the local declaration
+                                    if let Some(local_span) = self.find_declaration(
+                                        &ast.statements,
+                                        &interner.resolve(spec.local.node),
+                                        &interner,
+                                    ) {
+                                        return Some(Location {
+                                            uri: uri.clone(),
+                                            range: span_to_range(&local_span),
+                                        });
+                                    }
                                 }
                             }
                         }
+                        ExportKind::Default(_) if symbol_name == "default" => {
+                            // For default exports, return the export statement location
+                            return Some(Location {
+                                uri: uri.clone(),
+                                range: span_to_range(&export_decl.span),
+                            });
+                        }
+                        _ => {}
                     }
-                    ExportKind::Default(_) if symbol_name == "default" => {
-                        // For default exports, return the export statement location
-                        return Some(Location {
-                            uri: uri.clone(),
-                            range: span_to_range(&export_decl.span),
-                        });
-                    }
-                    _ => {}
                 }
             }
-        }
 
-        None
+            None
+        })
     }
 
     /// Get the name span from a declaration statement

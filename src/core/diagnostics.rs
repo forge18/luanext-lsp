@@ -1,3 +1,4 @@
+use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use crate::traits::DiagnosticsProviderTrait;
 use lsp_types::*;
@@ -38,26 +39,27 @@ impl DiagnosticsProvider {
             }
         };
 
-        // Parse the document
-        let arena = Box::leak(Box::new(bumpalo::Bump::new()));
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
-        let ast = match parser.parse() {
-            Ok(a) => a,
-            Err(_) => {
-                // Collect parser diagnostics
+        // Parse and type check the document
+        with_pooled_arena(|arena| {
+            let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
+            let ast = match parser.parse() {
+                Ok(a) => a,
+                Err(_) => {
+                    // Collect parser diagnostics
+                    return Self::convert_diagnostics(handler);
+                }
+            };
+
+            // Type check the document
+            let mut type_checker = TypeChecker::new(handler.clone(), &interner, &common_ids, arena);
+            if let Err(_) = type_checker.check_program(&ast) {
                 return Self::convert_diagnostics(handler);
             }
-        };
 
-        // Type check the document
-        let mut type_checker = TypeChecker::new(handler.clone(), &interner, &common_ids, arena);
-        if let Err(_) = type_checker.check_program(&ast) {
-            return Self::convert_diagnostics(handler);
-        }
-
-        // If we get here and there are still diagnostics (warnings), include them
-        diagnostics.extend(Self::convert_diagnostics(handler));
-        diagnostics
+            // If we get here and there are still diagnostics (warnings), include them
+            diagnostics.extend(Self::convert_diagnostics(handler));
+            diagnostics
+        })
     }
 
     /// Convert core diagnostics to LSP diagnostics

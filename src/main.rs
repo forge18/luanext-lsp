@@ -1,6 +1,7 @@
 #![allow(clippy::all)]
 #![allow(deprecated)]
 
+mod arena_pool;
 mod core;
 mod di;
 mod features;

@@ -1,3 +1,4 @@
+use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use crate::traits::CompletionProviderTrait;
 use lsp_types::*;
@@ -207,44 +208,45 @@ impl CompletionProvider {
             Err(_) => return Vec::new(),
         };
 
-        let arena = Box::leak(Box::new(bumpalo::Bump::new()));
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
-        let ast = match parser.parse() {
-            Ok(a) => a,
-            Err(_) => return Vec::new(),
-        };
-
-        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, arena);
-        if type_checker.check_program(&ast).is_err() {
-            // Even with errors, the symbol table may have useful information
-        }
-
-        // Get all visible symbols from the symbol table
-        let symbol_table = type_checker.symbol_table();
-        let mut items = Vec::new();
-
-        for (name, symbol) in symbol_table.all_visible_symbols() {
-            let kind = match symbol.kind {
-                SymbolKind::Const | SymbolKind::Variable => CompletionItemKind::VARIABLE,
-                SymbolKind::Function => CompletionItemKind::FUNCTION,
-                SymbolKind::Class => CompletionItemKind::CLASS,
-                SymbolKind::Interface => CompletionItemKind::INTERFACE,
-                SymbolKind::TypeAlias => CompletionItemKind::STRUCT,
-                SymbolKind::Enum => CompletionItemKind::ENUM,
-                SymbolKind::Parameter => CompletionItemKind::VARIABLE,
-                SymbolKind::Namespace => CompletionItemKind::MODULE,
+        with_pooled_arena(|arena| {
+            let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
+            let ast = match parser.parse() {
+                Ok(a) => a,
+                Err(_) => return Vec::new(),
             };
 
-            items.push(CompletionItem {
-                label: name.clone(),
-                kind: Some(kind),
-                detail: Some(Self::format_symbol_detail(symbol)),
-                documentation: None,
-                ..Default::default()
-            });
-        }
+            let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, arena);
+            if type_checker.check_program(&ast).is_err() {
+                // Even with errors, the symbol table may have useful information
+            }
 
-        items
+            // Get all visible symbols from the symbol table
+            let symbol_table = type_checker.symbol_table();
+            let mut items = Vec::new();
+
+            for (name, symbol) in symbol_table.all_visible_symbols() {
+                let kind = match symbol.kind {
+                    SymbolKind::Const | SymbolKind::Variable => CompletionItemKind::VARIABLE,
+                    SymbolKind::Function => CompletionItemKind::FUNCTION,
+                    SymbolKind::Class => CompletionItemKind::CLASS,
+                    SymbolKind::Interface => CompletionItemKind::INTERFACE,
+                    SymbolKind::TypeAlias => CompletionItemKind::STRUCT,
+                    SymbolKind::Enum => CompletionItemKind::ENUM,
+                    SymbolKind::Parameter => CompletionItemKind::VARIABLE,
+                    SymbolKind::Namespace => CompletionItemKind::MODULE,
+                };
+
+                items.push(CompletionItem {
+                    label: name.clone(),
+                    kind: Some(kind),
+                    detail: Some(Self::format_symbol_detail(symbol)),
+                    documentation: None,
+                    ..Default::default()
+                });
+            }
+
+            items
+        })
     }
 
     /// Format symbol detail for completion

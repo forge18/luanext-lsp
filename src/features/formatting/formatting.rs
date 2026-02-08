@@ -1,3 +1,4 @@
+use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use lsp_types::*;
 
@@ -30,19 +31,21 @@ impl FormattingProvider {
             Err(_) => return Vec::new(), // Don't format invalid code
         };
 
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
-        let _ast = match parser.parse() {
-            Ok(a) => a,
-            Err(_) => return Vec::new(), // Don't format invalid code
-        };
+        with_pooled_arena(|arena| {
+            let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
+            let _ast = match parser.parse() {
+                Ok(a) => a,
+                Err(_) => return Vec::new(), // Don't format invalid code
+            };
 
-        // Apply basic formatting fixes
-        let mut edits = Vec::new();
+            // Apply basic formatting fixes
+            let mut edits = Vec::new();
 
-        // Fix indentation and trailing whitespace
-        self.fix_indentation_and_whitespace(document, options, &mut edits);
+            // Fix indentation and trailing whitespace
+            self.fix_indentation_and_whitespace(document, options, &mut edits);
 
-        edits
+            edits
+        })
     }
 
     /// Format a specific range in the document
@@ -61,17 +64,19 @@ impl FormattingProvider {
             Err(_) => return Vec::new(),
         };
 
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
-        let _ast = match parser.parse() {
-            Ok(a) => a,
-            Err(_) => return Vec::new(),
-        };
+        with_pooled_arena(|arena| {
+            let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
+            let _ast = match parser.parse() {
+                Ok(a) => a,
+                Err(_) => return Vec::new(),
+            };
 
-        // Apply formatting only within the specified range
-        let mut edits = Vec::new();
-        self.fix_indentation_in_range(document, range, options, &mut edits);
+            // Apply formatting only within the specified range
+            let mut edits = Vec::new();
+            self.fix_indentation_in_range(document, range, options, &mut edits);
 
-        edits
+            edits
+        })
     }
 
     /// Format text as the user types (on-type formatting)

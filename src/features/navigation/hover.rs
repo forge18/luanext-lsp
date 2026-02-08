@@ -1,3 +1,4 @@
+use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use crate::traits::HoverProviderTrait;
 use lsp_types::*;
@@ -46,36 +47,37 @@ impl HoverProvider {
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
 
-        let arena = Box::leak(Box::new(bumpalo::Bump::new()));
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
-        let mut ast = parser.parse().ok()?;
+        with_pooled_arena(|arena| {
+            let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
+            let mut ast = parser.parse().ok()?;
 
-        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, arena);
-        type_checker.check_program(&mut ast).ok()?;
+            let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, arena);
+            type_checker.check_program(&mut ast).ok()?;
 
-        // Look up the symbol
-        let symbol = type_checker.lookup_symbol(word)?.clone();
+            // Look up the symbol
+            let symbol = type_checker.lookup_symbol(word)?.clone();
 
-        // Format the type information
-        let type_str = Self::format_type(&symbol.typ, &interner);
-        let kind_str = match symbol.kind {
-            SymbolKind::Const => "const",
-            SymbolKind::Variable => "let",
-            SymbolKind::Function => "function",
-            SymbolKind::Class => "class",
-            SymbolKind::Interface => "interface",
-            SymbolKind::TypeAlias => "type",
-            SymbolKind::Enum => "enum",
-            SymbolKind::Parameter => "parameter",
-            SymbolKind::Namespace => "namespace",
-        };
+            // Format the type information
+            let type_str = Self::format_type(&symbol.typ, &interner);
+            let kind_str = match symbol.kind {
+                SymbolKind::Const => "const",
+                SymbolKind::Variable => "let",
+                SymbolKind::Function => "function",
+                SymbolKind::Class => "class",
+                SymbolKind::Interface => "interface",
+                SymbolKind::TypeAlias => "type",
+                SymbolKind::Enum => "enum",
+                SymbolKind::Parameter => "parameter",
+                SymbolKind::Namespace => "namespace",
+            };
 
-        Some(Hover {
-            contents: HoverContents::Markup(MarkupContent {
-                kind: MarkupKind::Markdown,
-                value: format!("```typedlua\n{} {}: {}\n```", kind_str, word, type_str),
-            }),
-            range: None,
+            Some(Hover {
+                contents: HoverContents::Markup(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: format!("```typedlua\n{} {}: {}\n```", kind_str, word, type_str),
+                }),
+                range: None,
+            })
         })
     }
 
