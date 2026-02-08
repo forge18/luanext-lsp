@@ -77,7 +77,7 @@ impl DefinitionProvider {
         use luanext_parser::ast::statement::ImportClause;
 
         // Search for import statements that import this symbol
-        for stmt in *statements {
+        for stmt in statements {
             if let Statement::Import(import_decl) = stmt {
                 let import_source = &import_decl.source;
 
@@ -313,7 +313,7 @@ impl DefinitionProvider {
     ) -> Option<Span> {
         use luanext_parser::ast::pattern::Pattern;
 
-        for stmt in *statements {
+        for stmt in statements {
             match stmt {
                 Statement::Variable(var_decl) => {
                     // Check if the pattern contains this identifier
