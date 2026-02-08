@@ -18,7 +18,7 @@
 //! are defined but their implementations are instantiated directly in handlers
 //! rather than injected via the trait type.
 
-use crate::document::Document;
+use crate::core::document::Document;
 use lsp_types::*;
 
 pub mod diagnostics;

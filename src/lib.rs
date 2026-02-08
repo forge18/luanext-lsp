@@ -7,17 +7,34 @@
 // Arena pooling for LSP
 pub mod arena_pool;
 
+// Protocol layer
+pub mod protocol;
+
+// Core document management
+pub mod core;
+
+// Analysis features
+pub mod analysis;
+
+// Feature providers organized by category
+pub mod features;
+
 // Trait abstractions for type system components
 pub mod traits;
 
 // Bridge implementations for typedlua-typechecker types
 pub mod impls;
 
-pub mod document;
+// Dependency injection
+pub mod di;
+
+// Message handler (LSP protocol routing)
 pub mod message_handler;
-pub mod providers;
-pub mod symbol_index;
+
+// Testing utilities with mock providers
+pub mod testing;
 
 // Re-export commonly used types
-pub use document::{Document, DocumentManager};
-pub use message_handler::{BasicMessageHandler, LspConnection};
+pub use crate::protocol::LspConnection;
+pub use core::{DiagnosticsProvider, Document, DocumentManager};
+pub use message_handler::BasicMessageHandler;
