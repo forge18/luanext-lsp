@@ -822,19 +822,22 @@ mod tests {
 
     #[test]
     fn test_format_type_function() {
+        use bumpalo::Bump;
+
+        let arena = Bump::new();
         let provider = InlayHintsProvider::new();
 
-        let return_type = Type {
+        let return_type = arena.alloc(Type {
             span: Span::new(0, 4, 1, 1),
             kind: TypeKind::Primitive(PrimitiveType::Void),
-        };
+        });
 
         let func_type = Type {
             span: Span::new(0, 8, 1, 1),
             kind: TypeKind::Function(luanext_parser::ast::types::FunctionType {
                 span: Span::new(0, 8, 1, 1),
-                parameters: vec![],
-                return_type: Box::new(return_type),
+                parameters: &[],
+                return_type,
                 throws: None,
                 type_parameters: None,
             }),
@@ -846,16 +849,19 @@ mod tests {
 
     #[test]
     fn test_format_type_array() {
+        use bumpalo::Bump;
+
+        let arena = Bump::new();
         let provider = InlayHintsProvider::new();
 
-        let number_type = Type {
+        let number_type = arena.alloc(Type {
             span: Span::new(0, 6, 1, 1),
             kind: luanext_parser::ast::types::TypeKind::Primitive(PrimitiveType::Number),
-        };
+        });
 
         let array_type = Type {
             span: Span::new(0, 9, 1, 1),
-            kind: luanext_parser::ast::types::TypeKind::Array(Box::new(number_type)),
+            kind: luanext_parser::ast::types::TypeKind::Array(number_type),
         };
 
         let result = provider.format_type_simple(&array_type, &StringInterner::new());

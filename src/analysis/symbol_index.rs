@@ -1223,11 +1223,12 @@ mod tests {
         let uri = make_uri("/test/module.tl");
         let module_id = "/test/module.tl";
 
+        let arena = bumpalo::Bump::new();
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
         let mut lexer = Lexer::new("local foo = 1", handler.clone(), &interner);
         let tokens = lexer.tokenize().unwrap();
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, &arena);
         let ast = parser.parse().unwrap();
 
         index.update_document(&uri, module_id, &ast, &interner, |_, _| None);
@@ -1244,11 +1245,12 @@ mod tests {
         let uri = make_uri("/test/importer.tl");
         let module_id = "/test/importer.tl";
 
+        let arena = bumpalo::Bump::new();
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
         let mut lexer = Lexer::new("local x = 1", handler.clone(), &interner);
         let tokens = lexer.tokenize().unwrap();
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, &arena);
         let ast = parser.parse().unwrap();
 
         index.update_document(&uri, module_id, &ast, &interner, |_source, _current| None);
@@ -1425,11 +1427,12 @@ mod tests {
         let uri = make_uri("/test.lua");
         let module_id = "/test.lua";
 
+        let arena = bumpalo::Bump::new();
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
         let mut lexer = Lexer::new("local foo = 1", handler.clone(), &interner);
         let tokens = lexer.tokenize().unwrap();
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, &arena);
         let ast = parser.parse().unwrap();
 
         index.update_document(&uri, module_id, &ast, &interner, |_, _| None);
@@ -1462,11 +1465,12 @@ mod tests {
         let uri = make_uri("/test.lua");
         let module_id = "/test.lua";
 
+        let arena = bumpalo::Bump::new();
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
         let mut lexer = Lexer::new("local x = 1", handler.clone(), &interner);
         let tokens = lexer.tokenize().unwrap();
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, &arena);
         let ast = parser.parse().unwrap();
 
         index.update_document(&uri, module_id, &ast, &interner, |_, _| None);

@@ -648,7 +648,17 @@ mod tests {
 
     #[test]
     fn test_format_symbol_detail_function() {
+        use bumpalo::Bump;
+
+        let arena = Bump::new();
         let _provider = CompletionProvider::new();
+
+        let return_type = arena.alloc(luanext_parser::ast::types::Type::new(
+            luanext_parser::ast::types::TypeKind::Primitive(
+                luanext_parser::ast::types::PrimitiveType::Number,
+            ),
+            luanext_parser::Span::new(0, 6, 1, 1),
+        ));
 
         let symbol = Symbol {
             name: "testFunc".to_string(),
@@ -657,13 +667,8 @@ mod tests {
                 luanext_parser::ast::types::TypeKind::Function(
                     luanext_parser::ast::types::FunctionType {
                         type_parameters: None,
-                        parameters: vec![],
-                        return_type: Box::new(luanext_parser::ast::types::Type::new(
-                            luanext_parser::ast::types::TypeKind::Primitive(
-                                luanext_parser::ast::types::PrimitiveType::Number,
-                            ),
-                            luanext_parser::Span::new(0, 6, 1, 1),
-                        )),
+                        parameters: &[],
+                        return_type,
                         throws: None,
                         span: luanext_parser::Span::new(0, 20, 1, 1),
                     },

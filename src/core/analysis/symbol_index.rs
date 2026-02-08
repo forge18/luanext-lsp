@@ -974,11 +974,12 @@ mod tests {
         let uri = make_uri("/test/module.tl");
         let module_id = "/test/module.tl";
 
+        let arena = bumpalo::Bump::new();
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
         let mut lexer = Lexer::new("local myVar = 42", handler.clone(), &interner);
         let tokens = lexer.tokenize().unwrap();
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, &arena);
         let ast = parser.parse().unwrap();
 
         index.update_document(&uri, module_id, &ast, &interner, |_, _| None);
@@ -996,13 +997,14 @@ mod tests {
         let uri = make_uri("/test.lua");
         let module_id = "/test.lua";
 
+        let arena = bumpalo::Bump::new();
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
 
         let text1 = "local oldVar = 1";
         let mut lexer1 = Lexer::new(text1, handler.clone(), &interner);
         let tokens1 = lexer1.tokenize().unwrap();
-        let mut parser1 = Parser::new(tokens1, handler.clone(), &interner, &common_ids);
+        let mut parser1 = Parser::new(tokens1, handler.clone(), &interner, &common_ids, &arena);
         let ast1 = parser1.parse().unwrap();
 
         index.update_document(&uri, module_id, &ast1, &interner, |_, _| None);
@@ -1010,7 +1012,7 @@ mod tests {
         let text2 = "local newVar = 2";
         let mut lexer2 = Lexer::new(text2, handler.clone(), &interner);
         let tokens2 = lexer2.tokenize().unwrap();
-        let mut parser2 = Parser::new(tokens2, handler.clone(), &interner, &common_ids);
+        let mut parser2 = Parser::new(tokens2, handler.clone(), &interner, &common_ids, &arena);
         let ast2 = parser2.parse().unwrap();
 
         index.update_document(&uri, module_id, &ast2, &interner, |_, _| None);

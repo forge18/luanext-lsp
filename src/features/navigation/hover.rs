@@ -568,19 +568,23 @@ mod tests {
 
     #[test]
     fn test_hover_format_type_function() {
+        use bumpalo::Bump;
         use luanext_parser::ast::types::{PrimitiveType, Type, TypeKind};
         use luanext_parser::string_interner::StringInterner;
 
+        let arena = Bump::new();
         let interner = StringInterner::new();
+
+        let return_type = arena.alloc(Type::new(
+            TypeKind::Primitive(PrimitiveType::Number),
+            luanext_parser::Span::new(0, 6, 1, 1),
+        ));
 
         let func_type = Type::new(
             TypeKind::Function(luanext_parser::ast::types::FunctionType {
                 type_parameters: None,
-                parameters: vec![],
-                return_type: Box::new(Type::new(
-                    TypeKind::Primitive(PrimitiveType::Number),
-                    luanext_parser::Span::new(0, 6, 1, 1),
-                )),
+                parameters: &[],
+                return_type,
                 throws: None,
                 span: luanext_parser::Span::new(0, 20, 1, 1),
             }),
@@ -592,16 +596,20 @@ mod tests {
 
     #[test]
     fn test_hover_format_type_array() {
+        use bumpalo::Bump;
         use luanext_parser::ast::types::{PrimitiveType, Type, TypeKind};
         use luanext_parser::string_interner::StringInterner;
 
+        let arena = Bump::new();
         let interner = StringInterner::new();
 
+        let element_type = arena.alloc(Type::new(
+            TypeKind::Primitive(PrimitiveType::Number),
+            luanext_parser::Span::new(0, 6, 1, 1),
+        ));
+
         let array_type = Type::new(
-            TypeKind::Array(Box::new(Type::new(
-                TypeKind::Primitive(PrimitiveType::Number),
-                luanext_parser::Span::new(0, 6, 1, 1),
-            ))),
+            TypeKind::Array(element_type),
             luanext_parser::Span::new(0, 11, 1, 1),
         );
         let result = HoverProvider::format_type(&array_type, &interner);
@@ -610,14 +618,16 @@ mod tests {
 
     #[test]
     fn test_hover_format_type_object() {
+        use bumpalo::Bump;
         use luanext_parser::ast::types::{PrimitiveType, Type, TypeKind};
         use luanext_parser::string_interner::StringInterner;
 
+        let arena = Bump::new();
         let interner = StringInterner::new();
 
         let object_type = Type::new(
             TypeKind::Object(luanext_parser::ast::types::ObjectType {
-                members: vec![],
+                members: &[],
                 span: luanext_parser::Span::new(0, 6, 1, 1),
             }),
             luanext_parser::Span::new(0, 6, 1, 1),
@@ -628,13 +638,15 @@ mod tests {
 
     #[test]
     fn test_hover_format_type_tuple() {
+        use bumpalo::Bump;
         use luanext_parser::ast::types::{Type, TypeKind};
         use luanext_parser::string_interner::StringInterner;
 
+        let arena = Bump::new();
         let interner = StringInterner::new();
 
         let tuple_type = Type::new(
-            TypeKind::Tuple(vec![]),
+            TypeKind::Tuple(&[]),
             luanext_parser::Span::new(0, 5, 1, 1),
         );
         let result = HoverProvider::format_type(&tuple_type, &interner);
@@ -643,13 +655,15 @@ mod tests {
 
     #[test]
     fn test_hover_format_type_union() {
+        use bumpalo::Bump;
         use luanext_parser::ast::types::{Type, TypeKind};
         use luanext_parser::string_interner::StringInterner;
 
+        let arena = Bump::new();
         let interner = StringInterner::new();
 
         let union_type = Type::new(
-            TypeKind::Union(vec![]),
+            TypeKind::Union(&[]),
             luanext_parser::Span::new(0, 10, 1, 1),
         );
         let result = HoverProvider::format_type(&union_type, &interner);
@@ -658,13 +672,15 @@ mod tests {
 
     #[test]
     fn test_hover_format_type_intersection() {
+        use bumpalo::Bump;
         use luanext_parser::ast::types::{Type, TypeKind};
         use luanext_parser::string_interner::StringInterner;
 
+        let arena = Bump::new();
         let interner = StringInterner::new();
 
         let intersection_type = Type::new(
-            TypeKind::Intersection(vec![]),
+            TypeKind::Intersection(&[]),
             luanext_parser::Span::new(0, 12, 1, 1),
         );
         let result = HoverProvider::format_type(&intersection_type, &interner);
