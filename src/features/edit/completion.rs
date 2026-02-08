@@ -2,10 +2,10 @@ use crate::core::document::Document;
 use crate::traits::CompletionProviderTrait;
 use lsp_types::*;
 use std::sync::Arc;
-use typedlua_parser::string_interner::StringInterner;
-use typedlua_parser::{Lexer, Parser};
-use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
-use typedlua_typechecker::{Symbol, SymbolKind, TypeChecker};
+use luanext_parser::string_interner::StringInterner;
+use luanext_parser::{Lexer, Parser};
+use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use luanext_typechecker::{Symbol, SymbolKind, TypeChecker};
 
 /// Provides code completion (IntelliSense)
 #[derive(Clone)]
@@ -248,7 +248,7 @@ impl CompletionProvider {
 
     /// Format symbol detail for completion
     fn format_symbol_detail(symbol: &Symbol) -> String {
-        use typedlua_parser::ast::types::{PrimitiveType, TypeKind};
+        use luanext_parser::ast::types::{PrimitiveType, TypeKind};
 
         let kind_str = match symbol.kind {
             SymbolKind::Const => "const",
@@ -628,15 +628,15 @@ mod tests {
         // Create a symbol representing a number variable
         let symbol = Symbol {
             name: "testVar".to_string(),
-            kind: typedlua_typechecker::SymbolKind::Variable,
-            typ: typedlua_parser::ast::types::Type::new(
-                typedlua_parser::ast::types::TypeKind::Primitive(
-                    typedlua_parser::ast::types::PrimitiveType::Number,
+            kind: luanext_typechecker::SymbolKind::Variable,
+            typ: luanext_parser::ast::types::Type::new(
+                luanext_parser::ast::types::TypeKind::Primitive(
+                    luanext_parser::ast::types::PrimitiveType::Number,
                 ),
-                typedlua_parser::Span::new(0, 10, 1, 1),
+                luanext_parser::Span::new(0, 10, 1, 1),
             ),
             is_exported: false,
-            span: typedlua_parser::Span::new(0, 10, 1, 1),
+            span: luanext_parser::Span::new(0, 10, 1, 1),
             references: vec![],
         };
 
@@ -651,26 +651,26 @@ mod tests {
 
         let symbol = Symbol {
             name: "testFunc".to_string(),
-            kind: typedlua_typechecker::SymbolKind::Function,
-            typ: typedlua_parser::ast::types::Type::new(
-                typedlua_parser::ast::types::TypeKind::Function(
-                    typedlua_parser::ast::types::FunctionType {
+            kind: luanext_typechecker::SymbolKind::Function,
+            typ: luanext_parser::ast::types::Type::new(
+                luanext_parser::ast::types::TypeKind::Function(
+                    luanext_parser::ast::types::FunctionType {
                         type_parameters: None,
                         parameters: vec![],
-                        return_type: Box::new(typedlua_parser::ast::types::Type::new(
-                            typedlua_parser::ast::types::TypeKind::Primitive(
-                                typedlua_parser::ast::types::PrimitiveType::Number,
+                        return_type: Box::new(luanext_parser::ast::types::Type::new(
+                            luanext_parser::ast::types::TypeKind::Primitive(
+                                luanext_parser::ast::types::PrimitiveType::Number,
                             ),
-                            typedlua_parser::Span::new(0, 6, 1, 1),
+                            luanext_parser::Span::new(0, 6, 1, 1),
                         )),
                         throws: None,
-                        span: typedlua_parser::Span::new(0, 20, 1, 1),
+                        span: luanext_parser::Span::new(0, 20, 1, 1),
                     },
                 ),
-                typedlua_parser::Span::new(0, 20, 1, 1),
+                luanext_parser::Span::new(0, 20, 1, 1),
             ),
             is_exported: false,
-            span: typedlua_parser::Span::new(0, 20, 1, 1),
+            span: luanext_parser::Span::new(0, 20, 1, 1),
             references: vec![],
         };
 
@@ -842,15 +842,15 @@ mod tests {
 
         let symbol = Symbol {
             name: "MyClass".to_string(),
-            kind: typedlua_typechecker::SymbolKind::Class,
-            typ: typedlua_parser::ast::types::Type::new(
-                typedlua_parser::ast::types::TypeKind::Primitive(
-                    typedlua_parser::ast::types::PrimitiveType::Unknown,
+            kind: luanext_typechecker::SymbolKind::Class,
+            typ: luanext_parser::ast::types::Type::new(
+                luanext_parser::ast::types::TypeKind::Primitive(
+                    luanext_parser::ast::types::PrimitiveType::Unknown,
                 ),
-                typedlua_parser::Span::new(0, 8, 1, 1),
+                luanext_parser::Span::new(0, 8, 1, 1),
             ),
             is_exported: false,
-            span: typedlua_parser::Span::new(0, 8, 1, 1),
+            span: luanext_parser::Span::new(0, 8, 1, 1),
             references: vec![],
         };
 
@@ -864,15 +864,15 @@ mod tests {
 
         let symbol = Symbol {
             name: "MyInterface".to_string(),
-            kind: typedlua_typechecker::SymbolKind::Interface,
-            typ: typedlua_parser::ast::types::Type::new(
-                typedlua_parser::ast::types::TypeKind::Primitive(
-                    typedlua_parser::ast::types::PrimitiveType::Unknown,
+            kind: luanext_typechecker::SymbolKind::Interface,
+            typ: luanext_parser::ast::types::Type::new(
+                luanext_parser::ast::types::TypeKind::Primitive(
+                    luanext_parser::ast::types::PrimitiveType::Unknown,
                 ),
-                typedlua_parser::Span::new(0, 11, 1, 1),
+                luanext_parser::Span::new(0, 11, 1, 1),
             ),
             is_exported: false,
-            span: typedlua_parser::Span::new(0, 11, 1, 1),
+            span: luanext_parser::Span::new(0, 11, 1, 1),
             references: vec![],
         };
 
@@ -886,15 +886,15 @@ mod tests {
 
         let symbol = Symbol {
             name: "MyEnum".to_string(),
-            kind: typedlua_typechecker::SymbolKind::Enum,
-            typ: typedlua_parser::ast::types::Type::new(
-                typedlua_parser::ast::types::TypeKind::Primitive(
-                    typedlua_parser::ast::types::PrimitiveType::Unknown,
+            kind: luanext_typechecker::SymbolKind::Enum,
+            typ: luanext_parser::ast::types::Type::new(
+                luanext_parser::ast::types::TypeKind::Primitive(
+                    luanext_parser::ast::types::PrimitiveType::Unknown,
                 ),
-                typedlua_parser::Span::new(0, 7, 1, 1),
+                luanext_parser::Span::new(0, 7, 1, 1),
             ),
             is_exported: false,
-            span: typedlua_parser::Span::new(0, 7, 1, 1),
+            span: luanext_parser::Span::new(0, 7, 1, 1),
             references: vec![],
         };
 
@@ -908,15 +908,15 @@ mod tests {
 
         let symbol = Symbol {
             name: "MyType".to_string(),
-            kind: typedlua_typechecker::SymbolKind::TypeAlias,
-            typ: typedlua_parser::ast::types::Type::new(
-                typedlua_parser::ast::types::TypeKind::Primitive(
-                    typedlua_parser::ast::types::PrimitiveType::Unknown,
+            kind: luanext_typechecker::SymbolKind::TypeAlias,
+            typ: luanext_parser::ast::types::Type::new(
+                luanext_parser::ast::types::TypeKind::Primitive(
+                    luanext_parser::ast::types::PrimitiveType::Unknown,
                 ),
-                typedlua_parser::Span::new(0, 6, 1, 1),
+                luanext_parser::Span::new(0, 6, 1, 1),
             ),
             is_exported: false,
-            span: typedlua_parser::Span::new(0, 6, 1, 1),
+            span: luanext_parser::Span::new(0, 6, 1, 1),
             references: vec![],
         };
 
@@ -930,15 +930,15 @@ mod tests {
 
         let symbol = Symbol {
             name: "param".to_string(),
-            kind: typedlua_typechecker::SymbolKind::Parameter,
-            typ: typedlua_parser::ast::types::Type::new(
-                typedlua_parser::ast::types::TypeKind::Primitive(
-                    typedlua_parser::ast::types::PrimitiveType::String,
+            kind: luanext_typechecker::SymbolKind::Parameter,
+            typ: luanext_parser::ast::types::Type::new(
+                luanext_parser::ast::types::TypeKind::Primitive(
+                    luanext_parser::ast::types::PrimitiveType::String,
                 ),
-                typedlua_parser::Span::new(0, 6, 1, 1),
+                luanext_parser::Span::new(0, 6, 1, 1),
             ),
             is_exported: false,
-            span: typedlua_parser::Span::new(0, 6, 1, 1),
+            span: luanext_parser::Span::new(0, 6, 1, 1),
             references: vec![],
         };
 

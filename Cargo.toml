@@ -1,26 +1,26 @@
 [package]
-name = "typedlua-lsp"
+name = "luanext-lsp"
 version = "0.1.0"
 edition = "2021"
-authors = ["TypedLua Contributors"]
+authors = ["LuaNext Contributors"]
 license = "MIT"
-repository = "https://github.com/forge18/typedlua-lsp"
-description = "Language Server Protocol implementation for TypedLua"
+repository = "https://github.com/forge18/luanext-lsp"
+description = "Language Server Protocol implementation for LuaNext"
 
 [lib]
-name = "typedlua_lsp"
+name = "luanext_lsp"
 path = "src/lib.rs"
 
 [[bin]]
-name = "typedlua-lsp"
+name = "luanext-lsp"
 path = "src/main.rs"
 
 [dependencies]
 # Parser and AST
-typedlua-parser = { git = "https://github.com/forge18/typedlua-parser.git" }
+luanext-parser = { git = "https://github.com/forge18/luanext-parser.git" }
 
 # Type checker
-typedlua-typechecker = { git = "https://github.com/forge18/typedlua-typechecker.git" }
+luanext-typechecker = { git = "https://github.com/forge18/luanext-typechecker.git" }
 
 # LSP
 lsp-server = "0.7"

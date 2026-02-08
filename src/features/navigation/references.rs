@@ -4,14 +4,14 @@ use lsp_types::{Uri, *};
 
 use std::str::FromStr;
 use std::sync::Arc;
-use typedlua_parser::ast::statement::{Block, Statement};
-use typedlua_parser::ast::{
+use luanext_parser::ast::statement::{Block, Statement};
+use luanext_parser::ast::{
     expression::{Argument, Expression, ExpressionKind, ObjectProperty},
     pattern::Pattern,
 };
-use typedlua_parser::string_interner::StringInterner;
-use typedlua_parser::{Lexer, Parser, Span};
-use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use luanext_parser::string_interner::StringInterner;
+use luanext_parser::{Lexer, Parser, Span};
+use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
 /// Provides find-references functionality
 #[derive(Clone)]
@@ -107,7 +107,7 @@ impl ReferencesProvider {
 
     fn find_references_in_function(
         &self,
-        func: &typedlua_parser::ast::statement::FunctionDeclaration,
+        func: &luanext_parser::ast::statement::FunctionDeclaration,
         word: &str,
         references: &mut Vec<Location>,
         interner: &StringInterner,

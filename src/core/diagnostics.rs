@@ -2,12 +2,12 @@ use crate::core::document::Document;
 use crate::traits::DiagnosticsProviderTrait;
 use lsp_types::*;
 use std::sync::Arc;
-use typedlua_parser::string_interner::StringInterner;
-use typedlua_parser::{Lexer, Parser, Span};
-use typedlua_typechecker::cli::diagnostics::{
+use luanext_parser::string_interner::StringInterner;
+use luanext_parser::{Lexer, Parser, Span};
+use luanext_typechecker::cli::diagnostics::{
     CollectingDiagnosticHandler, DiagnosticHandler, DiagnosticLevel,
 };
-use typedlua_typechecker::TypeChecker;
+use luanext_typechecker::TypeChecker;
 
 /// Provides diagnostics (errors and warnings) for documents
 #[derive(Clone)]

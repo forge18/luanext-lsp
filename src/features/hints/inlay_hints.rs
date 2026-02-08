@@ -1,12 +1,12 @@
 use crate::core::document::Document;
 use lsp_types::*;
 use std::sync::Arc;
-use typedlua_parser::ast::expression::{Expression, ExpressionKind};
-use typedlua_parser::ast::statement::Statement;
-use typedlua_parser::string_interner::StringInterner;
-use typedlua_parser::{Lexer, Parser, Span};
-use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
-use typedlua_typechecker::TypeChecker;
+use luanext_parser::ast::expression::{Expression, ExpressionKind};
+use luanext_parser::ast::statement::Statement;
+use luanext_parser::string_interner::StringInterner;
+use luanext_parser::{Lexer, Parser, Span};
+use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use luanext_typechecker::TypeChecker;
 
 /// Provides inlay hints (inline type annotations and parameter names)
 #[derive(Clone)]
@@ -118,13 +118,13 @@ impl InlayHintsProvider {
                     let func_name_str = interner.resolve(*func_name);
                     if let Some(symbol) = type_checker.lookup_symbol(&func_name_str) {
                         // Get function type parameters
-                        use typedlua_parser::ast::types::TypeKind;
+                        use luanext_parser::ast::types::TypeKind;
                         if let TypeKind::Function(func_type) = &symbol.typ.kind {
                             // Show parameter name hints for function arguments
                             for (i, arg) in args.iter().enumerate() {
                                 if i < func_type.parameters.len() {
                                     let param = &func_type.parameters[i];
-                                    if let typedlua_parser::ast::pattern::Pattern::Identifier(
+                                    if let luanext_parser::ast::pattern::Pattern::Identifier(
                                         ident,
                                     ) = &param.pattern
                                     {
@@ -205,10 +205,10 @@ impl InlayHintsProvider {
     #[allow(dead_code)]
     fn format_type_simple(
         &self,
-        typ: &typedlua_parser::ast::types::Type,
+        typ: &luanext_parser::ast::types::Type,
         interner: &StringInterner,
     ) -> String {
-        use typedlua_parser::ast::types::{PrimitiveType, TypeKind};
+        use luanext_parser::ast::types::{PrimitiveType, TypeKind};
 
         match &typ.kind {
             TypeKind::Primitive(PrimitiveType::Nil) => "nil".to_string(),
@@ -250,7 +250,7 @@ fn span_to_position_end(span: &Span) -> Position {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use typedlua_parser::ast::types::{PrimitiveType, Type, TypeKind};
+    use luanext_parser::ast::types::{PrimitiveType, Type, TypeKind};
 
     #[test]
     fn test_type_hint_scenarios() {
@@ -759,11 +759,11 @@ mod tests {
     #[test]
     fn test_format_type_simple_primitives() {
         let provider = InlayHintsProvider::new();
-        use typedlua_parser::ast::types::{PrimitiveType, Type};
+        use luanext_parser::ast::types::{PrimitiveType, Type};
 
         let nil_type = Type {
             span: Span::new(0, 3, 1, 1),
-            kind: typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Nil),
+            kind: luanext_parser::ast::types::TypeKind::Primitive(PrimitiveType::Nil),
         };
 
         let result = provider.format_type_simple(&nil_type, &StringInterner::new());
@@ -771,49 +771,49 @@ mod tests {
 
         let number_type = Type {
             span: Span::new(0, 6, 1, 1),
-            kind: typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Number),
+            kind: luanext_parser::ast::types::TypeKind::Primitive(PrimitiveType::Number),
         };
         let result = provider.format_type_simple(&number_type, &StringInterner::new());
         assert_eq!(result, "number");
 
         let string_type = Type {
             span: Span::new(0, 6, 1, 1),
-            kind: typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::String),
+            kind: luanext_parser::ast::types::TypeKind::Primitive(PrimitiveType::String),
         };
         let result = provider.format_type_simple(&string_type, &StringInterner::new());
         assert_eq!(result, "string");
 
         let boolean_type = Type {
             span: Span::new(0, 7, 1, 1),
-            kind: typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Boolean),
+            kind: luanext_parser::ast::types::TypeKind::Primitive(PrimitiveType::Boolean),
         };
         let result = provider.format_type_simple(&boolean_type, &StringInterner::new());
         assert_eq!(result, "boolean");
 
         let integer_type = Type {
             span: Span::new(0, 7, 1, 1),
-            kind: typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Integer),
+            kind: luanext_parser::ast::types::TypeKind::Primitive(PrimitiveType::Integer),
         };
         let result = provider.format_type_simple(&integer_type, &StringInterner::new());
         assert_eq!(result, "integer");
 
         let void_type = Type {
             span: Span::new(0, 4, 1, 1),
-            kind: typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Void),
+            kind: luanext_parser::ast::types::TypeKind::Primitive(PrimitiveType::Void),
         };
         let result = provider.format_type_simple(&void_type, &StringInterner::new());
         assert_eq!(result, "void");
 
         let never_type = Type {
             span: Span::new(0, 5, 1, 1),
-            kind: typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Never),
+            kind: luanext_parser::ast::types::TypeKind::Primitive(PrimitiveType::Never),
         };
         let result = provider.format_type_simple(&never_type, &StringInterner::new());
         assert_eq!(result, "never");
 
         let unknown_type = Type {
             span: Span::new(0, 7, 1, 1),
-            kind: typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Unknown),
+            kind: luanext_parser::ast::types::TypeKind::Primitive(PrimitiveType::Unknown),
         };
         let result = provider.format_type_simple(&unknown_type, &StringInterner::new());
         assert_eq!(result, "unknown");
@@ -830,7 +830,7 @@ mod tests {
 
         let func_type = Type {
             span: Span::new(0, 8, 1, 1),
-            kind: TypeKind::Function(typedlua_parser::ast::types::FunctionType {
+            kind: TypeKind::Function(luanext_parser::ast::types::FunctionType {
                 span: Span::new(0, 8, 1, 1),
                 parameters: vec![],
                 return_type: Box::new(return_type),
@@ -849,12 +849,12 @@ mod tests {
 
         let number_type = Type {
             span: Span::new(0, 6, 1, 1),
-            kind: typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Number),
+            kind: luanext_parser::ast::types::TypeKind::Primitive(PrimitiveType::Number),
         };
 
         let array_type = Type {
             span: Span::new(0, 9, 1, 1),
-            kind: typedlua_parser::ast::types::TypeKind::Array(Box::new(number_type)),
+            kind: luanext_parser::ast::types::TypeKind::Array(Box::new(number_type)),
         };
 
         let result = provider.format_type_simple(&array_type, &StringInterner::new());

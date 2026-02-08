@@ -7,12 +7,12 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use typedlua_parser::ast::Program;
-use typedlua_parser::diagnostics::CollectingDiagnosticHandler;
-use typedlua_parser::string_interner::StringInterner;
-use typedlua_parser::{Lexer, Parser};
-use typedlua_typechecker::module_resolver::{ModuleId, ModuleRegistry, ModuleResolver};
-use typedlua_typechecker::SymbolTable;
+use luanext_parser::ast::Program;
+use luanext_parser::diagnostics::CollectingDiagnosticHandler;
+use luanext_parser::string_interner::StringInterner;
+use luanext_parser::{Lexer, Parser};
+use luanext_typechecker::module_resolver::{ModuleId, ModuleRegistry, ModuleResolver};
+use luanext_typechecker::SymbolTable;
 
 /// Abstraction for document management operations.
 ///
@@ -50,7 +50,7 @@ impl DocumentManagerTrait for DocumentManager {
 pub type ParsedAst = (
     Arc<Program>,
     Arc<StringInterner>,
-    Arc<typedlua_parser::string_interner::CommonIdentifiers>,
+    Arc<luanext_parser::string_interner::CommonIdentifiers>,
 );
 
 /// Manages open documents and their cached analysis results
@@ -170,14 +170,14 @@ impl DocumentManager {
     /// Create a test document manager with mock module system
     #[cfg(test)]
     pub fn new_test() -> Self {
-        use typedlua_typechecker::cli::config::CompilerOptions;
-        use typedlua_typechecker::cli::fs::MockFileSystem;
+        use luanext_typechecker::cli::config::CompilerOptions;
+        use luanext_typechecker::cli::fs::MockFileSystem;
 
         let workspace_root = PathBuf::from("/test");
         let fs = Arc::new(MockFileSystem::new());
         let compiler_options = CompilerOptions::default();
         let module_config =
-            typedlua_typechecker::module_resolver::ModuleConfig::from_compiler_options(
+            luanext_typechecker::module_resolver::ModuleConfig::from_compiler_options(
                 &compiler_options,
                 &workspace_root,
             );
@@ -858,7 +858,7 @@ mod tests {
         let dm = DocumentManager::new_test();
 
         // Create a dummy module id
-        let module_id = typedlua_typechecker::module_resolver::ModuleId::new("test".into());
+        let module_id = luanext_typechecker::module_resolver::ModuleId::new("test".into());
 
         let result = dm.module_id_to_uri(&module_id);
         // Non-opened document should return None
@@ -875,7 +875,7 @@ mod tests {
         assert!(result.is_none());
 
         let _ = dm.symbol_index();
-        let _ = dm.module_id_to_uri(&typedlua_typechecker::module_resolver::ModuleId::new(
+        let _ = dm.module_id_to_uri(&luanext_typechecker::module_resolver::ModuleId::new(
             "test".into(),
         ));
         let _ = dm.uri_to_module_id(&uri);

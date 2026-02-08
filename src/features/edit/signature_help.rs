@@ -1,10 +1,10 @@
 use crate::core::document::Document;
 use lsp_types::*;
 use std::sync::Arc;
-use typedlua_parser::string_interner::StringInterner;
-use typedlua_parser::{Lexer, Parser};
-use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
-use typedlua_typechecker::TypeChecker;
+use luanext_parser::string_interner::StringInterner;
+use luanext_parser::{Lexer, Parser};
+use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use luanext_typechecker::TypeChecker;
 
 /// Provides signature help (parameter info while typing function calls)
 #[derive(Clone)]
@@ -136,11 +136,11 @@ impl SignatureHelpProvider {
     fn format_signature(
         &self,
         name: &str,
-        symbol: &typedlua_typechecker::Symbol,
+        symbol: &luanext_typechecker::Symbol,
         interner: &StringInterner,
     ) -> Option<SignatureInformation> {
-        use typedlua_parser::ast::pattern::Pattern;
-        use typedlua_parser::ast::types::TypeKind;
+        use luanext_parser::ast::pattern::Pattern;
+        use luanext_parser::ast::types::TypeKind;
 
         // Check if the type is a function
         if let TypeKind::Function(func_type) = &symbol.typ.kind {
@@ -183,10 +183,10 @@ impl SignatureHelpProvider {
     /// Simple type formatting
     fn format_type_simple(
         &self,
-        typ: &typedlua_parser::ast::types::Type,
+        typ: &luanext_parser::ast::types::Type,
         interner: &StringInterner,
     ) -> String {
-        use typedlua_parser::ast::types::{PrimitiveType, TypeKind};
+        use luanext_parser::ast::types::{PrimitiveType, TypeKind};
 
         match &typ.kind {
             TypeKind::Primitive(PrimitiveType::Nil) => "nil".to_string(),

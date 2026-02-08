@@ -3,11 +3,11 @@ use lsp_types::{Uri, *};
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use typedlua_parser::ast::expression::{Expression, ExpressionKind};
-use typedlua_parser::ast::statement::Statement;
-use typedlua_parser::string_interner::StringInterner;
-use typedlua_parser::{Lexer, Parser, Span};
-use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use luanext_parser::ast::expression::{Expression, ExpressionKind};
+use luanext_parser::ast::statement::Statement;
+use luanext_parser::string_interner::StringInterner;
+use luanext_parser::{Lexer, Parser, Span};
+use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
 /// Provides rename functionality
 #[derive(Clone)]
@@ -164,7 +164,7 @@ impl RenameProvider {
         symbol_name: &str,
         interner: &StringInterner,
     ) -> bool {
-        use typedlua_parser::ast::statement::ExportKind;
+        use luanext_parser::ast::statement::ExportKind;
 
         for stmt in statements {
             if let Statement::Export(export_decl) = stmt {
@@ -207,7 +207,7 @@ impl RenameProvider {
         name: &str,
         interner: &StringInterner,
     ) -> Option<Span> {
-        use typedlua_parser::ast::pattern::Pattern;
+        use luanext_parser::ast::pattern::Pattern;
 
         match stmt {
             Statement::Variable(var_decl) => {
@@ -250,7 +250,7 @@ impl RenameProvider {
     /// Collect rename edits in files that import from the current module
     fn collect_renames_in_importing_files(
         &self,
-        module_id: &typedlua_typechecker::module_resolver::ModuleId,
+        module_id: &luanext_typechecker::module_resolver::ModuleId,
         symbol_name: &str,
         new_name: &str,
         document_manager: &DocumentManager,
@@ -320,7 +320,7 @@ impl RenameProvider {
         document_manager: &DocumentManager,
         interner: &StringInterner,
     ) -> Option<(Uri, String)> {
-        use typedlua_parser::ast::statement::ImportClause;
+        use luanext_parser::ast::statement::ImportClause;
 
         for stmt in statements {
             if let Statement::Import(import_decl) = stmt {
@@ -563,7 +563,7 @@ impl RenameProvider {
         name: &str,
         interner: &StringInterner,
     ) -> Option<Span> {
-        use typedlua_parser::ast::pattern::Pattern;
+        use luanext_parser::ast::pattern::Pattern;
 
         for stmt in statements {
             match stmt {

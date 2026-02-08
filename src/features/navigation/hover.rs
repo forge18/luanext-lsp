@@ -2,10 +2,10 @@ use crate::core::document::Document;
 use crate::traits::HoverProviderTrait;
 use lsp_types::*;
 use std::sync::Arc;
-use typedlua_parser::string_interner::StringInterner;
-use typedlua_parser::{Lexer, Parser};
-use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
-use typedlua_typechecker::{SymbolKind, TypeChecker};
+use luanext_parser::string_interner::StringInterner;
+use luanext_parser::{Lexer, Parser};
+use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use luanext_typechecker::{SymbolKind, TypeChecker};
 
 /// Provides hover information (type info, documentation, signatures)
 #[derive(Clone)]
@@ -79,8 +79,8 @@ impl HoverProvider {
     }
 
     /// Format a type for display
-    fn format_type(typ: &typedlua_parser::ast::types::Type, interner: &StringInterner) -> String {
-        use typedlua_parser::ast::types::{PrimitiveType, TypeKind};
+    fn format_type(typ: &luanext_parser::ast::types::Type, interner: &StringInterner) -> String {
+        use luanext_parser::ast::types::{PrimitiveType, TypeKind};
 
         match &typ.kind {
             TypeKind::Primitive(PrimitiveType::Nil) => "nil".to_string(),
@@ -530,36 +530,36 @@ mod tests {
 
     #[test]
     fn test_hover_format_type_primitives() {
-        use typedlua_parser::ast::types::{PrimitiveType, Type};
-        use typedlua_parser::string_interner::StringInterner;
+        use luanext_parser::ast::types::{PrimitiveType, Type};
+        use luanext_parser::string_interner::StringInterner;
 
         let interner = StringInterner::new();
 
         // Test primitive type formatting
         let nil_type = Type::new(
-            typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Nil),
-            typedlua_parser::Span::new(0, 3, 1, 1),
+            luanext_parser::ast::types::TypeKind::Primitive(PrimitiveType::Nil),
+            luanext_parser::Span::new(0, 3, 1, 1),
         );
         let result = HoverProvider::format_type(&nil_type, &interner);
         assert_eq!(result, "nil");
 
         let bool_type = Type::new(
-            typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Boolean),
-            typedlua_parser::Span::new(0, 7, 1, 1),
+            luanext_parser::ast::types::TypeKind::Primitive(PrimitiveType::Boolean),
+            luanext_parser::Span::new(0, 7, 1, 1),
         );
         let result = HoverProvider::format_type(&bool_type, &interner);
         assert_eq!(result, "boolean");
 
         let num_type = Type::new(
-            typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::Number),
-            typedlua_parser::Span::new(0, 6, 1, 1),
+            luanext_parser::ast::types::TypeKind::Primitive(PrimitiveType::Number),
+            luanext_parser::Span::new(0, 6, 1, 1),
         );
         let result = HoverProvider::format_type(&num_type, &interner);
         assert_eq!(result, "number");
 
         let str_type = Type::new(
-            typedlua_parser::ast::types::TypeKind::Primitive(PrimitiveType::String),
-            typedlua_parser::Span::new(0, 6, 1, 1),
+            luanext_parser::ast::types::TypeKind::Primitive(PrimitiveType::String),
+            luanext_parser::Span::new(0, 6, 1, 1),
         );
         let result = HoverProvider::format_type(&str_type, &interner);
         assert_eq!(result, "string");
@@ -567,23 +567,23 @@ mod tests {
 
     #[test]
     fn test_hover_format_type_function() {
-        use typedlua_parser::ast::types::{PrimitiveType, Type, TypeKind};
-        use typedlua_parser::string_interner::StringInterner;
+        use luanext_parser::ast::types::{PrimitiveType, Type, TypeKind};
+        use luanext_parser::string_interner::StringInterner;
 
         let interner = StringInterner::new();
 
         let func_type = Type::new(
-            TypeKind::Function(typedlua_parser::ast::types::FunctionType {
+            TypeKind::Function(luanext_parser::ast::types::FunctionType {
                 type_parameters: None,
                 parameters: vec![],
                 return_type: Box::new(Type::new(
                     TypeKind::Primitive(PrimitiveType::Number),
-                    typedlua_parser::Span::new(0, 6, 1, 1),
+                    luanext_parser::Span::new(0, 6, 1, 1),
                 )),
                 throws: None,
-                span: typedlua_parser::Span::new(0, 20, 1, 1),
+                span: luanext_parser::Span::new(0, 20, 1, 1),
             }),
-            typedlua_parser::Span::new(0, 20, 1, 1),
+            luanext_parser::Span::new(0, 20, 1, 1),
         );
         let result = HoverProvider::format_type(&func_type, &interner);
         assert_eq!(result, "function");
@@ -591,17 +591,17 @@ mod tests {
 
     #[test]
     fn test_hover_format_type_array() {
-        use typedlua_parser::ast::types::{PrimitiveType, Type, TypeKind};
-        use typedlua_parser::string_interner::StringInterner;
+        use luanext_parser::ast::types::{PrimitiveType, Type, TypeKind};
+        use luanext_parser::string_interner::StringInterner;
 
         let interner = StringInterner::new();
 
         let array_type = Type::new(
             TypeKind::Array(Box::new(Type::new(
                 TypeKind::Primitive(PrimitiveType::Number),
-                typedlua_parser::Span::new(0, 6, 1, 1),
+                luanext_parser::Span::new(0, 6, 1, 1),
             ))),
-            typedlua_parser::Span::new(0, 11, 1, 1),
+            luanext_parser::Span::new(0, 11, 1, 1),
         );
         let result = HoverProvider::format_type(&array_type, &interner);
         assert_eq!(result, "array");
@@ -609,17 +609,17 @@ mod tests {
 
     #[test]
     fn test_hover_format_type_object() {
-        use typedlua_parser::ast::types::{PrimitiveType, Type, TypeKind};
-        use typedlua_parser::string_interner::StringInterner;
+        use luanext_parser::ast::types::{PrimitiveType, Type, TypeKind};
+        use luanext_parser::string_interner::StringInterner;
 
         let interner = StringInterner::new();
 
         let object_type = Type::new(
-            TypeKind::Object(typedlua_parser::ast::types::ObjectType {
+            TypeKind::Object(luanext_parser::ast::types::ObjectType {
                 members: vec![],
-                span: typedlua_parser::Span::new(0, 6, 1, 1),
+                span: luanext_parser::Span::new(0, 6, 1, 1),
             }),
-            typedlua_parser::Span::new(0, 6, 1, 1),
+            luanext_parser::Span::new(0, 6, 1, 1),
         );
         let result = HoverProvider::format_type(&object_type, &interner);
         assert_eq!(result, "object");
@@ -627,14 +627,14 @@ mod tests {
 
     #[test]
     fn test_hover_format_type_tuple() {
-        use typedlua_parser::ast::types::{Type, TypeKind};
-        use typedlua_parser::string_interner::StringInterner;
+        use luanext_parser::ast::types::{Type, TypeKind};
+        use luanext_parser::string_interner::StringInterner;
 
         let interner = StringInterner::new();
 
         let tuple_type = Type::new(
             TypeKind::Tuple(vec![]),
-            typedlua_parser::Span::new(0, 5, 1, 1),
+            luanext_parser::Span::new(0, 5, 1, 1),
         );
         let result = HoverProvider::format_type(&tuple_type, &interner);
         assert_eq!(result, "tuple");
@@ -642,14 +642,14 @@ mod tests {
 
     #[test]
     fn test_hover_format_type_union() {
-        use typedlua_parser::ast::types::{Type, TypeKind};
-        use typedlua_parser::string_interner::StringInterner;
+        use luanext_parser::ast::types::{Type, TypeKind};
+        use luanext_parser::string_interner::StringInterner;
 
         let interner = StringInterner::new();
 
         let union_type = Type::new(
             TypeKind::Union(vec![]),
-            typedlua_parser::Span::new(0, 10, 1, 1),
+            luanext_parser::Span::new(0, 10, 1, 1),
         );
         let result = HoverProvider::format_type(&union_type, &interner);
         assert_eq!(result, "union type");
@@ -657,14 +657,14 @@ mod tests {
 
     #[test]
     fn test_hover_format_type_intersection() {
-        use typedlua_parser::ast::types::{Type, TypeKind};
-        use typedlua_parser::string_interner::StringInterner;
+        use luanext_parser::ast::types::{Type, TypeKind};
+        use luanext_parser::string_interner::StringInterner;
 
         let interner = StringInterner::new();
 
         let intersection_type = Type::new(
             TypeKind::Intersection(vec![]),
-            typedlua_parser::Span::new(0, 12, 1, 1),
+            luanext_parser::Span::new(0, 12, 1, 1),
         );
         let result = HoverProvider::format_type(&intersection_type, &interner);
         assert_eq!(result, "intersection type");
@@ -672,14 +672,14 @@ mod tests {
 
     #[test]
     fn test_hover_format_type_literal() {
-        use typedlua_parser::ast::types::{Type, TypeKind};
-        use typedlua_parser::string_interner::StringInterner;
+        use luanext_parser::ast::types::{Type, TypeKind};
+        use luanext_parser::string_interner::StringInterner;
 
         let interner = StringInterner::new();
 
         let literal_type = Type::new(
-            TypeKind::Primitive(typedlua_parser::ast::types::PrimitiveType::String),
-            typedlua_parser::Span::new(0, 5, 1, 1),
+            TypeKind::Primitive(luanext_parser::ast::types::PrimitiveType::String),
+            luanext_parser::Span::new(0, 5, 1, 1),
         );
         let result = HoverProvider::format_type(&literal_type, &interner);
         assert_eq!(result, "string");

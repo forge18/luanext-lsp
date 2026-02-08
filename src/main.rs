@@ -19,9 +19,9 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
-use typedlua_typechecker::cli::config::CompilerOptions;
-use typedlua_typechecker::cli::fs::RealFileSystem;
-use typedlua_typechecker::module_resolver::{ModuleConfig, ModuleRegistry, ModuleResolver};
+use luanext_typechecker::cli::config::CompilerOptions;
+use luanext_typechecker::cli::fs::RealFileSystem;
+use luanext_typechecker::module_resolver::{ModuleConfig, ModuleRegistry, ModuleResolver};
 
 // Implement LspConnection for the real lsp_server::Connection
 struct ConnectionWrapper<'a>(&'a Connection);
@@ -616,7 +616,7 @@ mod tests {
 
     #[test]
     fn test_module_config_creation() {
-        use typedlua_typechecker::cli::config::CompilerOptions;
+        use luanext_typechecker::cli::config::CompilerOptions;
 
         let compiler_options = CompilerOptions::default();
         let workspace_root = PathBuf::from("/test");

@@ -3,11 +3,11 @@ use lsp_types::*;
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use typedlua_parser::ast::pattern::Pattern;
-use typedlua_parser::ast::statement::Statement;
-use typedlua_parser::string_interner::StringInterner;
-use typedlua_parser::{Lexer, Parser};
-use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use luanext_parser::ast::pattern::Pattern;
+use luanext_parser::ast::statement::Statement;
+use luanext_parser::string_interner::StringInterner;
+use luanext_parser::{Lexer, Parser};
+use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
 /// Provides code actions (quick fixes, refactorings, source actions)
 #[derive(Clone)]
@@ -161,7 +161,7 @@ impl CodeActionsProvider {
         uri: &Uri,
         document: &Document,
         range: Range,
-        _ast: &typedlua_parser::ast::Program,
+        _ast: &luanext_parser::ast::Program,
     ) -> Option<CodeAction> {
         // Get the selected text
         let selected_text = self.get_text_in_range(document, range)?;
@@ -232,7 +232,7 @@ impl CodeActionsProvider {
     fn source_action_add_type_annotations(
         &self,
         uri: &Uri,
-        ast: &typedlua_parser::ast::Program,
+        ast: &luanext_parser::ast::Program,
     ) -> Option<CodeAction> {
         let mut edits = Vec::new();
 

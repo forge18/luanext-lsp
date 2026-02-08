@@ -2,10 +2,10 @@ use crate::core::document::{Document, DocumentManager};
 use crate::traits::DefinitionProviderTrait;
 use lsp_types::{GotoDefinitionResponse, Location, Position, Range, Uri};
 use std::sync::Arc;
-use typedlua_parser::ast::statement::Statement;
-use typedlua_parser::string_interner::StringInterner;
-use typedlua_parser::{Lexer, Parser, Span};
-use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use luanext_parser::ast::statement::Statement;
+use luanext_parser::string_interner::StringInterner;
+use luanext_parser::{Lexer, Parser, Span};
+use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
 /// Provides go-to-definition functionality
 #[derive(Clone)]
@@ -68,7 +68,7 @@ impl DefinitionProvider {
         document_manager: &DocumentManager,
         interner: &StringInterner,
     ) -> Option<Location> {
-        use typedlua_parser::ast::statement::ImportClause;
+        use luanext_parser::ast::statement::ImportClause;
 
         // Search for import statements that import this symbol
         for stmt in statements {
@@ -191,7 +191,7 @@ impl DefinitionProvider {
         let ast = parser.parse().ok()?;
 
         // Search for the exported declaration
-        use typedlua_parser::ast::statement::ExportKind;
+        use luanext_parser::ast::statement::ExportKind;
 
         for stmt in ast.statements.iter() {
             if let Statement::Export(export_decl) = stmt {
@@ -252,7 +252,7 @@ impl DefinitionProvider {
         name: &str,
         interner: &StringInterner,
     ) -> Option<Span> {
-        use typedlua_parser::ast::pattern::Pattern;
+        use luanext_parser::ast::pattern::Pattern;
 
         match stmt {
             Statement::Variable(var_decl) => {
@@ -299,7 +299,7 @@ impl DefinitionProvider {
         name: &str,
         interner: &StringInterner,
     ) -> Option<Span> {
-        use typedlua_parser::ast::pattern::Pattern;
+        use luanext_parser::ast::pattern::Pattern;
 
         for stmt in statements {
             match stmt {
@@ -403,15 +403,15 @@ impl DefinitionProviderTrait for DefinitionProvider {
         document: &Document,
         position: Position,
     ) -> Option<GotoDefinitionResponse> {
-        use typedlua_typechecker::cli::config::CompilerOptions;
-        use typedlua_typechecker::cli::fs::MockFileSystem;
-        use typedlua_typechecker::module_resolver::{ModuleRegistry, ModuleResolver};
+        use luanext_typechecker::cli::config::CompilerOptions;
+        use luanext_typechecker::cli::fs::MockFileSystem;
+        use luanext_typechecker::module_resolver::{ModuleRegistry, ModuleResolver};
 
         let workspace_root = std::path::PathBuf::from("/test");
         let fs = std::sync::Arc::new(MockFileSystem::new());
         let compiler_options = CompilerOptions::default();
         let module_config =
-            typedlua_typechecker::module_resolver::ModuleConfig::from_compiler_options(
+            luanext_typechecker::module_resolver::ModuleConfig::from_compiler_options(
                 &compiler_options,
                 &workspace_root,
             );

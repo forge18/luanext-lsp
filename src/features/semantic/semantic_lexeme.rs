@@ -1,12 +1,12 @@
 use crate::core::document::Document;
 use lsp_types::*;
 use std::sync::Arc;
-use typedlua_parser::ast::expression::{Expression, ExpressionKind};
-use typedlua_parser::ast::pattern::Pattern;
-use typedlua_parser::ast::statement::{ClassMember, Statement, VariableKind};
-use typedlua_parser::string_interner::StringInterner;
-use typedlua_parser::{Lexer, Parser, Span};
-use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use luanext_parser::ast::expression::{Expression, ExpressionKind};
+use luanext_parser::ast::pattern::Pattern;
+use luanext_parser::ast::statement::{ClassMember, Statement, VariableKind};
+use luanext_parser::string_interner::StringInterner;
+use luanext_parser::{Lexer, Parser, Span};
+use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
 /// Provides semantic tokens for syntax highlighting based on semantic analysis
 #[derive(Clone)]
@@ -53,7 +53,7 @@ impl SemanticTokensProvider {
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (_interner, _common_ids) = StringInterner::new_with_common_identifiers();
         let (mut interner, common_ids) =
-            typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
+            luanext_parser::string_interner::StringInterner::new_with_common_identifiers();
         let mut lexer = Lexer::new(&document.text, handler.clone(), &mut interner);
         let tokens = match lexer.tokenize() {
             Ok(t) => t,

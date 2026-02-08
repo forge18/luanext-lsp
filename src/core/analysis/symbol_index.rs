@@ -1,9 +1,9 @@
 use lsp_types::{SymbolInformation, SymbolKind, Uri};
 use std::collections::{HashMap, HashSet};
-use typedlua_parser::ast::statement::{ExportKind, ImportClause, OperatorKind, Statement};
-use typedlua_parser::ast::Program;
-use typedlua_parser::string_interner::StringInterner;
-use typedlua_parser::Span;
+use luanext_parser::ast::statement::{ExportKind, ImportClause, OperatorKind, Statement};
+use luanext_parser::ast::Program;
+use luanext_parser::string_interner::StringInterner;
+use luanext_parser::Span;
 
 /// Information about an exported symbol
 #[derive(Debug, Clone)]
@@ -345,8 +345,8 @@ impl SymbolIndex {
         container_name: Option<String>,
         interner: &StringInterner,
     ) {
-        use typedlua_parser::ast::pattern::Pattern;
-        use typedlua_parser::ast::statement::ClassMember;
+        use luanext_parser::ast::pattern::Pattern;
+        use luanext_parser::ast::statement::ClassMember;
 
         match stmt {
             Statement::Variable(var_decl) => {
@@ -660,7 +660,7 @@ impl SymbolIndex {
         stmt: &Statement,
         interner: &StringInterner,
     ) -> Option<(String, String)> {
-        use typedlua_parser::ast::pattern::Pattern;
+        use luanext_parser::ast::pattern::Pattern;
 
         match stmt {
             Statement::Variable(var_decl) => {
@@ -701,8 +701,8 @@ mod tests {
     use super::*;
     use std::str::FromStr;
     use std::sync::Arc;
-    use typedlua_parser::{Lexer, Parser};
-    use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+    use luanext_parser::{Lexer, Parser};
+    use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
     fn make_uri(path: &str) -> Uri {
         Uri::from_str(&format!("file://{}", path)).unwrap()
@@ -968,7 +968,7 @@ mod tests {
     #[test]
     fn test_symbol_index_with_parsed_ast() {
         use std::sync::Arc;
-        use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+        use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
         let mut index = SymbolIndex::new();
         let uri = make_uri("/test/module.tl");
@@ -990,7 +990,7 @@ mod tests {
     #[test]
     fn test_update_document_clears_previous() {
         use std::sync::Arc;
-        use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+        use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
         let mut index = SymbolIndex::new();
         let uri = make_uri("/test.lua");

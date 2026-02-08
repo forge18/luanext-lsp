@@ -10,21 +10,21 @@ use crate::traits::{
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use typedlua_parser::lexer::Lexer;
-use typedlua_parser::parser::Parser;
-use typedlua_parser::string_interner::StringInterner;
-use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
-use typedlua_typechecker::module_resolver::{
+use luanext_parser::lexer::Lexer;
+use luanext_parser::parser::Parser;
+use luanext_parser::string_interner::StringInterner;
+use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use luanext_typechecker::module_resolver::{
     ModuleId as CoreModuleId, ModuleRegistry as CoreModuleRegistryType,
     ModuleResolver as CoreModuleResolverType,
 };
-use typedlua_typechecker::{Symbol, SymbolTable, TypeChecker as CoreTypeCheckerType};
+use luanext_typechecker::{Symbol, SymbolTable, TypeChecker as CoreTypeCheckerType};
 
 // ============================================================================
 // Module Resolution Bridges
 // ============================================================================
 
-/// Bridge implementation wrapping typedlua_typechecker::module_resolver::ModuleId
+/// Bridge implementation wrapping luanext_typechecker::module_resolver::ModuleId
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct CoreModuleIdentifier {
     inner: CoreModuleId,
@@ -60,7 +60,7 @@ impl ModuleIdentifier for CoreModuleIdentifier {
     }
 }
 
-/// Bridge implementation wrapping typedlua_core::ModuleResolver
+/// Bridge implementation wrapping luanext_core::ModuleResolver
 #[derive(Debug)]
 pub struct CoreModuleResolver {
     inner: Arc<CoreModuleResolverType>,
@@ -77,11 +77,11 @@ impl ModuleResolver for CoreModuleResolver {
         self.inner
             .resolve(source, from_file)
             .map(|module_id| module_id.as_str().to_string())
-            .map_err(|e: typedlua_typechecker::module_resolver::ModuleError| e.to_string())
+            .map_err(|e: luanext_typechecker::module_resolver::ModuleError| e.to_string())
     }
 }
 
-/// Bridge implementation wrapping typedlua_core::ModuleRegistry
+/// Bridge implementation wrapping luanext_core::ModuleRegistry
 #[derive(Debug)]
 pub struct CoreModuleRegistry {
     inner: Arc<CoreModuleRegistryType>,
@@ -116,7 +116,7 @@ impl ModuleRegistry for CoreModuleRegistry {
 // Symbol Store Bridge
 // ============================================================================
 
-/// Bridge implementation wrapping typedlua_core::SymbolTable
+/// Bridge implementation wrapping luanext_core::SymbolTable
 ///
 /// Symbols are converted eagerly at construction time to avoid
 /// storing StringInterner which is not Sync.
@@ -169,7 +169,7 @@ impl SymbolStore for CoreSymbolStore {
 // Type Checker Bridge
 // ============================================================================
 
-/// Bridge implementation wrapping typedlua_core::TypeChecker
+/// Bridge implementation wrapping luanext_core::TypeChecker
 pub struct CoreTypeChecker {
     _marker: std::marker::PhantomData<()>,
 }
@@ -202,14 +202,14 @@ impl TypeChecker for CoreTypeChecker {
         // Lex the source
         let mut lexer = Lexer::new(
             text,
-            diagnostic_handler.clone() as Arc<dyn typedlua_parser::DiagnosticHandler>,
+            diagnostic_handler.clone() as Arc<dyn luanext_parser::DiagnosticHandler>,
             &interner,
         );
         let tokens = match lexer.tokenize() {
             Ok(tokens) => tokens,
             Err(_) => {
                 // Lex failed, return diagnostics
-                use typedlua_typechecker::cli::diagnostics::DiagnosticHandler;
+                use luanext_typechecker::cli::diagnostics::DiagnosticHandler;
                 let diagnostics = diagnostic_handler
                     .get_diagnostics()
                     .iter()
@@ -226,7 +226,7 @@ impl TypeChecker for CoreTypeChecker {
         // Parse the tokens
         let mut parser = Parser::new(
             tokens,
-            diagnostic_handler.clone() as Arc<dyn typedlua_parser::DiagnosticHandler>,
+            diagnostic_handler.clone() as Arc<dyn luanext_parser::DiagnosticHandler>,
             &interner,
             &common,
             arena,
@@ -236,7 +236,7 @@ impl TypeChecker for CoreTypeChecker {
             Ok(ast) => ast,
             Err(_) => {
                 // Parse failed, return diagnostics
-                use typedlua_typechecker::cli::diagnostics::DiagnosticHandler;
+                use luanext_typechecker::cli::diagnostics::DiagnosticHandler;
                 let diagnostics = diagnostic_handler
                     .get_diagnostics()
                     .iter()
@@ -253,14 +253,14 @@ impl TypeChecker for CoreTypeChecker {
         // Type check the AST
         let mut type_checker = CoreTypeCheckerType::new(
             diagnostic_handler.clone()
-                as Arc<dyn typedlua_typechecker::cli::diagnostics::DiagnosticHandler>,
+                as Arc<dyn luanext_typechecker::cli::diagnostics::DiagnosticHandler>,
             &interner,
             &common,
             arena,
         );
         match type_checker.check_program(&mut ast) {
             Ok(_) => {
-                use typedlua_typechecker::cli::diagnostics::DiagnosticHandler;
+                use luanext_typechecker::cli::diagnostics::DiagnosticHandler;
                 let diagnostics = diagnostic_handler
                     .get_diagnostics()
                     .iter()
@@ -276,7 +276,7 @@ impl TypeChecker for CoreTypeChecker {
                 }
             }
             Err(_) => {
-                use typedlua_typechecker::cli::diagnostics::DiagnosticHandler;
+                use luanext_typechecker::cli::diagnostics::DiagnosticHandler;
                 let diagnostics = diagnostic_handler
                     .get_diagnostics()
                     .iter()
@@ -325,14 +325,14 @@ impl DiagnosticCollector for CoreDiagnosticCollector {
 
         let mut lexer = Lexer::new(
             text,
-            diagnostic_handler.clone() as Arc<dyn typedlua_parser::DiagnosticHandler>,
+            diagnostic_handler.clone() as Arc<dyn luanext_parser::DiagnosticHandler>,
             &interner,
         );
         let tokens = match lexer.tokenize() {
             Ok(tokens) => tokens,
             Err(_) => {
                 // Return lex diagnostics
-                use typedlua_typechecker::cli::diagnostics::DiagnosticHandler;
+                use luanext_typechecker::cli::diagnostics::DiagnosticHandler;
                 return diagnostic_handler
                     .get_diagnostics()
                     .iter()
@@ -343,14 +343,14 @@ impl DiagnosticCollector for CoreDiagnosticCollector {
 
         let mut parser = Parser::new(
             tokens,
-            diagnostic_handler.clone() as Arc<dyn typedlua_parser::DiagnosticHandler>,
+            diagnostic_handler.clone() as Arc<dyn luanext_parser::DiagnosticHandler>,
             &interner,
             &common,
             arena,
         );
         let _ast = parser.parse();
 
-        use typedlua_typechecker::cli::diagnostics::DiagnosticHandler;
+        use luanext_typechecker::cli::diagnostics::DiagnosticHandler;
         diagnostic_handler
             .get_diagnostics()
             .iter()
@@ -363,7 +363,7 @@ impl DiagnosticCollector for CoreDiagnosticCollector {
 // Conversion Helpers
 // ============================================================================
 
-fn convert_span(span: &typedlua_parser::Span) -> Span {
+fn convert_span(span: &luanext_parser::Span) -> Span {
     Span {
         start: span.start as usize,
         end: span.end as usize,
@@ -372,8 +372,8 @@ fn convert_span(span: &typedlua_parser::Span) -> Span {
     }
 }
 
-fn convert_symbol_kind(kind: &typedlua_typechecker::SymbolKind) -> SymbolKind {
-    use typedlua_typechecker::SymbolKind as CoreKind;
+fn convert_symbol_kind(kind: &luanext_typechecker::SymbolKind) -> SymbolKind {
+    use luanext_typechecker::SymbolKind as CoreKind;
     match kind {
         CoreKind::Variable => SymbolKind::Variable,
         CoreKind::Const => SymbolKind::Const,
@@ -387,8 +387,8 @@ fn convert_symbol_kind(kind: &typedlua_typechecker::SymbolKind) -> SymbolKind {
     }
 }
 
-fn convert_diagnostic(diag: &typedlua_typechecker::cli::diagnostics::Diagnostic) -> Diagnostic {
-    use typedlua_typechecker::cli::diagnostics::DiagnosticLevel as CoreLevel;
+fn convert_diagnostic(diag: &luanext_typechecker::cli::diagnostics::Diagnostic) -> Diagnostic {
+    use luanext_typechecker::cli::diagnostics::DiagnosticLevel as CoreLevel;
 
     let level = match diag.level {
         CoreLevel::Error => DiagnosticLevel::Error,
@@ -443,7 +443,7 @@ mod tests {
 
     #[test]
     fn test_convert_span_basic() {
-        let parser_span = typedlua_parser::Span {
+        let parser_span = luanext_parser::Span {
             start: 10,
             end: 20,
             line: 5,
@@ -460,7 +460,7 @@ mod tests {
 
     #[test]
     fn test_convert_span_zero_values() {
-        let parser_span = typedlua_parser::Span {
+        let parser_span = luanext_parser::Span {
             start: 0,
             end: 0,
             line: 1,
@@ -477,7 +477,7 @@ mod tests {
 
     #[test]
     fn test_convert_symbol_kind_variable() {
-        let core_kind = typedlua_typechecker::SymbolKind::Variable;
+        let core_kind = luanext_typechecker::SymbolKind::Variable;
         let converted = convert_symbol_kind(&core_kind);
 
         assert!(matches!(converted, SymbolKind::Variable));
@@ -485,7 +485,7 @@ mod tests {
 
     #[test]
     fn test_convert_symbol_kind_function() {
-        let core_kind = typedlua_typechecker::SymbolKind::Function;
+        let core_kind = luanext_typechecker::SymbolKind::Function;
         let converted = convert_symbol_kind(&core_kind);
 
         assert!(matches!(converted, SymbolKind::Function));
@@ -495,30 +495,30 @@ mod tests {
     fn test_convert_symbol_kind_all_variants() {
         let variants = vec![
             (
-                typedlua_typechecker::SymbolKind::Variable,
+                luanext_typechecker::SymbolKind::Variable,
                 SymbolKind::Variable,
             ),
-            (typedlua_typechecker::SymbolKind::Const, SymbolKind::Const),
+            (luanext_typechecker::SymbolKind::Const, SymbolKind::Const),
             (
-                typedlua_typechecker::SymbolKind::Function,
+                luanext_typechecker::SymbolKind::Function,
                 SymbolKind::Function,
             ),
-            (typedlua_typechecker::SymbolKind::Class, SymbolKind::Class),
+            (luanext_typechecker::SymbolKind::Class, SymbolKind::Class),
             (
-                typedlua_typechecker::SymbolKind::Interface,
+                luanext_typechecker::SymbolKind::Interface,
                 SymbolKind::Interface,
             ),
             (
-                typedlua_typechecker::SymbolKind::TypeAlias,
+                luanext_typechecker::SymbolKind::TypeAlias,
                 SymbolKind::Type,
             ),
-            (typedlua_typechecker::SymbolKind::Enum, SymbolKind::Enum),
+            (luanext_typechecker::SymbolKind::Enum, SymbolKind::Enum),
             (
-                typedlua_typechecker::SymbolKind::Parameter,
+                luanext_typechecker::SymbolKind::Parameter,
                 SymbolKind::Parameter,
             ),
             (
-                typedlua_typechecker::SymbolKind::Namespace,
+                luanext_typechecker::SymbolKind::Namespace,
                 SymbolKind::Namespace,
             ),
         ];
@@ -950,14 +950,14 @@ mod tests {
 
     #[test]
     fn test_core_module_resolver_new() {
-        use typedlua_typechecker::cli::config::CompilerOptions;
-        use typedlua_typechecker::module_resolver::ModuleConfig;
+        use luanext_typechecker::cli::config::CompilerOptions;
+        use luanext_typechecker::module_resolver::ModuleConfig;
         let config = ModuleConfig::from_compiler_options(
             &CompilerOptions::default(),
             std::path::Path::new("/"),
         );
         let resolver = CoreModuleResolver::new(Arc::new(CoreModuleResolverType::new(
-            Arc::new(typedlua_typechecker::cli::fs::MockFileSystem::new()),
+            Arc::new(luanext_typechecker::cli::fs::MockFileSystem::new()),
             config,
             std::path::PathBuf::from("/"),
         )));
@@ -966,7 +966,7 @@ mod tests {
 
     #[test]
     fn test_diagnostic_level_conversion() {
-        use typedlua_typechecker::cli::diagnostics::DiagnosticLevel as CoreLevel;
+        use luanext_typechecker::cli::diagnostics::DiagnosticLevel as CoreLevel;
 
         let levels = vec![
             (CoreLevel::Error, DiagnosticLevel::Error),

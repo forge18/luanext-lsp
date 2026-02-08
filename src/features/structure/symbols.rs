@@ -3,10 +3,10 @@ use crate::traits::SymbolsProviderTrait;
 use lsp_types::*;
 
 use std::sync::Arc;
-use typedlua_parser::ast::statement::{ClassMember, OperatorKind, Statement};
-use typedlua_parser::string_interner::StringInterner;
-use typedlua_parser::{Lexer, Parser, Span};
-use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use luanext_parser::ast::statement::{ClassMember, OperatorKind, Statement};
+use luanext_parser::string_interner::StringInterner;
+use luanext_parser::{Lexer, Parser, Span};
+use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
 /// Provides document symbols (outline view)
 #[derive(Clone)]
@@ -52,16 +52,16 @@ impl SymbolsProvider {
         stmt: &Statement,
         interner: &StringInterner,
     ) -> Option<DocumentSymbol> {
-        use typedlua_parser::ast::pattern::Pattern;
+        use luanext_parser::ast::pattern::Pattern;
 
         match stmt {
             Statement::Variable(var_decl) => {
                 if let Pattern::Identifier(ident) = &var_decl.pattern {
                     let kind = match var_decl.kind {
-                        typedlua_parser::ast::statement::VariableKind::Const => {
+                        luanext_parser::ast::statement::VariableKind::Const => {
                             SymbolKind::CONSTANT
                         }
-                        typedlua_parser::ast::statement::VariableKind::Local => {
+                        luanext_parser::ast::statement::VariableKind::Local => {
                             SymbolKind::VARIABLE
                         }
                     };

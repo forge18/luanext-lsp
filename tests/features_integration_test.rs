@@ -4,10 +4,10 @@
 
 use lsp_types::*;
 use std::str::FromStr;
-use typedlua_lsp::core::document::Document;
-use typedlua_lsp::features::edit::CompletionProvider;
-use typedlua_lsp::features::navigation::{DefinitionProvider, ReferencesProvider};
-use typedlua_lsp::traits::{
+use luanext_lsp::core::document::Document;
+use luanext_lsp::features::edit::CompletionProvider;
+use luanext_lsp::features::navigation::{DefinitionProvider, ReferencesProvider};
+use luanext_lsp::traits::{
     CompletionProviderTrait, DefinitionProviderTrait, ReferencesProviderTrait,
 };
 
@@ -341,14 +341,14 @@ mod completion_tests {
 mod integration_tests {
     use super::*;
     use lsp_types::DocumentSymbolResponse;
-    use typedlua_lsp::features::edit::{
+    use luanext_lsp::features::edit::{
         CodeActionsProvider, RenameProvider, SignatureHelpProvider,
     };
-    use typedlua_lsp::features::hints::InlayHintsProvider;
-    use typedlua_lsp::features::semantic::SemanticTokensProvider;
-    use typedlua_lsp::features::structure::FoldingRangeProvider;
-    use typedlua_lsp::features::structure::SymbolsProvider;
-    use typedlua_lsp::traits::{
+    use luanext_lsp::features::hints::InlayHintsProvider;
+    use luanext_lsp::features::semantic::SemanticTokensProvider;
+    use luanext_lsp::features::structure::FoldingRangeProvider;
+    use luanext_lsp::features::structure::SymbolsProvider;
+    use luanext_lsp::traits::{
         CodeActionsProviderTrait, FoldingRangeProviderTrait, InlayHintsProviderTrait,
         SemanticTokensProviderTrait, SignatureHelpProviderTrait, SymbolsProviderTrait,
     };
