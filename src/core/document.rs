@@ -143,7 +143,7 @@ impl Document {
             &*(program_ptr as *const Program<'static>)
         };
 
-        let ast_arc = Arc::new(*leaked_program);
+        let ast_arc = Arc::new(leaked_program);
         let interner_arc = Arc::new(interner);
         let common_ids_arc = Arc::new(common_ids);
         let arena_arc = Arc::new(arena);
