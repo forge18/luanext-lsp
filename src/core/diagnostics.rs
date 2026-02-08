@@ -1,13 +1,14 @@
 use crate::core::document::Document;
 use crate::traits::DiagnosticsProviderTrait;
+use bumpalo::Bump;
 use lsp_types::*;
-use std::sync::Arc;
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser, Span};
 use luanext_typechecker::cli::diagnostics::{
     CollectingDiagnosticHandler, DiagnosticHandler, DiagnosticLevel,
 };
 use luanext_typechecker::TypeChecker;
+use std::sync::Arc;
 
 /// Provides diagnostics (errors and warnings) for documents
 #[derive(Clone)]
@@ -28,6 +29,9 @@ impl DiagnosticsProvider {
         // Create interner
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
 
+        // Create arena allocator
+        let arena = Bump::new();
+
         // Lex the document
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = match lexer.tokenize() {
@@ -39,7 +43,7 @@ impl DiagnosticsProvider {
         };
 
         // Parse the document
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, &arena);
         let mut ast = match parser.parse() {
             Ok(a) => a,
             Err(_) => {
@@ -49,7 +53,7 @@ impl DiagnosticsProvider {
         };
 
         // Type check the document
-        let mut type_checker = TypeChecker::new(handler.clone(), &interner, &common_ids);
+        let mut type_checker = TypeChecker::new(handler.clone(), &interner, &common_ids, &arena);
         if let Err(_) = type_checker.check_program(&mut ast) {
             return Self::convert_diagnostics(handler);
         }
@@ -72,7 +76,7 @@ impl DiagnosticsProvider {
                     DiagnosticLevel::Info => DiagnosticSeverity::INFORMATION,
                 }),
                 code: None, // Core diagnostics don't have error codes yet
-                source: Some("typedlua".to_string()),
+                source: Some("luanext".to_string()),
                 message: d.message,
                 related_information: None,
                 tags: None,

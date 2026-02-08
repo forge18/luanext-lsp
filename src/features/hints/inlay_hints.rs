@@ -1,12 +1,13 @@
 use crate::core::document::Document;
+use bumpalo::Bump;
 use lsp_types::*;
-use std::sync::Arc;
 use luanext_parser::ast::expression::{Expression, ExpressionKind};
 use luanext_parser::ast::statement::Statement;
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser, Span};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 use luanext_typechecker::TypeChecker;
+use std::sync::Arc;
 
 /// Provides inlay hints (inline type annotations and parameter names)
 #[derive(Clone)]
@@ -30,19 +31,20 @@ impl InlayHintsProvider {
             Err(_) => return hints,
         };
 
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids);
+        let arena = Bump::new();
+        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, &arena);
         let mut ast = match parser.parse() {
             Ok(a) => a,
             Err(_) => return hints,
         };
 
-        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids);
+        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, &arena);
         if type_checker.check_program(&mut ast).is_err() {
             return hints;
         }
 
         // Traverse AST and collect hints within the range
-        for stmt in &ast.statements {
+        for stmt in ast.statements {
             self.collect_hints_from_statement(stmt, &type_checker, range, &mut hints, &interner);
         }
 
@@ -87,7 +89,7 @@ impl InlayHintsProvider {
                 }
             }
             Statement::Block(block) => {
-                for inner_stmt in &block.statements {
+                for inner_stmt in block.statements {
                     self.collect_hints_from_statement(
                         inner_stmt,
                         type_checker,

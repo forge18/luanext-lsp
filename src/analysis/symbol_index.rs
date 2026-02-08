@@ -1,9 +1,9 @@
 use lsp_types::{SymbolInformation, SymbolKind, Uri};
-use std::collections::{HashMap, HashSet};
 use luanext_parser::ast::statement::{ExportKind, ImportClause, OperatorKind, Statement};
 use luanext_parser::ast::Program;
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::Span;
+use std::collections::{HashMap, HashSet};
 
 /// Information about an exported symbol
 #[derive(Debug, Clone)]
@@ -167,7 +167,7 @@ impl SymbolIndex {
                         specifiers,
                         source: _,
                     } => {
-                        for spec in specifiers {
+                        for spec in *specifiers {
                             let local_name = interner.resolve(spec.local.node);
                             let exported_name = spec
                                 .exported
@@ -219,7 +219,7 @@ impl SymbolIndex {
                 {
                     match &import_decl.clause {
                         ImportClause::Named(specs) => {
-                            for spec in specs {
+                            for spec in *specs {
                                 let imported_name = interner.resolve(spec.imported.node);
                                 let local_name = spec
                                     .local
@@ -293,7 +293,7 @@ impl SymbolIndex {
                                 .insert(uri.clone());
 
                             // Handle named imports
-                            for spec in named {
+                            for spec in *named {
                                 let imported_name = interner.resolve(spec.imported.node);
                                 let local_name = spec
                                     .local
@@ -394,7 +394,7 @@ impl SymbolIndex {
                     .push(symbol);
 
                 // Index class members
-                for member in &class_decl.members {
+                for member in class_decl.members {
                     match member {
                         ClassMember::Property(prop) => {
                             let name = interner.resolve(prop.name.node);
@@ -699,10 +699,11 @@ impl SymbolIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str::FromStr;
-    use std::sync::Arc;
+    use bumpalo::Bump;
     use luanext_parser::{Lexer, Parser};
     use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+    use std::str::FromStr;
+    use std::sync::Arc;
 
     fn make_uri(path: &str) -> Uri {
         Uri::from_str(&format!("file://{}", path)).unwrap()
@@ -1225,9 +1226,10 @@ mod tests {
 
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
+        let arena = Bump::new();
         let mut lexer = Lexer::new("local foo = 1", handler.clone(), &interner);
         let tokens = lexer.tokenize().unwrap();
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, &arena);
         let ast = parser.parse().unwrap();
 
         index.update_document(&uri, module_id, &ast, &interner, |_, _| None);
@@ -1246,9 +1248,10 @@ mod tests {
 
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
+        let arena = Bump::new();
         let mut lexer = Lexer::new("local x = 1", handler.clone(), &interner);
         let tokens = lexer.tokenize().unwrap();
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, &arena);
         let ast = parser.parse().unwrap();
 
         index.update_document(&uri, module_id, &ast, &interner, |_source, _current| None);
@@ -1427,11 +1430,14 @@ mod tests {
 
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
-        let mut lexer = Lexer::new("local foo = 1", handler.clone(), &interner);
+        let arena = Bump::new();
+        let mut lexer = Lexer::new("local x = 1", handler.clone(), &interner);
         let tokens = lexer.tokenize().unwrap();
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, &arena);
         let ast = parser.parse().unwrap();
 
+        index.update_document(&uri, module_id, &ast, &interner, |_, _| None);
+        index.clear_document(&uri, module_id);
         index.update_document(&uri, module_id, &ast, &interner, |_, _| None);
 
         index.clear_document(&uri, module_id);
@@ -1459,17 +1465,19 @@ mod tests {
         use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
         let mut index = SymbolIndex::new();
-        let uri = make_uri("/test.lua");
-        let module_id = "/test.lua";
+        let uri = make_uri("/test/module.tl");
+        let module_id = "/test/module.tl";
 
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
-        let mut lexer = Lexer::new("local x = 1", handler.clone(), &interner);
+        let arena = Bump::new();
+        let mut lexer = Lexer::new("local foo = 1", handler.clone(), &interner);
         let tokens = lexer.tokenize().unwrap();
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, &arena);
         let ast = parser.parse().unwrap();
 
         index.update_document(&uri, module_id, &ast, &interner, |_, _| None);
+
         index.clear_document(&uri, module_id);
         index.update_document(&uri, module_id, &ast, &interner, |_, _| None);
 

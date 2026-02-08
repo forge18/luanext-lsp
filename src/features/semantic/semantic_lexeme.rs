@@ -81,7 +81,7 @@ impl SemanticTokensProvider {
         let mut last_line = 0;
         let mut last_char = 0;
 
-        for stmt in &ast.statements {
+        for stmt in ast.statements {
             self.collect_tokens_from_statement(
                 stmt,
                 &mut tokens_data,
@@ -225,7 +225,7 @@ impl SemanticTokensProvider {
                 );
 
                 // Process function body
-                for body_stmt in &func_decl.body.statements {
+                for body_stmt in func_decl.body.statements {
                     self.collect_tokens_from_statement(body_stmt, tokens, last_line, last_char);
                 }
             }
@@ -240,7 +240,7 @@ impl SemanticTokensProvider {
                 );
 
                 // Process class members
-                for member in &class_decl.members {
+                for member in class_decl.members {
                     self.collect_tokens_from_class_member(member, tokens, last_line, last_char);
                 }
             }
@@ -284,7 +284,7 @@ impl SemanticTokensProvider {
                     last_line,
                     last_char,
                 );
-                for stmt in &if_stmt.then_block.statements {
+                for stmt in if_stmt.then_block.statements {
                     self.collect_tokens_from_statement(stmt, tokens, last_line, last_char);
                 }
                 for else_if in &if_stmt.else_ifs {
@@ -321,7 +321,7 @@ impl SemanticTokensProvider {
                 }
             }
             Statement::Block(block) => {
-                for stmt in &block.statements {
+                for stmt in block.statements {
                     self.collect_tokens_from_statement(stmt, tokens, last_line, last_char);
                 }
             }

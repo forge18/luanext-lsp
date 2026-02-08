@@ -1,11 +1,12 @@
 use crate::core::document::Document;
 use crate::traits::HoverProviderTrait;
+use bumpalo::Bump;
 use lsp_types::*;
-use std::sync::Arc;
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 use luanext_typechecker::{SymbolKind, TypeChecker};
+use std::sync::Arc;
 
 /// Provides hover information (type info, documentation, signatures)
 #[derive(Clone)]
@@ -43,13 +44,14 @@ impl HoverProvider {
         // Parse and type check the document
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
+        let arena = Bump::new();
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
 
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, &arena);
         let mut ast = parser.parse().ok()?;
 
-        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids);
+        let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, &arena);
         type_checker.check_program(&mut ast).ok()?;
 
         // Look up the symbol

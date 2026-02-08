@@ -1,11 +1,11 @@
-use crate::core::document::{Document, DocumentManager};
+use crate::core::document::{Document, DocumentManager, DocumentManagerTrait};
 use crate::traits::DefinitionProviderTrait;
 use lsp_types::{GotoDefinitionResponse, Location, Position, Range, Uri};
-use std::sync::Arc;
 use luanext_parser::ast::statement::Statement;
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser, Span};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use std::sync::Arc;
 
 /// Provides go-to-definition functionality
 #[derive(Clone)]
@@ -33,7 +33,13 @@ impl DefinitionProvider {
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
 
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
+        let mut parser = Parser::new(
+            tokens,
+            handler.clone(),
+            &interner,
+            &common_ids,
+            Box::leak(Box::new(bumpalo::Bump::new())),
+        );
         let ast = parser.parse().ok()?;
 
         // First, check if the symbol is from an import statement
@@ -187,13 +193,19 @@ impl DefinitionProvider {
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
 
-        let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, Box::leak(Box::new(bumpalo::Bump::new())));
+        let mut parser = Parser::new(
+            tokens,
+            handler.clone(),
+            &interner,
+            &common_ids,
+            Box::leak(Box::new(bumpalo::Bump::new())),
+        );
         let ast = parser.parse().ok()?;
 
         // Search for the exported declaration
         use luanext_parser::ast::statement::ExportKind;
 
-        for stmt in ast.statements.iter() {
+        for stmt in ast.statements {
             if let Statement::Export(export_decl) = stmt {
                 match &export_decl.kind {
                     ExportKind::Declaration(decl) => {

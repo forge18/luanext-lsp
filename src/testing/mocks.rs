@@ -387,20 +387,34 @@ impl DiagnosticsProviderTrait for MockDiagnosticsProvider {
 
 use crate::core::analysis::SymbolIndex;
 use lsp_types::Uri;
-use std::collections::HashMap;
 use luanext_typechecker::module_resolver::ModuleId;
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct MockDocumentManager {
     documents: HashMap<Uri, String>,
     symbol_index: SymbolIndex,
+    module_resolver: std::sync::Arc<luanext_typechecker::module_resolver::ModuleResolver>,
 }
 
 impl MockDocumentManager {
     pub fn new() -> Self {
+        use luanext_typechecker::module_resolver::{ModuleRegistry, ModuleResolver};
+        use std::sync::Arc;
+
+        let fs = Arc::new(luanext_typechecker::module_resolver::NativeFileSystem::new());
+        let module_config = luanext_typechecker::module_resolver::ModuleConfig::new(
+            luanext_typechecker::module_resolver::ModuleResolutionStrategy::NodeModules,
+            vec![],
+            std::path::PathBuf::from("."),
+        );
+        let workspace_root = std::path::PathBuf::from(".");
+        let module_resolver = Arc::new(ModuleResolver::new(fs, module_config, workspace_root));
+
         Self {
             documents: HashMap::new(),
             symbol_index: SymbolIndex::new(),
+            module_resolver,
         }
     }
 
@@ -428,6 +442,10 @@ impl crate::core::document::DocumentManagerTrait for MockDocumentManager {
 
     fn uri_to_module_id(&self, _uri: &Uri) -> Option<&ModuleId> {
         None
+    }
+
+    fn module_resolver(&self) -> &luanext_typechecker::module_resolver::ModuleResolver {
+        &self.module_resolver
     }
 }
 

@@ -2,11 +2,12 @@ use crate::core::document::Document;
 use crate::traits::SymbolsProviderTrait;
 use lsp_types::*;
 
-use std::sync::Arc;
+use bumpalo::Bump;
 use luanext_parser::ast::statement::{ClassMember, OperatorKind, Statement};
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser, Span};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use std::sync::Arc;
 
 /// Provides document symbols (outline view)
 #[derive(Clone)]
@@ -22,13 +23,14 @@ impl SymbolsProvider {
         // Parse the document
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
+        let arena = Bump::new();
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = match lexer.tokenize() {
             Ok(t) => t,
             Err(_) => return Vec::new(),
         };
 
-        let mut parser = Parser::new(tokens, handler, &interner, &common_ids);
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, &arena);
         let ast = match parser.parse() {
             Ok(a) => a,
             Err(_) => return Vec::new(),
@@ -36,7 +38,7 @@ impl SymbolsProvider {
 
         // Extract symbols from AST
         let mut symbols = Vec::new();
-        for stmt in &ast.statements {
+        for stmt in ast.statements {
             if let Some(symbol) = self.extract_symbol_from_statement(stmt, &interner) {
                 symbols.push(symbol);
             }
@@ -58,12 +60,8 @@ impl SymbolsProvider {
             Statement::Variable(var_decl) => {
                 if let Pattern::Identifier(ident) = &var_decl.pattern {
                     let kind = match var_decl.kind {
-                        luanext_parser::ast::statement::VariableKind::Const => {
-                            SymbolKind::CONSTANT
-                        }
-                        luanext_parser::ast::statement::VariableKind::Local => {
-                            SymbolKind::VARIABLE
-                        }
+                        luanext_parser::ast::statement::VariableKind::Const => SymbolKind::CONSTANT,
+                        luanext_parser::ast::statement::VariableKind::Local => SymbolKind::VARIABLE,
                     };
 
                     Some(DocumentSymbol {
