@@ -1,13 +1,13 @@
 use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use lsp_types::*;
-use std::sync::Arc;
 use luanext_parser::ast::expression::{Expression, ExpressionKind};
 use luanext_parser::ast::statement::Statement;
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser, Span};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 use luanext_typechecker::TypeChecker;
+use std::sync::Arc;
 
 /// Provides inlay hints (inline type annotations and parameter names)
 #[derive(Clone)]
@@ -45,7 +45,13 @@ impl InlayHintsProvider {
 
             // Traverse AST and collect hints within the range
             for stmt in ast.statements.iter() {
-                self.collect_hints_from_statement(stmt, &type_checker, range, &mut hints, &interner);
+                self.collect_hints_from_statement(
+                    stmt,
+                    &type_checker,
+                    range,
+                    &mut hints,
+                    &interner,
+                );
             }
 
             hints

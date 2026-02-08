@@ -3,8 +3,6 @@ use crate::core::document::{Document, DocumentManager};
 use crate::traits::ReferencesProviderTrait;
 use lsp_types::{Uri, *};
 
-use std::str::FromStr;
-use std::sync::Arc;
 use luanext_parser::ast::statement::{Block, Statement};
 use luanext_parser::ast::{
     expression::{Argument, Expression, ExpressionKind, ObjectProperty},
@@ -13,6 +11,8 @@ use luanext_parser::ast::{
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser, Span};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use std::str::FromStr;
+use std::sync::Arc;
 
 /// Provides find-references functionality
 #[derive(Clone)]

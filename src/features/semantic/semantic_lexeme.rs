@@ -1,13 +1,13 @@
 use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use lsp_types::*;
-use std::sync::Arc;
 use luanext_parser::ast::expression::{Expression, ExpressionKind};
 use luanext_parser::ast::pattern::Pattern;
 use luanext_parser::ast::statement::{ClassMember, Statement, VariableKind};
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser, Span};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use std::sync::Arc;
 
 /// Provides semantic tokens for syntax highlighting based on semantic analysis
 #[derive(Clone)]

@@ -9,8 +9,6 @@ use crate::traits::{
     Diagnostic, DiagnosticCollector, DiagnosticLevel, ModuleIdentifier, ModuleRegistry,
     ModuleResolver,
 };
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use luanext_parser::lexer::Lexer;
 use luanext_parser::parser::Parser;
 use luanext_parser::string_interner::StringInterner;
@@ -20,6 +18,8 @@ use luanext_typechecker::module_resolver::{
     ModuleResolver as CoreModuleResolverType,
 };
 use luanext_typechecker::{Symbol, SymbolTable, TypeChecker as CoreTypeCheckerType};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 // ============================================================================
 // Module Resolution Bridges
@@ -507,10 +507,7 @@ mod tests {
                 luanext_typechecker::SymbolKind::Interface,
                 SymbolKind::Interface,
             ),
-            (
-                luanext_typechecker::SymbolKind::TypeAlias,
-                SymbolKind::Type,
-            ),
+            (luanext_typechecker::SymbolKind::TypeAlias, SymbolKind::Type),
             (luanext_typechecker::SymbolKind::Enum, SymbolKind::Enum),
             (
                 luanext_typechecker::SymbolKind::Parameter,

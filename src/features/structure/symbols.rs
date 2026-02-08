@@ -3,11 +3,11 @@ use crate::core::document::Document;
 use crate::traits::SymbolsProviderTrait;
 use lsp_types::*;
 
-use std::sync::Arc;
 use luanext_parser::ast::statement::{ClassMember, OperatorKind, Statement};
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser, Span};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use std::sync::Arc;
 
 /// Provides document symbols (outline view)
 #[derive(Clone)]
@@ -61,12 +61,8 @@ impl SymbolsProvider {
             Statement::Variable(var_decl) => {
                 if let Pattern::Identifier(ident) = &var_decl.pattern {
                     let kind = match var_decl.kind {
-                        luanext_parser::ast::statement::VariableKind::Const => {
-                            SymbolKind::CONSTANT
-                        }
-                        luanext_parser::ast::statement::VariableKind::Local => {
-                            SymbolKind::VARIABLE
-                        }
+                        luanext_parser::ast::statement::VariableKind::Const => SymbolKind::CONSTANT,
+                        luanext_parser::ast::statement::VariableKind::Local => SymbolKind::VARIABLE,
                     };
 
                     Some(DocumentSymbol {

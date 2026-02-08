@@ -3,13 +3,13 @@
 //! These tests verify actual semantic behavior, not just "doesn't panic"
 
 use lsp_types::*;
-use std::str::FromStr;
 use luanext_lsp::core::document::Document;
 use luanext_lsp::features::edit::CompletionProvider;
 use luanext_lsp::features::navigation::{DefinitionProvider, ReferencesProvider};
 use luanext_lsp::traits::{
     CompletionProviderTrait, DefinitionProviderTrait, ReferencesProviderTrait,
 };
+use std::str::FromStr;
 
 fn create_document(text: &str) -> Document {
     Document::new_test(text.to_string(), 1)
@@ -341,9 +341,7 @@ mod completion_tests {
 mod integration_tests {
     use super::*;
     use lsp_types::DocumentSymbolResponse;
-    use luanext_lsp::features::edit::{
-        CodeActionsProvider, RenameProvider, SignatureHelpProvider,
-    };
+    use luanext_lsp::features::edit::{CodeActionsProvider, RenameProvider, SignatureHelpProvider};
     use luanext_lsp::features::hints::InlayHintsProvider;
     use luanext_lsp::features::semantic::SemanticTokensProvider;
     use luanext_lsp::features::structure::FoldingRangeProvider;

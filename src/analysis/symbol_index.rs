@@ -1,9 +1,9 @@
 use lsp_types::{SymbolInformation, SymbolKind, Uri};
-use std::collections::{HashMap, HashSet};
 use luanext_parser::ast::statement::{ExportKind, ImportClause, OperatorKind, Statement};
 use luanext_parser::ast::Program;
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::Span;
+use std::collections::{HashMap, HashSet};
 
 /// Information about an exported symbol
 #[derive(Debug, Clone)]
@@ -699,10 +699,10 @@ impl SymbolIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str::FromStr;
-    use std::sync::Arc;
     use luanext_parser::{Lexer, Parser};
     use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+    use std::str::FromStr;
+    use std::sync::Arc;
 
     fn make_uri(path: &str) -> Uri {
         Uri::from_str(&format!("file://{}", path)).unwrap()

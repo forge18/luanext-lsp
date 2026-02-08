@@ -1,11 +1,11 @@
 use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use lsp_types::*;
-use std::sync::Arc;
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 use luanext_typechecker::TypeChecker;
+use std::sync::Arc;
 
 /// Provides signature help (parameter info while typing function calls)
 #[derive(Clone)]

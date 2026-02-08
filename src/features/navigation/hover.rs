@@ -2,11 +2,11 @@ use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use crate::traits::HoverProviderTrait;
 use lsp_types::*;
-use std::sync::Arc;
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 use luanext_typechecker::{SymbolKind, TypeChecker};
+use std::sync::Arc;
 
 /// Provides hover information (type info, documentation, signatures)
 #[derive(Clone)]
@@ -647,10 +647,7 @@ mod tests {
         let arena = Bump::new();
         let interner = StringInterner::new();
 
-        let tuple_type = Type::new(
-            TypeKind::Tuple(&[]),
-            luanext_parser::Span::new(0, 5, 1, 1),
-        );
+        let tuple_type = Type::new(TypeKind::Tuple(&[]), luanext_parser::Span::new(0, 5, 1, 1));
         let result = HoverProvider::format_type(&tuple_type, &interner);
         assert_eq!(result, "tuple");
     }
@@ -664,10 +661,7 @@ mod tests {
         let arena = Bump::new();
         let interner = StringInterner::new();
 
-        let union_type = Type::new(
-            TypeKind::Union(&[]),
-            luanext_parser::Span::new(0, 10, 1, 1),
-        );
+        let union_type = Type::new(TypeKind::Union(&[]), luanext_parser::Span::new(0, 10, 1, 1));
         let result = HoverProvider::format_type(&union_type, &interner);
         assert_eq!(result, "union type");
     }

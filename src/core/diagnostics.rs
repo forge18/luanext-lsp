@@ -2,13 +2,13 @@ use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use crate::traits::DiagnosticsProviderTrait;
 use lsp_types::*;
-use std::sync::Arc;
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser, Span};
 use luanext_typechecker::cli::diagnostics::{
     CollectingDiagnosticHandler, DiagnosticHandler, DiagnosticLevel,
 };
 use luanext_typechecker::TypeChecker;
+use std::sync::Arc;
 
 /// Provides diagnostics (errors and warnings) for documents
 #[derive(Clone)]

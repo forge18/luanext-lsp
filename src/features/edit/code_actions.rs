@@ -2,13 +2,13 @@ use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use lsp_types::*;
 
-use std::collections::HashMap;
-use std::sync::Arc;
 use luanext_parser::ast::pattern::Pattern;
 use luanext_parser::ast::statement::Statement;
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Provides code actions (quick fixes, refactorings, source actions)
 #[derive(Clone)]

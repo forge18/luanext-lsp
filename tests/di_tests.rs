@@ -1,9 +1,9 @@
 #![cfg(test)]
 
 mod di_tests {
+    use luanext_lsp::di::{DiContainer, ServiceLifetime};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
-    use luanext_lsp::di::{DiContainer, ServiceLifetime};
 
     trait TestTrait: Send + Sync {
         fn get_value(&self) -> i32;

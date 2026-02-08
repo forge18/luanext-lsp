@@ -387,8 +387,8 @@ impl DiagnosticsProviderTrait for MockDiagnosticsProvider {
 
 use crate::core::analysis::SymbolIndex;
 use lsp_types::Uri;
-use std::collections::HashMap;
 use luanext_typechecker::module_resolver::ModuleId;
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct MockDocumentManager {

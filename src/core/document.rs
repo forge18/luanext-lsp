@@ -3,16 +3,16 @@ use lsp_types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DidSaveTextDocumentParams, Position, Uri,
 };
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Arc;
 use luanext_parser::ast::Program;
 use luanext_parser::diagnostics::CollectingDiagnosticHandler;
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser};
 use luanext_typechecker::module_resolver::{ModuleId, ModuleRegistry, ModuleResolver};
 use luanext_typechecker::SymbolTable;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Abstraction for document management operations.
 ///

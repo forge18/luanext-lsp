@@ -15,14 +15,14 @@ use anyhow::Result;
 use core::DocumentManager;
 use lsp_server::{Connection, Message, Notification, Response};
 use lsp_types::*;
+use luanext_typechecker::cli::config::CompilerOptions;
+use luanext_typechecker::cli::fs::RealFileSystem;
+use luanext_typechecker::module_resolver::{ModuleConfig, ModuleRegistry, ModuleResolver};
 use message_handler::MessageHandler;
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
-use luanext_typechecker::cli::config::CompilerOptions;
-use luanext_typechecker::cli::fs::RealFileSystem;
-use luanext_typechecker::module_resolver::{ModuleConfig, ModuleRegistry, ModuleResolver};
 
 // Implement LspConnection for the real lsp_server::Connection
 struct ConnectionWrapper<'a>(&'a Connection);
