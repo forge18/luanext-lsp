@@ -399,16 +399,17 @@ pub struct MockDocumentManager {
 
 impl MockDocumentManager {
     pub fn new() -> Self {
-        use luanext_typechecker::module_resolver::{ModuleRegistry, ModuleResolver};
+        use luanext_typechecker::cli::fs::MockFileSystem;
+        use luanext_typechecker::module_resolver::ModuleResolver;
         use std::sync::Arc;
 
-        let fs = Arc::new(luanext_typechecker::module_resolver::NativeFileSystem::new());
-        let module_config = luanext_typechecker::module_resolver::ModuleConfig::new(
-            luanext_typechecker::module_resolver::ModuleResolutionStrategy::NodeModules,
-            vec![],
-            std::path::PathBuf::from("."),
-        );
+        let fs = Arc::new(MockFileSystem::new());
         let workspace_root = std::path::PathBuf::from(".");
+        let module_config =
+            luanext_typechecker::module_resolver::ModuleConfig::from_compiler_options(
+                &luanext_typechecker::cli::config::CompilerOptions::default(),
+                &workspace_root,
+            );
         let module_resolver = Arc::new(ModuleResolver::new(fs, module_config, workspace_root));
 
         Self {

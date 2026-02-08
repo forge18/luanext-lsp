@@ -146,7 +146,7 @@ impl SymbolIndex {
         statements: &[Statement],
         interner: &StringInterner,
     ) {
-        for stmt in *statements {
+        for stmt in &statements {
             if let Statement::Export(export_decl) = stmt {
                 match &export_decl.kind {
                     ExportKind::Declaration(decl) => {
@@ -209,7 +209,7 @@ impl SymbolIndex {
         interner: &StringInterner,
         resolve_import: impl Fn(&str, &str) -> Option<(String, Uri)>,
     ) {
-        for stmt in *statements {
+        for stmt in &statements {
             if let Statement::Import(import_decl) = stmt {
                 let import_source = &import_decl.source;
 
@@ -332,7 +332,7 @@ impl SymbolIndex {
         statements: &[Statement],
         interner: &StringInterner,
     ) {
-        for stmt in *statements {
+        for stmt in &statements {
             self.index_statement_symbols(uri, stmt, None, interner);
         }
     }

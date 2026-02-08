@@ -169,7 +169,7 @@ impl RenameProvider {
     ) -> bool {
         use luanext_parser::ast::statement::ExportKind;
 
-        for stmt in *statements {
+        for stmt in &statements {
             if let Statement::Export(export_decl) = stmt {
                 match &export_decl.kind {
                     ExportKind::Declaration(decl) => {
@@ -325,7 +325,7 @@ impl RenameProvider {
     ) -> Option<(Uri, String)> {
         use luanext_parser::ast::statement::ImportClause;
 
-        for stmt in *statements {
+        for stmt in &statements {
             if let Statement::Import(import_decl) = stmt {
                 let import_source = &import_decl.source;
 
@@ -568,7 +568,7 @@ impl RenameProvider {
     ) -> Option<Span> {
         use luanext_parser::ast::pattern::Pattern;
 
-        for stmt in *statements {
+        for stmt in &statements {
             match stmt {
                 Statement::Variable(var_decl) => {
                     if let Pattern::Identifier(ident) = &var_decl.pattern {
@@ -616,7 +616,7 @@ impl RenameProvider {
         refs: &mut Vec<Span>,
         interner: &StringInterner,
     ) {
-        for stmt in *statements {
+        for stmt in &statements {
             self.find_occurrences_in_statement(stmt, name, refs, interner);
         }
     }
