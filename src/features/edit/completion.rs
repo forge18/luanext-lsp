@@ -19,6 +19,7 @@ impl CompletionProvider {
     }
 
     /// Provide completion items at a given position
+    #[allow(dead_code)]
     pub fn provide(&self, document: &Document, position: Position) -> Vec<CompletionItem> {
         self.provide_with_workspace(document, position, None)
     }
