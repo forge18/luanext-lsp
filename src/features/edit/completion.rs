@@ -6,6 +6,7 @@ use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 use luanext_typechecker::{Symbol, SymbolKind, TypeChecker};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// Provides code completion (IntelliSense)
@@ -19,6 +20,16 @@ impl CompletionProvider {
 
     /// Provide completion items at a given position
     pub fn provide(&self, document: &Document, position: Position) -> Vec<CompletionItem> {
+        self.provide_with_workspace(document, position, None)
+    }
+
+    /// Provide completion items at a given position with workspace context
+    pub fn provide_with_workspace(
+        &self,
+        document: &Document,
+        position: Position,
+        workspace_root: Option<&Path>,
+    ) -> Vec<CompletionItem> {
         let mut items = Vec::new();
 
         // Determine completion context from the text before the cursor
@@ -26,12 +37,12 @@ impl CompletionProvider {
 
         match context {
             CompletionContext::MemberAccess => {
-
-                // Would need type information from type checker
+                // Get type information and provide member completions
+                items.extend(self.complete_members(document, position, false));
             }
             CompletionContext::MethodCall => {
-
-                // Would need type information from type checker
+                // Get type information and provide method completions
+                items.extend(self.complete_members(document, position, true));
             }
             CompletionContext::TypeAnnotation => {
                 items.extend(self.complete_types());
@@ -40,8 +51,9 @@ impl CompletionProvider {
                 items.extend(self.complete_decorators());
             }
             CompletionContext::Import => {
-
-                // Would need file system access
+                if let Some(workspace) = workspace_root {
+                    items.extend(self.complete_imports(document, position, workspace));
+                }
             }
             CompletionContext::Statement => {
                 // Complete keywords and identifiers
@@ -347,11 +359,372 @@ impl CompletionProvider {
             .collect()
     }
 
+    /// Complete members for member access (obj.) or method calls (obj:)
+    fn complete_members(
+        &self,
+        document: &Document,
+        position: Position,
+        methods_only: bool,
+    ) -> Vec<CompletionItem> {
+        // Extract the identifier before the '.' or ':'
+        let lines: Vec<&str> = document.text.lines().collect();
+        if position.line as usize >= lines.len() {
+            return Vec::new();
+        }
+
+        let line = lines[position.line as usize];
+        let char_pos = position.character as usize;
+        if char_pos == 0 || char_pos > line.len() {
+            return Vec::new();
+        }
+
+        let before_cursor = &line[..char_pos - 1]; // -1 to exclude the '.' or ':'
+        let identifier = Self::extract_identifier_before_dot(before_cursor);
+        if identifier.is_empty() {
+            return Vec::new();
+        }
+
+        // Parse and type check the document to get type information
+        let handler = Arc::new(CollectingDiagnosticHandler::new());
+        let (interner, common_ids) = StringInterner::new_with_common_identifiers();
+        let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
+        let tokens = match lexer.tokenize() {
+            Ok(t) => t,
+            Err(_) => return Vec::new(),
+        };
+
+        with_pooled_arena(|arena| {
+            let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
+            let ast = match parser.parse() {
+                Ok(a) => a,
+                Err(_) => return Vec::new(),
+            };
+
+            let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, arena);
+            if type_checker.check_program(&ast).is_err() {
+                // Even with errors, continue to try to get type information
+            }
+
+            // Look up the symbol's type
+            let symbol_table = type_checker.symbol_table();
+            let symbol = match symbol_table.lookup(&identifier) {
+                Some(s) => s,
+                None => return Vec::new(),
+            };
+
+            // Get members based on the type
+            Self::extract_members_from_type(&symbol.typ, methods_only, &interner)
+        })
+    }
+
+    /// Extract the identifier before the dot or colon
+    fn extract_identifier_before_dot(text: &str) -> String {
+        // Simple extraction: find the last word before the cursor
+        let trimmed = text.trim_end();
+        let mut chars = trimmed.chars().rev();
+        let mut identifier = String::new();
+
+        while let Some(ch) = chars.next() {
+            if ch.is_alphanumeric() || ch == '_' {
+                identifier.push(ch);
+            } else {
+                break;
+            }
+        }
+
+        identifier.chars().rev().collect()
+    }
+
+    /// Extract completion items from a type
+    fn extract_members_from_type(
+        typ: &luanext_parser::ast::types::Type,
+        methods_only: bool,
+        interner: &StringInterner,
+    ) -> Vec<CompletionItem> {
+        use luanext_parser::ast::types::{ObjectTypeMember, TypeKind};
+
+        match &typ.kind {
+            TypeKind::Object(obj_type) => {
+                let mut items = Vec::new();
+
+                for member in obj_type.members {
+                    match member {
+                        ObjectTypeMember::Property(prop) if !methods_only => {
+                            let name = interner.resolve(prop.name.node);
+                            items.push(CompletionItem {
+                                label: name.to_string(),
+                                kind: Some(CompletionItemKind::PROPERTY),
+                                detail: Some(Self::format_type_detail(&prop.type_annotation)),
+                                documentation: None,
+                                ..Default::default()
+                            });
+                        }
+                        ObjectTypeMember::Method(method) => {
+                            let name = interner.resolve(method.name.node);
+                            items.push(CompletionItem {
+                                label: name.to_string(),
+                                kind: Some(CompletionItemKind::METHOD),
+                                detail: Some(Self::format_method_detail(method)),
+                                documentation: None,
+                                ..Default::default()
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+
+                items
+            }
+            TypeKind::Reference(_type_ref) => {
+                // For type references, we'd need to resolve them
+                // For now, return empty
+                Vec::new()
+            }
+            TypeKind::Union(types) => {
+                // For unions, collect members from all types
+                let mut all_members = Vec::new();
+                for t in *types {
+                    all_members.extend(Self::extract_members_from_type(t, methods_only, interner));
+                }
+                // Deduplicate by label
+                all_members.sort_by(|a, b| a.label.cmp(&b.label));
+                all_members.dedup_by(|a, b| a.label == b.label);
+                all_members
+            }
+            // For primitive types, provide built-in methods
+            TypeKind::Primitive(prim) => Self::get_primitive_members(prim, methods_only),
+            TypeKind::Array(_) => {
+                // Array methods
+                if methods_only {
+                    vec![
+                        CompletionItem {
+                            label: "insert".to_string(),
+                            kind: Some(CompletionItemKind::METHOD),
+                            detail: Some("function(index: number, value: T)".to_string()),
+                            ..Default::default()
+                        },
+                        CompletionItem {
+                            label: "remove".to_string(),
+                            kind: Some(CompletionItemKind::METHOD),
+                            detail: Some("function(index: number): T".to_string()),
+                            ..Default::default()
+                        },
+                    ]
+                } else {
+                    vec![CompletionItem {
+                        label: "length".to_string(),
+                        kind: Some(CompletionItemKind::PROPERTY),
+                        detail: Some("number".to_string()),
+                        ..Default::default()
+                    }]
+                }
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// Get built-in members for primitive types
+    fn get_primitive_members(
+        prim: &luanext_parser::ast::types::PrimitiveType,
+        methods_only: bool,
+    ) -> Vec<CompletionItem> {
+        use luanext_parser::ast::types::PrimitiveType;
+
+        match prim {
+            PrimitiveType::String => {
+                if methods_only {
+                    vec![
+                        CompletionItem {
+                            label: "sub".to_string(),
+                            kind: Some(CompletionItemKind::METHOD),
+                            detail: Some("function(i: number, j?: number): string".to_string()),
+                            documentation: Some(Documentation::String(
+                                "Returns substring from i to j".to_string(),
+                            )),
+                            ..Default::default()
+                        },
+                        CompletionItem {
+                            label: "upper".to_string(),
+                            kind: Some(CompletionItemKind::METHOD),
+                            detail: Some("function(): string".to_string()),
+                            documentation: Some(Documentation::String(
+                                "Converts string to uppercase".to_string(),
+                            )),
+                            ..Default::default()
+                        },
+                        CompletionItem {
+                            label: "lower".to_string(),
+                            kind: Some(CompletionItemKind::METHOD),
+                            detail: Some("function(): string".to_string()),
+                            documentation: Some(Documentation::String(
+                                "Converts string to lowercase".to_string(),
+                            )),
+                            ..Default::default()
+                        },
+                        CompletionItem {
+                            label: "find".to_string(),
+                            kind: Some(CompletionItemKind::METHOD),
+                            detail: Some(
+                                "function(pattern: string, init?: number): number | nil"
+                                    .to_string(),
+                            ),
+                            documentation: Some(Documentation::String(
+                                "Finds pattern in string".to_string(),
+                            )),
+                            ..Default::default()
+                        },
+                        CompletionItem {
+                            label: "gsub".to_string(),
+                            kind: Some(CompletionItemKind::METHOD),
+                            detail: Some(
+                                "function(pattern: string, repl: string): string".to_string(),
+                            ),
+                            documentation: Some(Documentation::String(
+                                "Global substitution".to_string(),
+                            )),
+                            ..Default::default()
+                        },
+                    ]
+                } else {
+                    vec![CompletionItem {
+                        label: "length".to_string(),
+                        kind: Some(CompletionItemKind::PROPERTY),
+                        detail: Some("number".to_string()),
+                        documentation: Some(Documentation::String("String length".to_string())),
+                        ..Default::default()
+                    }]
+                }
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// Format type detail for display
+    fn format_type_detail(typ: &luanext_parser::ast::types::Type) -> String {
+        use luanext_parser::ast::types::{PrimitiveType, TypeKind};
+
+        match &typ.kind {
+            TypeKind::Primitive(PrimitiveType::Number) => "number".to_string(),
+            TypeKind::Primitive(PrimitiveType::String) => "string".to_string(),
+            TypeKind::Primitive(PrimitiveType::Boolean) => "boolean".to_string(),
+            TypeKind::Primitive(PrimitiveType::Nil) => "nil".to_string(),
+            TypeKind::Function(_) => "function".to_string(),
+            TypeKind::Object(_) => "object".to_string(),
+            TypeKind::Array(_) => "array".to_string(),
+            _ => "type".to_string(),
+        }
+    }
+
+    /// Format method signature for display
+    fn format_method_detail(method: &luanext_parser::ast::statement::MethodSignature) -> String {
+        // Simple signature format
+        let param_count = method.parameters.len();
+        format!("function({} parameters)", param_count)
+    }
+
     /// Resolve additional details for a completion item
     #[allow(dead_code)]
     pub fn resolve(&self, item: CompletionItem) -> CompletionItem {
         // For now, just return the item as-is
         item
+    }
+
+    /// Complete import paths based on workspace files
+    fn complete_imports(
+        &self,
+        document: &Document,
+        position: Position,
+        workspace_root: &Path,
+    ) -> Vec<CompletionItem> {
+        let mut items = Vec::new();
+
+        // Get the current line to extract the partial path
+        let lines: Vec<&str> = document.text.lines().collect();
+        if position.line as usize >= lines.len() {
+            return items;
+        }
+
+        let line = lines[position.line as usize];
+        let char_pos = position.character as usize;
+        if char_pos > line.len() {
+            return items;
+        }
+
+        let before_cursor = &line[..char_pos];
+
+        // Extract the partial import path from patterns like:
+        // - import ... from "./path"
+        // - import ... from "path"
+        // - import "path"
+        let partial_path = self.extract_import_path(before_cursor);
+
+        // Scan workspace for .luax and .d.luax files
+        let available_modules = self.scan_workspace_files(workspace_root);
+
+        // Filter and format completions based on partial path
+        for module_path in available_modules {
+            // Convert absolute path to relative import path
+            if let Ok(rel_path) = module_path.strip_prefix(workspace_root) {
+                let path_str = rel_path.to_string_lossy();
+                // Remove .luax extension, handling both .luax and .d.luax
+                let import_path = if path_str.ends_with(".d.luax") {
+                    path_str.trim_end_matches(".d.luax")
+                } else {
+                    path_str.trim_end_matches(".luax")
+                }
+                .replace('\\', "/");
+
+                // Check if this module matches the partial path
+                if import_path.starts_with(&partial_path) || partial_path.is_empty() {
+                    items.push(CompletionItem {
+                        label: import_path.clone(),
+                        kind: Some(CompletionItemKind::MODULE),
+                        detail: Some(format!("module: {}", rel_path.display())),
+                        insert_text: Some(format!("./{}", import_path)),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        items
+    }
+
+    /// Extract the partial import path from the line before cursor
+    fn extract_import_path(&self, before_cursor: &str) -> String {
+        // Look for string literals after "from" or "import"
+        if let Some(quote_start) = before_cursor.rfind(&['"', '\''][..]) {
+            let after_quote = &before_cursor[quote_start + 1..];
+            // Remove leading "./" if present
+            after_quote.trim_start_matches("./").to_string()
+        } else {
+            String::new()
+        }
+    }
+
+    /// Scan workspace directory for .luax and .d.luax files
+    fn scan_workspace_files(&self, workspace_root: &Path) -> Vec<PathBuf> {
+        let mut files = Vec::new();
+
+        if let Ok(entries) = std::fs::read_dir(workspace_root) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+
+                if path.is_dir() {
+                    // Recursively scan subdirectories
+                    files.extend(self.scan_workspace_files(&path));
+                } else if path.is_file() {
+                    // Check for .luax or .d.luax extension
+                    if let Some(ext) = path.extension() {
+                        if ext == "luax" {
+                            files.push(path);
+                        }
+                    }
+                }
+            }
+        }
+
+        files
     }
 }
 
@@ -1161,5 +1534,171 @@ mod tests {
         assert!(labels.contains(&"static"));
         assert!(labels.contains(&"abstract"));
         assert!(labels.contains(&"readonly"));
+    }
+
+    #[test]
+    fn test_extract_identifier_before_dot() {
+        let id = CompletionProvider::extract_identifier_before_dot("obj");
+        assert_eq!(id, "obj");
+
+        let id2 = CompletionProvider::extract_identifier_before_dot("  myVar");
+        assert_eq!(id2, "myVar");
+
+        let id3 = CompletionProvider::extract_identifier_before_dot("foo.bar");
+        assert_eq!(id3, "bar");
+    }
+
+    #[test]
+    fn test_member_completion_for_string() {
+        let doc = create_test_document("local s: string = \"hello\"\ns:");
+        let provider = CompletionProvider::new();
+
+        let result = provider.provide(&doc, Position::new(1, 2));
+
+        // Should include string methods
+        let labels: Vec<&str> = result.iter().map(|i| i.label.as_str()).collect();
+        assert!(
+            labels.contains(&"upper") || labels.contains(&"sub"),
+            "Should have string methods"
+        );
+    }
+
+    #[test]
+    fn test_property_completion_for_string() {
+        let doc = create_test_document("local s: string = \"hello\"\ns.");
+        let provider = CompletionProvider::new();
+
+        let result = provider.provide(&doc, Position::new(1, 2));
+
+        // Should include length property
+        let labels: Vec<&str> = result.iter().map(|i| i.label.as_str()).collect();
+        assert!(labels.contains(&"length"), "Should have length property");
+    }
+
+    #[test]
+    fn test_member_completion_empty_for_unknown_var() {
+        let doc = create_test_document("unknownVar.");
+        let provider = CompletionProvider::new();
+
+        let result = provider.provide(&doc, Position::new(0, 11));
+
+        // Should return empty or handle gracefully
+        let _ = result;
+    }
+
+    #[test]
+    fn test_get_primitive_members_string() {
+        use luanext_parser::ast::types::PrimitiveType;
+
+        let methods = CompletionProvider::get_primitive_members(&PrimitiveType::String, true);
+        assert!(!methods.is_empty());
+        assert!(methods.iter().any(|m| m.label == "upper"));
+
+        let props = CompletionProvider::get_primitive_members(&PrimitiveType::String, false);
+        assert!(!props.is_empty());
+        assert!(props.iter().any(|p| p.label == "length"));
+    }
+
+    #[test]
+    fn test_extract_import_path_with_quotes() {
+        let provider = CompletionProvider::new();
+
+        let path1 = provider.extract_import_path("import { foo } from \"./utils");
+        assert_eq!(path1, "utils");
+
+        let path2 = provider.extract_import_path("import { foo } from \"./src/helpers");
+        assert_eq!(path2, "src/helpers");
+
+        let path3 = provider.extract_import_path("import \"");
+        assert_eq!(path3, "");
+    }
+
+    #[test]
+    fn test_extract_import_path_without_quotes() {
+        let provider = CompletionProvider::new();
+
+        let path = provider.extract_import_path("import { foo } from ");
+        assert_eq!(path, "");
+    }
+
+    #[test]
+    fn test_scan_workspace_files_basic() {
+        use std::fs;
+        use tempfile::tempdir;
+
+        let provider = CompletionProvider::new();
+
+        // Create a temporary directory structure
+        let temp_dir = tempdir().unwrap();
+        let temp_path = temp_dir.path();
+
+        // Create test files
+        fs::write(temp_path.join("test1.luax"), "").unwrap();
+        fs::write(temp_path.join("test2.luax"), "").unwrap();
+        fs::write(temp_path.join("test.txt"), "").unwrap(); // Should be ignored
+
+        let files = provider.scan_workspace_files(temp_path);
+
+        assert_eq!(files.len(), 2, "Should find exactly 2 .luax files");
+        assert!(files.iter().any(|f| f.ends_with("test1.luax")));
+        assert!(files.iter().any(|f| f.ends_with("test2.luax")));
+    }
+
+    #[test]
+    fn test_scan_workspace_files_recursive() {
+        use std::fs;
+        use tempfile::tempdir;
+
+        let provider = CompletionProvider::new();
+
+        // Create a temporary directory structure with subdirectories
+        let temp_dir = tempdir().unwrap();
+        let temp_path = temp_dir.path();
+        let sub_dir = temp_path.join("src");
+        fs::create_dir(&sub_dir).unwrap();
+
+        // Create test files
+        fs::write(temp_path.join("root.luax"), "").unwrap();
+        fs::write(sub_dir.join("nested.luax"), "").unwrap();
+
+        let files = provider.scan_workspace_files(temp_path);
+
+        assert_eq!(files.len(), 2, "Should find files recursively");
+        assert!(files.iter().any(|f| f.ends_with("root.luax")));
+        assert!(files.iter().any(|f| f.ends_with("nested.luax")));
+    }
+
+    #[test]
+    fn test_complete_imports_with_workspace() {
+        use std::fs;
+        use tempfile::tempdir;
+
+        let provider = CompletionProvider::new();
+
+        // Create a temporary workspace
+        let temp_dir = tempdir().unwrap();
+        let temp_path = temp_dir.path();
+
+        // Create test module files
+        fs::write(temp_path.join("utils.luax"), "export function helper() end").unwrap();
+        fs::write(
+            temp_path.join("types.d.luax"),
+            "export type MyType = string",
+        )
+        .unwrap();
+
+        let doc = create_test_document("import { foo } from \"./");
+        let position = Position::new(0, 23); // At the end of the line
+
+        let completions = provider.complete_imports(&doc, position, temp_path);
+
+        assert!(!completions.is_empty(), "Should find available modules");
+        assert!(completions.iter().any(|c| c.label.contains("utils")));
+        assert!(completions.iter().any(|c| c.label.contains("types")));
+
+        // Check that completions have the right kind
+        for completion in &completions {
+            assert_eq!(completion.kind, Some(CompletionItemKind::MODULE));
+        }
     }
 }

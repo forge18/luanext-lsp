@@ -11,7 +11,7 @@ use luanext_typechecker::module_resolver::{ModuleId, ModuleRegistry, ModuleResol
 use luanext_typechecker::SymbolTable;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// Abstraction for document management operations.
@@ -177,6 +177,11 @@ impl DocumentManager {
             workspace_root,
             symbol_index: SymbolIndex::new(),
         }
+    }
+
+    /// Get the workspace root path
+    pub fn workspace_root(&self) -> &Path {
+        &self.workspace_root
     }
 
     /// Create a test document manager with mock module system

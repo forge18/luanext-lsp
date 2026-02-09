@@ -220,9 +220,16 @@ impl MessageHandler {
                 let position = params.text_document_position.position;
 
                 let completion_provider = self.container.resolve::<CompletionProvider>().unwrap();
+                let workspace_root = document_manager.workspace_root();
                 let result = document_manager
                     .get(uri)
-                    .map(|doc| completion_provider.provide(doc, position))
+                    .map(|doc| {
+                        completion_provider.provide_with_workspace(
+                            doc,
+                            position,
+                            Some(workspace_root),
+                        )
+                    })
                     .map(CompletionResponse::Array);
 
                 let response = Response::new_ok(id, result);
