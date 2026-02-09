@@ -17,6 +17,8 @@ pub struct ExportInfo {
     pub uri: Uri,
     /// Whether this is a default export
     pub is_default: bool,
+    /// Whether this is a type-only export
+    pub is_type_only: bool,
 }
 
 /// Information about an imported symbol
@@ -31,6 +33,8 @@ pub struct ImportInfo {
     pub source_uri: Uri,
     /// URI of the module that imports this symbol
     pub importing_uri: Uri,
+    /// Whether this is a type-only import
+    pub is_type_only: bool,
 }
 
 /// Information about a workspace symbol (for workspace-wide search)
@@ -153,11 +157,13 @@ impl SymbolIndex {
                         if let Some((local_name, exported_name)) =
                             Self::get_declaration_export_name(decl, interner)
                         {
+                            let is_type_only = Self::is_declaration_type_only(decl);
                             let export_info = ExportInfo {
                                 exported_name: exported_name.clone(),
                                 local_name,
                                 uri: uri.clone(),
                                 is_default: false,
+                                is_type_only,
                             };
                             self.exports
                                 .insert((module_id.to_string(), exported_name), export_info);
@@ -180,6 +186,7 @@ impl SymbolIndex {
                                 local_name,
                                 uri: uri.clone(),
                                 is_default: false,
+                                is_type_only: false,
                             };
                             self.exports
                                 .insert((module_id.to_string(), exported_name), export_info);
@@ -191,6 +198,7 @@ impl SymbolIndex {
                             local_name: "default".to_string(),
                             uri: uri.clone(),
                             is_default: true,
+                            is_type_only: false,
                         };
                         self.exports
                             .insert((module_id.to_string(), "default".to_string()), export_info);
@@ -232,6 +240,7 @@ impl SymbolIndex {
                                     imported_name: imported_name.clone(),
                                     source_uri: source_uri.clone(),
                                     importing_uri: uri.clone(),
+                                    is_type_only: false,
                                 };
 
                                 // Add to imports index
@@ -254,6 +263,7 @@ impl SymbolIndex {
                                 imported_name: "default".to_string(),
                                 source_uri: source_uri.clone(),
                                 importing_uri: uri.clone(),
+                                is_type_only: false,
                             };
 
                             self.imports
@@ -269,8 +279,35 @@ impl SymbolIndex {
                         ImportClause::Namespace(_ident) => {
                             // Namespace imports are complex, skip for now
                         }
-                        ImportClause::TypeOnly(_) => {
-                            // Type-only imports could be handled similarly to Named
+                        ImportClause::TypeOnly(specs) => {
+                            for spec in specs.iter() {
+                                let imported_name = interner.resolve(spec.imported.node);
+                                let local_name = spec
+                                    .local
+                                    .as_ref()
+                                    .map(|l| interner.resolve(l.node))
+                                    .unwrap_or_else(|| imported_name.clone());
+
+                                let import_info = ImportInfo {
+                                    local_name: local_name.clone(),
+                                    imported_name: imported_name.clone(),
+                                    source_uri: source_uri.clone(),
+                                    importing_uri: uri.clone(),
+                                    is_type_only: true,
+                                };
+
+                                // Add to imports index
+                                self.imports
+                                    .entry((module_id.to_string(), local_name))
+                                    .or_insert_with(Vec::new)
+                                    .push(import_info);
+
+                                // Add to importers reverse index
+                                self.importers
+                                    .entry((source_module_id.clone(), imported_name))
+                                    .or_insert_with(HashSet::new)
+                                    .insert(uri.clone());
+                            }
                         }
                         ImportClause::Mixed { default, named } => {
                             // Handle default import
@@ -280,6 +317,7 @@ impl SymbolIndex {
                                 imported_name: "default".to_string(),
                                 source_uri: source_uri.clone(),
                                 importing_uri: uri.clone(),
+                                is_type_only: false,
                             };
 
                             self.imports
@@ -306,6 +344,7 @@ impl SymbolIndex {
                                     imported_name: imported_name.clone(),
                                     source_uri: source_uri.clone(),
                                     importing_uri: uri.clone(),
+                                    is_type_only: false,
                                 };
 
                                 self.imports
@@ -694,6 +733,10 @@ impl SymbolIndex {
             _ => None,
         }
     }
+
+    fn is_declaration_type_only(stmt: &Statement) -> bool {
+        matches!(stmt, Statement::TypeAlias(_) | Statement::Interface(_))
+    }
 }
 
 #[cfg(test)]
@@ -740,12 +783,14 @@ mod tests {
             local_name: "localFunc".to_string(),
             uri: uri.clone(),
             is_default: false,
+            is_type_only: false,
         };
 
         assert_eq!(export_info.exported_name, "myFunc");
         assert_eq!(export_info.local_name, "localFunc");
         assert_eq!(export_info.uri, uri);
         assert!(!export_info.is_default);
+        assert!(!export_info.is_type_only);
     }
 
     #[test]
@@ -756,10 +801,12 @@ mod tests {
             local_name: "default".to_string(),
             uri: uri.clone(),
             is_default: true,
+            is_type_only: false,
         };
 
         assert!(export_info.is_default);
         assert_eq!(export_info.exported_name, "default");
+        assert!(!export_info.is_type_only);
     }
 
     #[test]
@@ -771,12 +818,14 @@ mod tests {
             imported_name: "OriginalName".to_string(),
             source_uri: source_uri.clone(),
             importing_uri: importing_uri.clone(),
+            is_type_only: false,
         };
 
         assert_eq!(import_info.local_name, "alias");
         assert_eq!(import_info.imported_name, "OriginalName");
         assert_eq!(import_info.source_uri, source_uri);
         assert_eq!(import_info.importing_uri, importing_uri);
+        assert!(!import_info.is_type_only);
     }
 
     #[test]
@@ -864,6 +913,7 @@ mod tests {
             local_name: "test".to_string(),
             uri,
             is_default: false,
+            is_type_only: false,
         };
         let debug_format = format!("{:?}", export_info);
         assert!(debug_format.contains("ExportInfo"));
@@ -879,6 +929,7 @@ mod tests {
             imported_name: "OriginalName".to_string(),
             source_uri,
             importing_uri,
+            is_type_only: false,
         };
         let debug_format = format!("{:?}", import_info);
         assert!(debug_format.contains("ImportInfo"));
@@ -1121,12 +1172,14 @@ mod tests {
             local_name: "foo".to_string(),
             uri: uri1.clone(),
             is_default: false,
+            is_type_only: false,
         };
         let export2 = ExportInfo {
             exported_name: "bar".to_string(),
             local_name: "bar".to_string(),
             uri: uri2.clone(),
             is_default: false,
+            is_type_only: false,
         };
 
         index
@@ -1172,12 +1225,14 @@ mod tests {
             imported_name: "Foo1".to_string(),
             source_uri: source_uri1.clone(),
             importing_uri: importing_uri.clone(),
+            is_type_only: false,
         };
         let import2 = ImportInfo {
             local_name: "foo".to_string(),
             imported_name: "Foo2".to_string(),
             source_uri: source_uri2.clone(),
             importing_uri: importing_uri.clone(),
+            is_type_only: false,
         };
 
         index.imports.insert(

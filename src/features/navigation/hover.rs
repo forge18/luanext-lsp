@@ -2,6 +2,7 @@ use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use crate::traits::HoverProviderTrait;
 use lsp_types::*;
+use luanext_parser::ast::statement::{ImportClause, Statement};
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
@@ -49,10 +50,13 @@ impl HoverProvider {
 
         with_pooled_arena(|arena| {
             let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
-            let mut ast = parser.parse().ok()?;
+            let ast = parser.parse().ok()?;
+
+            // Check if this symbol is a type-only import
+            let is_type_only = Self::is_type_only_import(&ast, word, &interner);
 
             let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, arena);
-            type_checker.check_program(&mut ast).ok()?;
+            type_checker.check_program(&ast).ok()?;
 
             // Look up the symbol and format the information while we still have access to it
             let symbol = type_checker.lookup_symbol(word)?;
@@ -71,10 +75,15 @@ impl HoverProvider {
                 SymbolKind::Namespace => "namespace",
             };
 
+            let mut markdown = format!("```typedlua\n{} {}: {}\n```", kind_str, word, type_str);
+            if is_type_only {
+                markdown.push_str("\n\n*Imported as type-only*");
+            }
+
             Some(Hover {
                 contents: HoverContents::Markup(MarkupContent {
                     kind: MarkupKind::Markdown,
-                    value: format!("```typedlua\n{} {}: {}\n```", kind_str, word, type_str),
+                    value: markdown,
                 }),
                 range: None,
             })
@@ -118,6 +127,31 @@ impl HoverProvider {
             TypeKind::Variadic(_) => "variadic".to_string(),
             TypeKind::Namespace(_) => "namespace".to_string(),
         }
+    }
+
+    /// Check if a symbol name was imported via `import type { ... }`
+    fn is_type_only_import(
+        ast: &luanext_parser::ast::Program,
+        symbol_name: &str,
+        interner: &StringInterner,
+    ) -> bool {
+        for stmt in ast.statements {
+            if let Statement::Import(import_decl) = stmt {
+                if let ImportClause::TypeOnly(specs) = &import_decl.clause {
+                    for spec in specs.iter() {
+                        let local_name = spec
+                            .local
+                            .as_ref()
+                            .map(|l| interner.resolve(l.node))
+                            .unwrap_or_else(|| interner.resolve(spec.imported.node));
+                        if local_name == symbol_name {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// Get the word at the cursor position

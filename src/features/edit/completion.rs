@@ -2,10 +2,12 @@ use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use crate::traits::CompletionProviderTrait;
 use lsp_types::*;
+use luanext_parser::ast::statement::{ImportClause, Statement};
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 use luanext_typechecker::{Symbol, SymbolKind, TypeChecker};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -228,6 +230,9 @@ impl CompletionProvider {
                 Err(_) => return Vec::new(),
             };
 
+            // Get type-only imported names for display
+            let type_only_imports = Self::get_type_only_imports(&ast, &interner);
+
             let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, arena);
             if type_checker.check_program(&ast).is_err() {
                 // Even with errors, the symbol table may have useful information
@@ -249,10 +254,15 @@ impl CompletionProvider {
                     SymbolKind::Namespace => CompletionItemKind::MODULE,
                 };
 
+                let mut detail = Self::format_symbol_detail(symbol);
+                if type_only_imports.contains(&name) {
+                    detail.push_str(" (type-only import)");
+                }
+
                 items.push(CompletionItem {
                     label: name.clone(),
                     kind: Some(kind),
-                    detail: Some(Self::format_symbol_detail(symbol)),
+                    detail: Some(detail),
                     documentation: None,
                     ..Default::default()
                 });
@@ -291,6 +301,29 @@ impl CompletionProvider {
         };
 
         format!("{}: {}", kind_str, type_str)
+    }
+
+    /// Get names of symbols imported via `import type { ... }`
+    fn get_type_only_imports(
+        ast: &luanext_parser::ast::Program,
+        interner: &StringInterner,
+    ) -> HashSet<String> {
+        let mut imports = HashSet::new();
+        for stmt in ast.statements {
+            if let Statement::Import(import_decl) = stmt {
+                if let ImportClause::TypeOnly(specs) = &import_decl.clause {
+                    for spec in specs.iter() {
+                        let local_name = spec
+                            .local
+                            .as_ref()
+                            .map(|l| interner.resolve(l.node).to_string())
+                            .unwrap_or_else(|| interner.resolve(spec.imported.node).to_string());
+                        imports.insert(local_name);
+                    }
+                }
+            }
+        }
+        imports
     }
 
     /// Complete type names
