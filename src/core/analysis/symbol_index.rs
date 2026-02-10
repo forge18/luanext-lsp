@@ -19,6 +19,14 @@ pub struct ExportInfo {
     pub is_default: bool,
     /// Whether this is a type-only export
     pub is_type_only: bool,
+    /// Whether this export is a re-export from another module
+    pub is_reexport: bool,
+    /// Source module ID if this is a re-export (e.g., "/path/to/source.tl")
+    pub source_module_id: Option<String>,
+    /// Source module URI if this is a re-export
+    pub source_uri: Option<Uri>,
+    /// Original symbol name in source module (handles aliasing)
+    pub original_symbol_name: Option<String>,
 }
 
 /// Information about an imported symbol
@@ -35,6 +43,35 @@ pub struct ImportInfo {
     pub importing_uri: Uri,
     /// Whether this is a type-only import
     pub is_type_only: bool,
+}
+
+/// Result of resolving a re-export chain
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // Public API - used in LSP features
+pub struct ExportChainEnd {
+    /// The final URI where the symbol is originally defined
+    pub definition_uri: Uri,
+    /// The original symbol name at the definition site
+    pub original_name: String,
+    /// The chain of module IDs traversed (for debugging/error messages)
+    pub chain: Vec<String>,
+}
+
+/// Error types for re-export resolution
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // Public API - used in LSP features
+pub enum ReexportError {
+    /// Re-export chain exceeds maximum depth
+    ChainTooDeep { depth: usize, max_depth: usize },
+    /// Circular re-export detected
+    CircularReexport { chain: Vec<String> },
+    /// Export not found in symbol index
+    ExportNotFound {
+        module_id: String,
+        symbol_name: String,
+    },
+    /// Module not indexed
+    ModuleNotIndexed { module_id: String },
 }
 
 /// Information about a workspace symbol (for workspace-wide search)
@@ -108,8 +145,8 @@ impl SymbolIndex {
         self.uri_to_module
             .insert(uri.clone(), module_id.to_string());
 
-        // Index exports
-        self.index_exports(uri, module_id, &ast.statements, interner);
+        // Index exports (pass resolve_import for re-export source resolution)
+        self.index_exports(uri, module_id, &ast.statements, interner, &resolve_import);
 
         // Index imports
         self.index_imports(uri, module_id, &ast.statements, interner, resolve_import);
@@ -149,6 +186,7 @@ impl SymbolIndex {
         module_id: &str,
         statements: &[Statement],
         interner: &StringInterner,
+        resolve_import: &dyn Fn(&str, &str) -> Option<(String, Uri)>,
     ) {
         for stmt in statements {
             if let Statement::Export(export_decl) = stmt {
@@ -164,15 +202,16 @@ impl SymbolIndex {
                                 uri: uri.clone(),
                                 is_default: false,
                                 is_type_only,
+                                is_reexport: false,
+                                source_module_id: None,
+                                source_uri: None,
+                                original_symbol_name: None,
                             };
                             self.exports
                                 .insert((module_id.to_string(), exported_name), export_info);
                         }
                     }
-                    ExportKind::Named {
-                        specifiers,
-                        source: _,
-                    } => {
+                    ExportKind::Named { specifiers, source } => {
                         for spec in specifiers.iter() {
                             let local_name = interner.resolve(spec.local.node);
                             let exported_name = spec
@@ -181,12 +220,49 @@ impl SymbolIndex {
                                 .map(|e| interner.resolve(e.node))
                                 .unwrap_or_else(|| local_name.clone());
 
-                            let export_info = ExportInfo {
-                                exported_name: exported_name.clone(),
-                                local_name,
-                                uri: uri.clone(),
-                                is_default: false,
-                                is_type_only: false,
+                            let export_info = if let Some(source_path) = source {
+                                // RE-EXPORT: Track source module information
+                                if let Some((source_module_id, source_uri)) =
+                                    resolve_import(source_path, module_id)
+                                {
+                                    ExportInfo {
+                                        exported_name: exported_name.clone(),
+                                        local_name: local_name.clone(),
+                                        uri: uri.clone(),
+                                        is_default: false,
+                                        is_type_only: false, // TODO: Detect from export statement
+                                        is_reexport: true,
+                                        source_module_id: Some(source_module_id),
+                                        source_uri: Some(source_uri),
+                                        original_symbol_name: Some(local_name),
+                                    }
+                                } else {
+                                    // Source module couldn't be resolved - treat as local export
+                                    ExportInfo {
+                                        exported_name: exported_name.clone(),
+                                        local_name: local_name.clone(),
+                                        uri: uri.clone(),
+                                        is_default: false,
+                                        is_type_only: false,
+                                        is_reexport: false,
+                                        source_module_id: None,
+                                        source_uri: None,
+                                        original_symbol_name: None,
+                                    }
+                                }
+                            } else {
+                                // LOCAL EXPORT
+                                ExportInfo {
+                                    exported_name: exported_name.clone(),
+                                    local_name,
+                                    uri: uri.clone(),
+                                    is_default: false,
+                                    is_type_only: false,
+                                    is_reexport: false,
+                                    source_module_id: None,
+                                    source_uri: None,
+                                    original_symbol_name: None,
+                                }
                             };
                             self.exports
                                 .insert((module_id.to_string(), exported_name), export_info);
@@ -199,6 +275,10 @@ impl SymbolIndex {
                             uri: uri.clone(),
                             is_default: true,
                             is_type_only: false,
+                            is_reexport: false,
+                            source_module_id: None,
+                            source_uri: None,
+                            original_symbol_name: None,
                         };
                         self.exports
                             .insert((module_id.to_string(), "default".to_string()), export_info);
@@ -737,6 +817,89 @@ impl SymbolIndex {
     fn is_declaration_type_only(stmt: &Statement) -> bool {
         matches!(stmt, Statement::TypeAlias(_) | Statement::Interface(_))
     }
+
+    /// Resolve a re-export chain to find the original definition
+    ///
+    /// Follows re-export chains from the starting module/symbol to the original
+    /// definition site. Performs cycle detection and depth limiting to prevent
+    /// infinite loops.
+    ///
+    /// # Parameters
+    ///
+    /// - `module_id`: Starting module ID
+    /// - `symbol_name`: Symbol to resolve
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(ExportChainEnd)`: Original definition location and metadata
+    /// - `Err(ReexportError)`: Resolution failure (cycle, depth limit, not found)
+    #[allow(dead_code)] // Used in LSP features
+    pub fn resolve_reexport_chain(
+        &self,
+        module_id: &str,
+        symbol_name: &str,
+    ) -> Result<ExportChainEnd, ReexportError> {
+        const MAX_DEPTH: usize = 10;
+
+        let mut visited = HashSet::new();
+        let mut chain = Vec::new();
+        let mut current_module_id = module_id.to_string();
+        let mut current_symbol_name = symbol_name.to_string();
+
+        loop {
+            // Depth check
+            if chain.len() >= MAX_DEPTH {
+                return Err(ReexportError::ChainTooDeep {
+                    depth: chain.len(),
+                    max_depth: MAX_DEPTH,
+                });
+            }
+
+            // Cycle detection
+            if !visited.insert(current_module_id.clone()) {
+                chain.push(current_module_id);
+                return Err(ReexportError::CircularReexport { chain });
+            }
+
+            chain.push(current_module_id.clone());
+
+            // Look up export in current module
+            let export_info = self
+                .get_export(&current_module_id, &current_symbol_name)
+                .ok_or_else(|| ReexportError::ExportNotFound {
+                    module_id: current_module_id.clone(),
+                    symbol_name: current_symbol_name.clone(),
+                })?;
+
+            // If not a re-export, we've found the original definition
+            if !export_info.is_reexport {
+                return Ok(ExportChainEnd {
+                    definition_uri: export_info.uri.clone(),
+                    original_name: export_info.local_name.clone(),
+                    chain,
+                });
+            }
+
+            // Follow the re-export chain
+            match (
+                &export_info.source_module_id,
+                &export_info.original_symbol_name,
+            ) {
+                (Some(source_id), Some(original_name)) => {
+                    current_module_id = source_id.clone();
+                    current_symbol_name = original_name.clone();
+                }
+                _ => {
+                    // Re-export marked but missing source info - treat as terminal
+                    return Ok(ExportChainEnd {
+                        definition_uri: export_info.uri.clone(),
+                        original_name: export_info.local_name.clone(),
+                        chain,
+                    });
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -784,6 +947,10 @@ mod tests {
             uri: uri.clone(),
             is_default: false,
             is_type_only: false,
+            is_reexport: false,
+            source_module_id: None,
+            source_uri: None,
+            original_symbol_name: None,
         };
 
         assert_eq!(export_info.exported_name, "myFunc");
@@ -802,6 +969,10 @@ mod tests {
             uri: uri.clone(),
             is_default: true,
             is_type_only: false,
+            is_reexport: false,
+            source_module_id: None,
+            source_uri: None,
+            original_symbol_name: None,
         };
 
         assert!(export_info.is_default);
@@ -914,6 +1085,10 @@ mod tests {
             uri,
             is_default: false,
             is_type_only: false,
+            is_reexport: false,
+            source_module_id: None,
+            source_uri: None,
+            original_symbol_name: None,
         };
         let debug_format = format!("{:?}", export_info);
         assert!(debug_format.contains("ExportInfo"));
@@ -1173,6 +1348,10 @@ mod tests {
             uri: uri1.clone(),
             is_default: false,
             is_type_only: false,
+            is_reexport: false,
+            source_module_id: None,
+            source_uri: None,
+            original_symbol_name: None,
         };
         let export2 = ExportInfo {
             exported_name: "bar".to_string(),
@@ -1180,6 +1359,10 @@ mod tests {
             uri: uri2.clone(),
             is_default: false,
             is_type_only: false,
+            is_reexport: false,
+            source_module_id: None,
+            source_uri: None,
+            original_symbol_name: None,
         };
 
         index
@@ -1301,5 +1484,322 @@ mod tests {
 
         let results = index.search_workspace_symbols("a");
         assert_eq!(results.len(), 3);
+    }
+
+    // Tests for resolve_reexport_chain method
+    #[test]
+    fn test_resolve_reexport_chain_direct_export() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/module.tl");
+
+        let export = ExportInfo {
+            exported_name: "foo".to_string(),
+            local_name: "foo".to_string(),
+            uri: uri.clone(),
+            is_default: false,
+            is_type_only: false,
+            is_reexport: false,
+            source_module_id: None,
+            source_uri: None,
+            original_symbol_name: None,
+        };
+
+        index
+            .exports
+            .insert(("/module.tl".to_string(), "foo".to_string()), export);
+
+        let result = index.resolve_reexport_chain("/module.tl", "foo");
+        assert!(result.is_ok());
+
+        let chain_end = result.unwrap();
+        assert_eq!(chain_end.definition_uri, uri);
+        assert_eq!(chain_end.original_name, "foo");
+        assert_eq!(chain_end.chain.len(), 1);
+    }
+
+    #[test]
+    fn test_resolve_reexport_chain_single_level() {
+        let mut index = SymbolIndex::new();
+        let uri_a = make_uri("/module_a.tl");
+        let uri_b = make_uri("/module_b.tl");
+
+        // A exports foo
+        let export_a = ExportInfo {
+            exported_name: "foo".to_string(),
+            local_name: "foo".to_string(),
+            uri: uri_a.clone(),
+            is_default: false,
+            is_type_only: false,
+            is_reexport: false,
+            source_module_id: None,
+            source_uri: None,
+            original_symbol_name: None,
+        };
+
+        // B re-exports foo from A
+        let export_b = ExportInfo {
+            exported_name: "foo".to_string(),
+            local_name: "foo".to_string(),
+            uri: uri_b.clone(),
+            is_default: false,
+            is_type_only: false,
+            is_reexport: true,
+            source_module_id: Some("/module_a.tl".to_string()),
+            source_uri: Some(uri_a.clone()),
+            original_symbol_name: Some("foo".to_string()),
+        };
+
+        index
+            .exports
+            .insert(("/module_a.tl".to_string(), "foo".to_string()), export_a);
+        index
+            .exports
+            .insert(("/module_b.tl".to_string(), "foo".to_string()), export_b);
+
+        let result = index.resolve_reexport_chain("/module_b.tl", "foo");
+        assert!(result.is_ok());
+
+        let chain_end = result.unwrap();
+        assert_eq!(chain_end.definition_uri, uri_a);
+        assert_eq!(chain_end.original_name, "foo");
+        assert_eq!(chain_end.chain.len(), 2);
+    }
+
+    #[test]
+    fn test_resolve_reexport_chain_multi_level() {
+        let mut index = SymbolIndex::new();
+        let uri_a = make_uri("/module_a.tl");
+        let uri_b = make_uri("/module_b.tl");
+        let uri_c = make_uri("/module_c.tl");
+
+        // A exports foo
+        let export_a = ExportInfo {
+            exported_name: "foo".to_string(),
+            local_name: "foo".to_string(),
+            uri: uri_a.clone(),
+            is_default: false,
+            is_type_only: false,
+            is_reexport: false,
+            source_module_id: None,
+            source_uri: None,
+            original_symbol_name: None,
+        };
+
+        // B re-exports foo from A
+        let export_b = ExportInfo {
+            exported_name: "foo".to_string(),
+            local_name: "foo".to_string(),
+            uri: uri_b.clone(),
+            is_default: false,
+            is_type_only: false,
+            is_reexport: true,
+            source_module_id: Some("/module_a.tl".to_string()),
+            source_uri: Some(uri_a.clone()),
+            original_symbol_name: Some("foo".to_string()),
+        };
+
+        // C re-exports foo from B
+        let export_c = ExportInfo {
+            exported_name: "foo".to_string(),
+            local_name: "foo".to_string(),
+            uri: uri_c.clone(),
+            is_default: false,
+            is_type_only: false,
+            is_reexport: true,
+            source_module_id: Some("/module_b.tl".to_string()),
+            source_uri: Some(uri_b.clone()),
+            original_symbol_name: Some("foo".to_string()),
+        };
+
+        index
+            .exports
+            .insert(("/module_a.tl".to_string(), "foo".to_string()), export_a);
+        index
+            .exports
+            .insert(("/module_b.tl".to_string(), "foo".to_string()), export_b);
+        index
+            .exports
+            .insert(("/module_c.tl".to_string(), "foo".to_string()), export_c);
+
+        let result = index.resolve_reexport_chain("/module_c.tl", "foo");
+        assert!(result.is_ok());
+
+        let chain_end = result.unwrap();
+        assert_eq!(chain_end.definition_uri, uri_a);
+        assert_eq!(chain_end.original_name, "foo");
+        assert_eq!(chain_end.chain.len(), 3);
+    }
+
+    #[test]
+    fn test_resolve_reexport_chain_circular() {
+        let mut index = SymbolIndex::new();
+        let uri_a = make_uri("/module_a.tl");
+        let uri_b = make_uri("/module_b.tl");
+
+        // A re-exports foo from B
+        let export_a = ExportInfo {
+            exported_name: "foo".to_string(),
+            local_name: "foo".to_string(),
+            uri: uri_a.clone(),
+            is_default: false,
+            is_type_only: false,
+            is_reexport: true,
+            source_module_id: Some("/module_b.tl".to_string()),
+            source_uri: Some(uri_b.clone()),
+            original_symbol_name: Some("foo".to_string()),
+        };
+
+        // B re-exports foo from A (circular!)
+        let export_b = ExportInfo {
+            exported_name: "foo".to_string(),
+            local_name: "foo".to_string(),
+            uri: uri_b.clone(),
+            is_default: false,
+            is_type_only: false,
+            is_reexport: true,
+            source_module_id: Some("/module_a.tl".to_string()),
+            source_uri: Some(uri_a.clone()),
+            original_symbol_name: Some("foo".to_string()),
+        };
+
+        index
+            .exports
+            .insert(("/module_a.tl".to_string(), "foo".to_string()), export_a);
+        index
+            .exports
+            .insert(("/module_b.tl".to_string(), "foo".to_string()), export_b);
+
+        let result = index.resolve_reexport_chain("/module_a.tl", "foo");
+        assert!(result.is_err());
+
+        match result {
+            Err(ReexportError::CircularReexport { chain }) => {
+                // Chain includes the starting module and the one we tried to visit twice
+                assert_eq!(chain.len(), 3); // [A, B, A]
+            }
+            _ => panic!("Expected CircularReexport error"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_reexport_chain_depth_limit() {
+        let mut index = SymbolIndex::new();
+
+        // Create a chain of 12 modules: 0 exports, 1-11 re-export from previous
+        // When we resolve from module_11, chain will have 12 elements, exceeding MAX_DEPTH of 10
+        for i in 0..12 {
+            let current_module = format!("/module_{}.tl", i);
+            let uri = make_uri(&current_module);
+
+            let export = if i == 0 {
+                ExportInfo {
+                    exported_name: "foo".to_string(),
+                    local_name: "foo".to_string(),
+                    uri,
+                    is_default: false,
+                    is_type_only: false,
+                    is_reexport: false,
+                    source_module_id: None,
+                    source_uri: None,
+                    original_symbol_name: None,
+                }
+            } else {
+                ExportInfo {
+                    exported_name: "foo".to_string(),
+                    local_name: "foo".to_string(),
+                    uri,
+                    is_default: false,
+                    is_type_only: false,
+                    is_reexport: true,
+                    source_module_id: Some(format!("/module_{}.tl", i - 1)),
+                    source_uri: Some(make_uri(&format!("/module_{}.tl", i - 1))),
+                    original_symbol_name: Some("foo".to_string()),
+                }
+            };
+
+            index
+                .exports
+                .insert((current_module, "foo".to_string()), export);
+        }
+
+        // Resolving module_11 means: 11 -> 10 -> 9 -> 8 -> 7 -> 6 -> 5 -> 4 -> 3 -> 2 -> 1 -> 0
+        // That's 12 modules in the chain, which exceeds MAX_DEPTH of 10
+        let result = index.resolve_reexport_chain("/module_11.tl", "foo");
+        assert!(result.is_err());
+
+        match result {
+            Err(ReexportError::ChainTooDeep { depth, max_depth }) => {
+                assert_eq!(max_depth, 10);
+                assert!(depth >= 10);
+            }
+            _ => panic!("Expected ChainTooDeep error"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_reexport_chain_aliasing() {
+        let mut index = SymbolIndex::new();
+        let uri_a = make_uri("/module_a.tl");
+        let uri_b = make_uri("/module_b.tl");
+
+        // A exports Foo
+        let export_a = ExportInfo {
+            exported_name: "Foo".to_string(),
+            local_name: "Foo".to_string(),
+            uri: uri_a.clone(),
+            is_default: false,
+            is_type_only: false,
+            is_reexport: false,
+            source_module_id: None,
+            source_uri: None,
+            original_symbol_name: None,
+        };
+
+        // B re-exports Foo as Bar from A
+        let export_b = ExportInfo {
+            exported_name: "Bar".to_string(),
+            local_name: "Bar".to_string(),
+            uri: uri_b.clone(),
+            is_default: false,
+            is_type_only: false,
+            is_reexport: true,
+            source_module_id: Some("/module_a.tl".to_string()),
+            source_uri: Some(uri_a.clone()),
+            original_symbol_name: Some("Foo".to_string()),
+        };
+
+        index
+            .exports
+            .insert(("/module_a.tl".to_string(), "Foo".to_string()), export_a);
+        index
+            .exports
+            .insert(("/module_b.tl".to_string(), "Bar".to_string()), export_b);
+
+        let result = index.resolve_reexport_chain("/module_b.tl", "Bar");
+        assert!(result.is_ok());
+
+        let chain_end = result.unwrap();
+        assert_eq!(chain_end.definition_uri, uri_a);
+        assert_eq!(chain_end.original_name, "Foo");
+        assert_eq!(chain_end.chain.len(), 2);
+    }
+
+    #[test]
+    fn test_resolve_reexport_chain_export_not_found() {
+        let index = SymbolIndex::new();
+
+        let result = index.resolve_reexport_chain("/module.tl", "nonexistent");
+        assert!(result.is_err());
+
+        match result {
+            Err(ReexportError::ExportNotFound {
+                module_id,
+                symbol_name,
+            }) => {
+                assert_eq!(module_id, "/module.tl");
+                assert_eq!(symbol_name, "nonexistent");
+            }
+            _ => panic!("Expected ExportNotFound error"),
+        }
     }
 }

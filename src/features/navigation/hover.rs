@@ -2,7 +2,7 @@ use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use crate::traits::HoverProviderTrait;
 use lsp_types::*;
-use luanext_parser::ast::statement::{ImportClause, Statement};
+use luanext_parser::ast::statement::{ExportKind, ImportClause, Statement};
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
@@ -80,6 +80,11 @@ impl HoverProvider {
                 markdown.push_str("\n\n*Imported as type-only*");
             }
 
+            // Check if this symbol is re-exported
+            if let Some(source_module) = Self::get_reexport_source(&ast, word, &interner) {
+                markdown.push_str(&format!("\n\n*Re-exported from `{}`*", source_module));
+            }
+
             Some(Hover {
                 contents: HoverContents::Markup(MarkupContent {
                     kind: MarkupKind::Markdown,
@@ -152,6 +157,33 @@ impl HoverProvider {
             }
         }
         false
+    }
+
+    /// Get the source module for a re-exported symbol
+    fn get_reexport_source(
+        ast: &luanext_parser::ast::Program,
+        symbol_name: &str,
+        interner: &StringInterner,
+    ) -> Option<String> {
+        for stmt in ast.statements {
+            if let Statement::Export(export_decl) = stmt {
+                if let ExportKind::Named { specifiers, source } = &export_decl.kind {
+                    if let Some(source_path) = source {
+                        for spec in specifiers.iter() {
+                            let exported_name = spec
+                                .exported
+                                .as_ref()
+                                .map(|e| interner.resolve(e.node))
+                                .unwrap_or_else(|| interner.resolve(spec.local.node));
+                            if exported_name == symbol_name {
+                                return Some(source_path.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Get the word at the cursor position

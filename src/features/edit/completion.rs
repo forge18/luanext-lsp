@@ -2,12 +2,12 @@ use crate::arena_pool::with_pooled_arena;
 use crate::core::document::Document;
 use crate::traits::CompletionProviderTrait;
 use lsp_types::*;
-use luanext_parser::ast::statement::{ImportClause, Statement};
+use luanext_parser::ast::statement::{ExportKind, ImportClause, Statement};
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 use luanext_typechecker::{Symbol, SymbolKind, TypeChecker};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -233,6 +233,9 @@ impl CompletionProvider {
             // Get type-only imported names for display
             let type_only_imports = Self::get_type_only_imports(&ast, &interner);
 
+            // Get re-exported symbols for display
+            let reexports = Self::get_reexported_symbols(&ast, &interner);
+
             let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, arena);
             if type_checker.check_program(&ast).is_err() {
                 // Even with errors, the symbol table may have useful information
@@ -257,6 +260,9 @@ impl CompletionProvider {
                 let mut detail = Self::format_symbol_detail(symbol);
                 if type_only_imports.contains(&name) {
                     detail.push_str(" (type-only import)");
+                }
+                if let Some(source) = reexports.get(&name) {
+                    detail.push_str(&format!(" (re-exported from {})", source));
                 }
 
                 items.push(CompletionItem {
@@ -324,6 +330,31 @@ impl CompletionProvider {
             }
         }
         imports
+    }
+
+    /// Get symbols that are re-exported and their source modules
+    fn get_reexported_symbols(
+        ast: &luanext_parser::ast::Program,
+        interner: &StringInterner,
+    ) -> HashMap<String, String> {
+        let mut reexports = HashMap::new();
+        for stmt in ast.statements {
+            if let Statement::Export(export_decl) = stmt {
+                if let ExportKind::Named { specifiers, source } = &export_decl.kind {
+                    if let Some(source_path) = source {
+                        for spec in specifiers.iter() {
+                            let exported_name = spec
+                                .exported
+                                .as_ref()
+                                .map(|e| interner.resolve(e.node).to_string())
+                                .unwrap_or_else(|| interner.resolve(spec.local.node).to_string());
+                            reexports.insert(exported_name, source_path.clone());
+                        }
+                    }
+                }
+            }
+        }
+        reexports
     }
 
     /// Complete type names
