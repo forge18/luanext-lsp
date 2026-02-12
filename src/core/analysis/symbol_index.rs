@@ -101,7 +101,7 @@ pub struct WorkspaceSymbolInfo {
 /// - "What symbols does module Z export?"
 /// - "Where is symbol W imported from?"
 /// - "Find all symbols matching query Q in the workspace"
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct SymbolIndex {
     /// Map from (module_id, exported_symbol_name) -> ExportInfo
     exports: HashMap<(String, String), ExportInfo>,
@@ -120,6 +120,23 @@ pub struct SymbolIndex {
     /// Workspace-wide symbol index: Map from lowercase symbol name -> Vec<WorkspaceSymbolInfo>
     /// Lowercase keys enable case-insensitive fuzzy matching
     workspace_symbols: HashMap<String, Vec<WorkspaceSymbolInfo>>,
+
+    /// Cache for resolved re-export chains: (module_id, symbol_name) -> ExportChainEnd
+    /// This avoids redundant re-export chain traversals for the same symbol
+    reexport_chain_cache: std::cell::RefCell<HashMap<(String, String), ExportChainEnd>>,
+}
+
+impl Default for SymbolIndex {
+    fn default() -> Self {
+        Self {
+            exports: HashMap::new(),
+            imports: HashMap::new(),
+            importers: HashMap::new(),
+            uri_to_module: HashMap::new(),
+            workspace_symbols: HashMap::new(),
+            reexport_chain_cache: std::cell::RefCell::new(HashMap::new()),
+        }
+    }
 }
 
 impl SymbolIndex {
@@ -140,6 +157,9 @@ impl SymbolIndex {
     ) {
         // Clear old entries for this document
         self.clear_document(uri, module_id);
+
+        // Invalidate re-export chain cache for this module
+        self.invalidate_reexport_cache(module_id);
 
         // Register URI -> module_id mapping
         self.uri_to_module
@@ -211,7 +231,11 @@ impl SymbolIndex {
                                 .insert((module_id.to_string(), exported_name), export_info);
                         }
                     }
-                    ExportKind::Named { specifiers, source } => {
+                    ExportKind::Named {
+                        specifiers,
+                        source,
+                        is_type_only: export_is_type_only,
+                    } => {
                         for spec in specifiers.iter() {
                             let local_name = interner.resolve(spec.local.node);
                             let exported_name = spec
@@ -230,7 +254,7 @@ impl SymbolIndex {
                                         local_name: local_name.clone(),
                                         uri: uri.clone(),
                                         is_default: false,
-                                        is_type_only: false, // TODO: Detect from export statement
+                                        is_type_only: *export_is_type_only,
                                         is_reexport: true,
                                         source_module_id: Some(source_module_id),
                                         source_uri: Some(source_uri),
@@ -243,7 +267,7 @@ impl SymbolIndex {
                                         local_name: local_name.clone(),
                                         uri: uri.clone(),
                                         is_default: false,
-                                        is_type_only: false,
+                                        is_type_only: *export_is_type_only,
                                         is_reexport: false,
                                         source_module_id: None,
                                         source_uri: None,
@@ -282,6 +306,49 @@ impl SymbolIndex {
                         };
                         self.exports
                             .insert((module_id.to_string(), "default".to_string()), export_info);
+                    }
+                    ExportKind::All {
+                        source,
+                        is_type_only,
+                    } => {
+                        // export * from './module' or export type * from './module'
+                        // Copy all exports from source module to this module
+                        if let Some((source_module_id, source_uri)) =
+                            resolve_import(source, module_id)
+                        {
+                            // Look up all exports from source module in symbol index
+                            let source_exports: Vec<_> = self
+                                .exports
+                                .iter()
+                                .filter(|((src_mid, _), _)| src_mid == &source_module_id)
+                                .map(|((_, export_name), export_info)| {
+                                    (export_name.clone(), export_info.clone())
+                                })
+                                .collect();
+
+                            // Add all source exports as re-exports in current module
+                            for (export_name, source_export_info) in source_exports {
+                                // Skip non-type exports if this is export type *
+                                if *is_type_only && !source_export_info.is_type_only {
+                                    continue;
+                                }
+
+                                let reexport_info = ExportInfo {
+                                    exported_name: export_name.clone(),
+                                    local_name: source_export_info.local_name.clone(),
+                                    uri: uri.clone(),
+                                    is_default: false,
+                                    is_type_only: source_export_info.is_type_only,
+                                    is_reexport: true,
+                                    source_module_id: Some(source_module_id.clone()),
+                                    source_uri: Some(source_uri.clone()),
+                                    original_symbol_name: Some(source_export_info.local_name),
+                                };
+
+                                self.exports
+                                    .insert((module_id.to_string(), export_name), reexport_info);
+                            }
+                        }
                     }
                 }
             }
@@ -841,6 +908,12 @@ impl SymbolIndex {
     ) -> Result<ExportChainEnd, ReexportError> {
         const MAX_DEPTH: usize = 10;
 
+        // Check cache first
+        let cache_key = (module_id.to_string(), symbol_name.to_string());
+        if let Some(cached) = self.reexport_chain_cache.borrow().get(&cache_key) {
+            return Ok(cached.clone());
+        }
+
         let mut visited = HashSet::new();
         let mut chain = Vec::new();
         let mut current_module_id = module_id.to_string();
@@ -873,11 +946,15 @@ impl SymbolIndex {
 
             // If not a re-export, we've found the original definition
             if !export_info.is_reexport {
-                return Ok(ExportChainEnd {
+                let result = ExportChainEnd {
                     definition_uri: export_info.uri.clone(),
                     original_name: export_info.local_name.clone(),
                     chain,
-                });
+                };
+                self.reexport_chain_cache
+                    .borrow_mut()
+                    .insert(cache_key.clone(), result.clone());
+                return Ok(result);
             }
 
             // Follow the re-export chain
@@ -891,14 +968,28 @@ impl SymbolIndex {
                 }
                 _ => {
                     // Re-export marked but missing source info - treat as terminal
-                    return Ok(ExportChainEnd {
+                    let result = ExportChainEnd {
                         definition_uri: export_info.uri.clone(),
                         original_name: export_info.local_name.clone(),
                         chain,
-                    });
+                    };
+                    self.reexport_chain_cache
+                        .borrow_mut()
+                        .insert(cache_key.clone(), result.clone());
+                    return Ok(result);
                 }
             }
         }
+    }
+
+    /// Invalidate re-export chain cache for a specific module
+    ///
+    /// Call this whenever a document is updated to clear cached chains
+    /// that might be affected by changes to the module's exports.
+    pub fn invalidate_reexport_cache(&self, module_id: &str) {
+        self.reexport_chain_cache
+            .borrow_mut()
+            .retain(|(mid, _), _| mid != module_id);
     }
 }
 

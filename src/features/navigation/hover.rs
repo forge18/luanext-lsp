@@ -167,7 +167,12 @@ impl HoverProvider {
     ) -> Option<String> {
         for stmt in ast.statements {
             if let Statement::Export(export_decl) = stmt {
-                if let ExportKind::Named { specifiers, source } = &export_decl.kind {
+                if let ExportKind::Named {
+                    specifiers,
+                    source,
+                    is_type_only: _,
+                } = &export_decl.kind
+                {
                     if let Some(source_path) = source {
                         for spec in specifiers.iter() {
                             let exported_name = spec

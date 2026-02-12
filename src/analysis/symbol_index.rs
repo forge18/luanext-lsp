@@ -166,6 +166,7 @@ impl SymbolIndex {
                     ExportKind::Named {
                         specifiers,
                         source: _,
+                        is_type_only: _,
                     } => {
                         for spec in specifiers.iter() {
                             let local_name = interner.resolve(spec.local.node);
@@ -194,6 +195,10 @@ impl SymbolIndex {
                         };
                         self.exports
                             .insert((module_id.to_string(), "default".to_string()), export_info);
+                    }
+                    ExportKind::All { .. } => {
+                        // export * from './module' - we don't track individual exports in this version
+                        // They will be resolved at type-check or use time
                     }
                 }
             }

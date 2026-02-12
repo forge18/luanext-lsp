@@ -238,6 +238,7 @@ impl DefinitionProvider {
                         ExportKind::Named {
                             specifiers,
                             source: _,
+                            is_type_only: _,
                         } => {
                             // Check if this is a named export of our symbol
                             for spec in specifiers.iter() {

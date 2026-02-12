@@ -184,6 +184,7 @@ impl RenameProvider {
                     ExportKind::Named {
                         specifiers,
                         source: _,
+                        is_type_only: _,
                     } => {
                         for spec in specifiers.iter() {
                             let exported_name = spec.exported.as_ref().unwrap_or(&spec.local);
