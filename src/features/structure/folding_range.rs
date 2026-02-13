@@ -345,7 +345,7 @@ mod tests {
         );
 
         let result = provider.provide(&doc);
-        assert!(result.is_empty() || result.len() >= 0);
+        // Result length is always >= 0 by definition
     }
 
     #[test]
@@ -354,7 +354,7 @@ mod tests {
         let doc = Document::new_test("enum Color\n  Red\n  Green\n  Blue\nend".to_string(), 1);
 
         let result = provider.provide(&doc);
-        assert!(result.is_empty() || result.len() >= 0);
+        // Result length is always >= 0 by definition
     }
 
     #[test]
@@ -366,7 +366,7 @@ mod tests {
         );
 
         let result = provider.provide(&doc);
-        assert!(result.is_empty() || result.len() >= 0);
+        // Result length is always >= 0 by definition
     }
 
     #[test]
@@ -387,7 +387,7 @@ mod tests {
         let doc = Document::new_test("local t = {\n  a = 1,\n  b = 2,\n  c = 3\n}".to_string(), 1);
 
         let result = provider.provide(&doc);
-        assert!(result.is_empty() || result.len() >= 0);
+        // Result length is always >= 0 by definition
     }
 
     #[test]
@@ -399,7 +399,7 @@ mod tests {
         );
 
         let result = provider.provide(&doc);
-        assert!(result.is_empty() || result.len() >= 0);
+        // Result length is always >= 0 by definition
     }
 
     #[test]
@@ -429,7 +429,7 @@ mod tests {
         let doc = Document::new_test("repeat\n  x = x - 1\nuntil x == 0".to_string(), 1);
 
         let result = provider.provide(&doc);
-        assert!(result.is_empty() || result.len() >= 0);
+        // Result length is always >= 0 by definition
     }
 
     #[test]
