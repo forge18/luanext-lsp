@@ -130,10 +130,16 @@ fn generate_document_with_many_references(reference_count: usize) -> String {
             "    const config{}: ServiceConfig{} = {{ enabled: true, timeout: 100, retries: 3 }}\n",
             i, i
         ));
-        code.push_str(&format!("    const service{} = createService{}(config{})\n", i, i, i));
+        code.push_str(&format!(
+            "    const service{} = createService{}(config{})\n",
+            i, i, i
+        ));
         code.push_str(&format!(
             "    const result{} = processData{}(service{}, {})\n",
-            i, i, i, i * 10
+            i,
+            i,
+            i,
+            i * 10
         ));
     }
     code.push_str("end\n");
@@ -198,11 +204,7 @@ fn benchmark_completion_performance(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("imported_symbols", import_count),
             &(document, position),
-            |b, (doc, pos)| {
-                b.iter(|| {
-                    completion_provider.provide(doc, *pos)
-                })
-            },
+            |b, (doc, pos)| b.iter(|| completion_provider.provide(doc, *pos)),
         );
     }
 
@@ -286,9 +288,7 @@ end
     };
 
     group.bench_function("resolve_through_reexport", |b| {
-        b.iter(|| {
-            hover_provider.provide(&document, position)
-        })
+        b.iter(|| hover_provider.provide(&document, position))
     });
 
     group.finish();
