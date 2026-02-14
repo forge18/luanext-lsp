@@ -1,13 +1,9 @@
-use crate::arena_pool::with_pooled_arena;
+use crate::core::diagnostics::DiagnosticsProvider;
 use crate::core::document::Document;
 use crate::traits::HoverProviderTrait;
 use lsp_types::*;
 use luanext_parser::ast::statement::{ExportKind, ImportClause, Statement};
 use luanext_parser::string_interner::StringInterner;
-use luanext_parser::{Lexer, Parser};
-use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
-use luanext_typechecker::{SymbolKind, TypeChecker};
-use std::sync::Arc;
 
 /// Provides hover information (type info, documentation, signatures)
 #[derive(Clone)]
@@ -70,98 +66,34 @@ impl HoverProvider {
         None
     }
 
-    /// Get hover information for a symbol using the type checker
+    /// Get hover information for a symbol using the cached type-check result.
     fn hover_for_symbol(&self, document: &Document, word: &str) -> Option<Hover> {
-        // Parse and type check the document
-        let handler = Arc::new(CollectingDiagnosticHandler::new());
-        let (interner, common_ids) = StringInterner::new_with_common_identifiers();
-        let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
-        let tokens = lexer.tokenize().ok()?;
+        // Use cached type-check result instead of running type checker again
+        let result = DiagnosticsProvider::ensure_type_checked(document);
+        let symbol = result.symbols.get(word)?;
 
-        with_pooled_arena(|arena| {
-            let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
-            let ast = parser.parse().ok()?;
+        let mut markdown = format!(
+            "```typedlua\n{} {}: {}\n```",
+            symbol.kind, word, symbol.type_display
+        );
 
-            // Check if this symbol is a type-only import
-            let is_type_only = Self::is_type_only_import(&ast, word, &interner);
-
-            let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, arena);
-            type_checker.check_program(&ast).ok()?;
-
-            // Look up the symbol and format the information while we still have access to it
-            let symbol = type_checker.lookup_symbol(word)?;
-
-            // Format the type information while still in the arena scope (avoid cloning)
-            let type_str = Self::format_type(&symbol.typ, &interner);
-            let kind_str = match symbol.kind {
-                SymbolKind::Const => "const",
-                SymbolKind::Variable => "let",
-                SymbolKind::Function => "function",
-                SymbolKind::Class => "class",
-                SymbolKind::Interface => "interface",
-                SymbolKind::TypeAlias => "type",
-                SymbolKind::Enum => "enum",
-                SymbolKind::Parameter => "parameter",
-                SymbolKind::Namespace => "namespace",
-            };
-
-            let mut markdown = format!("```typedlua\n{} {}: {}\n```", kind_str, word, type_str);
-            if is_type_only {
+        // Type-only import and re-export detection uses cached AST (cheap, no type checking)
+        if let Some((ast, interner, _, _)) = document.get_or_parse_ast() {
+            if Self::is_type_only_import(ast, word, &interner) {
                 markdown.push_str("\n\n*Imported as type-only*");
             }
-
-            // Check if this symbol is re-exported
-            if let Some(source_module) = Self::get_reexport_source(&ast, word, &interner) {
+            if let Some(source_module) = Self::get_reexport_source(ast, word, &interner) {
                 markdown.push_str(&format!("\n\n*Re-exported from `{}`*", source_module));
             }
-
-            Some(Hover {
-                contents: HoverContents::Markup(MarkupContent {
-                    kind: MarkupKind::Markdown,
-                    value: markdown,
-                }),
-                range: None,
-            })
-        })
-    }
-
-    /// Format a type for display
-    fn format_type(typ: &luanext_parser::ast::types::Type, interner: &StringInterner) -> String {
-        use luanext_parser::ast::types::{PrimitiveType, TypeKind};
-
-        match &typ.kind {
-            TypeKind::Primitive(PrimitiveType::Nil) => "nil".to_string(),
-            TypeKind::Primitive(PrimitiveType::Boolean) => "boolean".to_string(),
-            TypeKind::Primitive(PrimitiveType::Number) => "number".to_string(),
-            TypeKind::Primitive(PrimitiveType::Integer) => "integer".to_string(),
-            TypeKind::Primitive(PrimitiveType::String) => "string".to_string(),
-            TypeKind::Primitive(PrimitiveType::Unknown) => "unknown".to_string(),
-            TypeKind::Primitive(PrimitiveType::Never) => "never".to_string(),
-            TypeKind::Primitive(PrimitiveType::Void) => "void".to_string(),
-            TypeKind::Primitive(PrimitiveType::Table) => "table".to_string(),
-            TypeKind::Primitive(PrimitiveType::Coroutine) => "coroutine".to_string(),
-            TypeKind::Primitive(PrimitiveType::Thread) => "thread".to_string(),
-            TypeKind::Literal(_) => "literal".to_string(),
-            TypeKind::Union(_) => "union type".to_string(),
-            TypeKind::Intersection(_) => "intersection type".to_string(),
-            TypeKind::Function(_) => "function".to_string(),
-            TypeKind::Object(_) => "object".to_string(),
-            TypeKind::Array(_) => "array".to_string(),
-            TypeKind::Tuple(_) => "tuple".to_string(),
-            TypeKind::TypeQuery(_) => "typeof".to_string(),
-            TypeKind::Reference(type_ref) => interner.resolve(type_ref.name.node).to_string(),
-            TypeKind::Nullable(_) => "nullable".to_string(),
-            TypeKind::IndexAccess(_, _) => "indexed access".to_string(),
-            TypeKind::Conditional(_) => "conditional type".to_string(),
-            TypeKind::Infer(_) => "infer".to_string(),
-            TypeKind::KeyOf(_) => "keyof".to_string(),
-            TypeKind::Mapped(_) => "mapped type".to_string(),
-            TypeKind::TemplateLiteral(_) => "template literal type".to_string(),
-            TypeKind::Parenthesized(inner) => Self::format_type(inner, interner),
-            TypeKind::TypePredicate(_) => "type predicate".to_string(),
-            TypeKind::Variadic(_) => "variadic".to_string(),
-            TypeKind::Namespace(_) => "namespace".to_string(),
         }
+
+        Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: markdown,
+            }),
+            range: None,
+        })
     }
 
     /// Check if a symbol name was imported via `import type { ... }`
@@ -633,170 +565,86 @@ mod tests {
     }
 
     #[test]
-    fn test_hover_format_type_primitives() {
-        use luanext_parser::ast::types::{PrimitiveType, Type};
-        use luanext_parser::string_interner::StringInterner;
+    fn test_format_type_display_primitives() {
+        use crate::core::diagnostics::DiagnosticsProvider;
+        use luanext_parser::ast::types::{PrimitiveType, TypeKind};
 
-        let interner = StringInterner::new();
-
-        // Test primitive type formatting
-        let nil_type = Type::new(
-            luanext_parser::ast::types::TypeKind::Primitive(PrimitiveType::Nil),
-            luanext_parser::Span::new(0, 3, 1, 1),
+        assert_eq!(
+            DiagnosticsProvider::format_type_display(&TypeKind::Primitive(PrimitiveType::Nil)),
+            "nil"
         );
-        let result = HoverProvider::format_type(&nil_type, &interner);
-        assert_eq!(result, "nil");
-
-        let bool_type = Type::new(
-            luanext_parser::ast::types::TypeKind::Primitive(PrimitiveType::Boolean),
-            luanext_parser::Span::new(0, 7, 1, 1),
+        assert_eq!(
+            DiagnosticsProvider::format_type_display(&TypeKind::Primitive(PrimitiveType::Boolean)),
+            "boolean"
         );
-        let result = HoverProvider::format_type(&bool_type, &interner);
-        assert_eq!(result, "boolean");
-
-        let num_type = Type::new(
-            luanext_parser::ast::types::TypeKind::Primitive(PrimitiveType::Number),
-            luanext_parser::Span::new(0, 6, 1, 1),
+        assert_eq!(
+            DiagnosticsProvider::format_type_display(&TypeKind::Primitive(PrimitiveType::Number)),
+            "number"
         );
-        let result = HoverProvider::format_type(&num_type, &interner);
-        assert_eq!(result, "number");
-
-        let str_type = Type::new(
-            luanext_parser::ast::types::TypeKind::Primitive(PrimitiveType::String),
-            luanext_parser::Span::new(0, 6, 1, 1),
+        assert_eq!(
+            DiagnosticsProvider::format_type_display(&TypeKind::Primitive(PrimitiveType::String)),
+            "string"
         );
-        let result = HoverProvider::format_type(&str_type, &interner);
-        assert_eq!(result, "string");
     }
 
     #[test]
-    fn test_hover_format_type_function() {
+    fn test_format_type_display_complex() {
+        use crate::core::diagnostics::DiagnosticsProvider;
         use bumpalo::Bump;
         use luanext_parser::ast::types::{PrimitiveType, Type, TypeKind};
-        use luanext_parser::string_interner::StringInterner;
 
         let arena = Bump::new();
-        let interner = StringInterner::new();
 
+        // Function type
         let return_type = arena.alloc(Type::new(
             TypeKind::Primitive(PrimitiveType::Number),
             luanext_parser::Span::new(0, 6, 1, 1),
         ));
-
-        let func_type = Type::new(
-            TypeKind::Function(luanext_parser::ast::types::FunctionType {
-                type_parameters: None,
-                parameters: &[],
-                return_type,
-                throws: None,
-                span: luanext_parser::Span::new(0, 20, 1, 1),
-            }),
-            luanext_parser::Span::new(0, 20, 1, 1),
+        let func_kind = TypeKind::Function(luanext_parser::ast::types::FunctionType {
+            type_parameters: None,
+            parameters: &[],
+            return_type,
+            throws: None,
+            span: luanext_parser::Span::new(0, 20, 1, 1),
+        });
+        assert_eq!(
+            DiagnosticsProvider::format_type_display(&func_kind),
+            "function"
         );
-        let result = HoverProvider::format_type(&func_type, &interner);
-        assert_eq!(result, "function");
-    }
 
-    #[test]
-    fn test_hover_format_type_array() {
-        use bumpalo::Bump;
-        use luanext_parser::ast::types::{PrimitiveType, Type, TypeKind};
-        use luanext_parser::string_interner::StringInterner;
-
-        let arena = Bump::new();
-        let interner = StringInterner::new();
-
+        // Array type
         let element_type = arena.alloc(Type::new(
             TypeKind::Primitive(PrimitiveType::Number),
             luanext_parser::Span::new(0, 6, 1, 1),
         ));
-
-        let array_type = Type::new(
-            TypeKind::Array(element_type),
-            luanext_parser::Span::new(0, 11, 1, 1),
+        assert_eq!(
+            DiagnosticsProvider::format_type_display(&TypeKind::Array(element_type)),
+            "array"
         );
-        let result = HoverProvider::format_type(&array_type, &interner);
-        assert_eq!(result, "array");
-    }
 
-    #[test]
-    fn test_hover_format_type_object() {
-        use bumpalo::Bump;
-        use luanext_parser::ast::types::{Type, TypeKind};
-        use luanext_parser::string_interner::StringInterner;
-
-        let _arena = Bump::new();
-        let interner = StringInterner::new();
-
-        let object_type = Type::new(
-            TypeKind::Object(luanext_parser::ast::types::ObjectType {
-                members: &[],
-                span: luanext_parser::Span::new(0, 6, 1, 1),
-            }),
-            luanext_parser::Span::new(0, 6, 1, 1),
+        // Object type
+        let obj_kind = TypeKind::Object(luanext_parser::ast::types::ObjectType {
+            members: &[],
+            span: luanext_parser::Span::new(0, 6, 1, 1),
+        });
+        assert_eq!(
+            DiagnosticsProvider::format_type_display(&obj_kind),
+            "object"
         );
-        let result = HoverProvider::format_type(&object_type, &interner);
-        assert_eq!(result, "object");
-    }
 
-    #[test]
-    fn test_hover_format_type_tuple() {
-        use bumpalo::Bump;
-        use luanext_parser::ast::types::{Type, TypeKind};
-        use luanext_parser::string_interner::StringInterner;
-
-        let _arena = Bump::new();
-        let interner = StringInterner::new();
-
-        let tuple_type = Type::new(TypeKind::Tuple(&[]), luanext_parser::Span::new(0, 5, 1, 1));
-        let result = HoverProvider::format_type(&tuple_type, &interner);
-        assert_eq!(result, "tuple");
-    }
-
-    #[test]
-    fn test_hover_format_type_union() {
-        use bumpalo::Bump;
-        use luanext_parser::ast::types::{Type, TypeKind};
-        use luanext_parser::string_interner::StringInterner;
-
-        let _arena = Bump::new();
-        let interner = StringInterner::new();
-
-        let union_type = Type::new(TypeKind::Union(&[]), luanext_parser::Span::new(0, 10, 1, 1));
-        let result = HoverProvider::format_type(&union_type, &interner);
-        assert_eq!(result, "union type");
-    }
-
-    #[test]
-    fn test_hover_format_type_intersection() {
-        use bumpalo::Bump;
-        use luanext_parser::ast::types::{Type, TypeKind};
-        use luanext_parser::string_interner::StringInterner;
-
-        let _arena = Bump::new();
-        let interner = StringInterner::new();
-
-        let intersection_type = Type::new(
-            TypeKind::Intersection(&[]),
-            luanext_parser::Span::new(0, 12, 1, 1),
+        // Tuple, Union, Intersection
+        assert_eq!(
+            DiagnosticsProvider::format_type_display(&TypeKind::Tuple(&[])),
+            "tuple"
         );
-        let result = HoverProvider::format_type(&intersection_type, &interner);
-        assert_eq!(result, "intersection type");
-    }
-
-    #[test]
-    fn test_hover_format_type_literal() {
-        use luanext_parser::ast::types::{Type, TypeKind};
-        use luanext_parser::string_interner::StringInterner;
-
-        let interner = StringInterner::new();
-
-        let literal_type = Type::new(
-            TypeKind::Primitive(luanext_parser::ast::types::PrimitiveType::String),
-            luanext_parser::Span::new(0, 5, 1, 1),
+        assert_eq!(
+            DiagnosticsProvider::format_type_display(&TypeKind::Union(&[])),
+            "union type"
         );
-        let result = HoverProvider::format_type(&literal_type, &interner);
-        assert_eq!(result, "string");
+        assert_eq!(
+            DiagnosticsProvider::format_type_display(&TypeKind::Intersection(&[])),
+            "intersection type"
+        );
     }
 
     #[test]

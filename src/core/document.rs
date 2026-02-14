@@ -189,12 +189,12 @@ impl Document {
             (parser.parse().ok()?, None)
         };
 
-        // Leak the arena to make the lifetime 'static
-        // This is safe because the data is stored in an Arc and will live as long as needed
-        let leaked_program: &'static Program<'static> = unsafe {
-            let program_ptr = &program as *const Program<'_>;
-            &*(program_ptr as *const Program<'static>)
-        };
+        // Allocate the Program in the arena so the reference remains valid
+        // as long as the Arc<Bump> is alive. Taking &program would be a
+        // use-after-free since program is a stack local.
+        let program_ref = arena.alloc(program);
+        let leaked_program: &'static Program<'static> =
+            unsafe { &*(program_ref as *const Program<'_> as *const Program<'static>) };
 
         let interner_arc = Arc::new(interner);
         let common_ids_arc = Arc::new(common_ids);
@@ -229,10 +229,12 @@ impl Document {
         let mut parser = Parser::new(tokens, handler, &interner, &common_ids, &arena);
         let program = parser.parse().ok()?;
 
-        let leaked_program: &'static Program<'static> = unsafe {
-            let program_ptr = &program as *const Program<'_>;
-            &*(program_ptr as *const Program<'static>)
-        };
+        // Allocate the Program in the arena so the reference remains valid
+        // as long as the Arc<Bump> is alive. Taking &program would be a
+        // use-after-free since program is a stack local.
+        let program_ref = arena.alloc(program);
+        let leaked_program: &'static Program<'static> =
+            unsafe { &*(program_ref as *const Program<'_> as *const Program<'static>) };
 
         let interner_arc = Arc::new(interner);
         let common_ids_arc = Arc::new(common_ids);
@@ -458,13 +460,13 @@ impl DocumentManager {
                 doc.cache.borrow_mut().semantic_tokens.invalidate();
             }
 
-            // Invalidate other caches (hover, completion, diagnostics, type info)
+            // Invalidate other caches (hover, completion, type-check result)
+            // Note: last_published_diagnostics is intentionally NOT cleared here
             {
                 let mut cache = doc.cache.borrow_mut();
                 cache.hover_cache.invalidate_all();
                 cache.completion_cache.invalidate_all();
-                cache.diagnostics.invalidate();
-                cache.type_info_cache.invalidate_all();
+                cache.type_check_result.invalidate();
             }
 
             // Clear incremental tree if forcing full parse

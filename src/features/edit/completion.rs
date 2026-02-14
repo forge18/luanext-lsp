@@ -6,7 +6,7 @@ use luanext_parser::ast::statement::{ExportKind, ImportClause, Statement};
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser};
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
-use luanext_typechecker::{Symbol, SymbolKind, TypeChecker};
+use luanext_typechecker::TypeChecker;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -249,101 +249,58 @@ impl CompletionProvider {
             .collect()
     }
 
-    /// Complete symbols from the type checker
+    /// Complete symbols using the cached type-check result.
     fn complete_symbols(&self, document: &Document) -> Vec<CompletionItem> {
-        // Parse and type check the document
-        let handler = Arc::new(CollectingDiagnosticHandler::new());
-        let (interner, common_ids) = StringInterner::new_with_common_identifiers();
-        let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
-        let tokens = match lexer.tokenize() {
-            Ok(t) => t,
-            Err(_) => return Vec::new(),
+        use crate::core::diagnostics::DiagnosticsProvider;
+
+        let result = DiagnosticsProvider::ensure_type_checked(document);
+
+        // Get type-only imports and re-exports from cached AST (cheap, no type checking)
+        let (type_only_imports, reexports) = match document.get_or_parse_ast() {
+            Some((ast, interner, _, _)) => {
+                let imports = Self::get_type_only_imports(ast, &interner);
+                let reexports = Self::get_reexported_symbols(ast, &interner);
+                (imports, reexports)
+            }
+            None => (HashSet::new(), HashMap::new()),
         };
 
-        with_pooled_arena(|arena| {
-            let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
-            let ast = match parser.parse() {
-                Ok(a) => a,
-                Err(_) => return Vec::new(),
-            };
+        let mut items = Vec::new();
+        for (name, symbol) in &result.symbols {
+            let kind = Self::kind_str_to_completion_kind(&symbol.kind);
 
-            // Get type-only imported names for display
-            let type_only_imports = Self::get_type_only_imports(&ast, &interner);
-
-            // Get re-exported symbols for display
-            let reexports = Self::get_reexported_symbols(&ast, &interner);
-
-            let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, arena);
-            if type_checker.check_program(&ast).is_err() {
-                // Even with errors, the symbol table may have useful information
+            let mut detail = format!("{}: {}", symbol.kind, symbol.type_display);
+            if type_only_imports.contains(name) {
+                detail.push_str(" (type-only import)");
+            }
+            if let Some(source) = reexports.get(name) {
+                detail.push_str(&format!(" (re-exported from {})", source));
             }
 
-            // Get all visible symbols from the symbol table
-            let symbol_table = type_checker.symbol_table();
-            let mut items = Vec::new();
+            items.push(CompletionItem {
+                label: name.clone(),
+                kind: Some(kind),
+                detail: Some(detail),
+                documentation: None,
+                ..Default::default()
+            });
+        }
 
-            for (name, symbol) in symbol_table.all_visible_symbols() {
-                let kind = match symbol.kind {
-                    SymbolKind::Const | SymbolKind::Variable => CompletionItemKind::VARIABLE,
-                    SymbolKind::Function => CompletionItemKind::FUNCTION,
-                    SymbolKind::Class => CompletionItemKind::CLASS,
-                    SymbolKind::Interface => CompletionItemKind::INTERFACE,
-                    SymbolKind::TypeAlias => CompletionItemKind::STRUCT,
-                    SymbolKind::Enum => CompletionItemKind::ENUM,
-                    SymbolKind::Parameter => CompletionItemKind::VARIABLE,
-                    SymbolKind::Namespace => CompletionItemKind::MODULE,
-                };
-
-                let mut detail = Self::format_symbol_detail(symbol);
-                if type_only_imports.contains(&name) {
-                    detail.push_str(" (type-only import)");
-                }
-                if let Some(source) = reexports.get(&name) {
-                    detail.push_str(&format!(" (re-exported from {})", source));
-                }
-
-                items.push(CompletionItem {
-                    label: name.clone(),
-                    kind: Some(kind),
-                    detail: Some(detail),
-                    documentation: None,
-                    ..Default::default()
-                });
-            }
-
-            items
-        })
+        items
     }
 
-    /// Format symbol detail for completion
-    fn format_symbol_detail(symbol: &Symbol) -> String {
-        use luanext_parser::ast::types::{PrimitiveType, TypeKind};
-
-        let kind_str = match symbol.kind {
-            SymbolKind::Const => "const",
-            SymbolKind::Variable => "let",
-            SymbolKind::Function => "function",
-            SymbolKind::Class => "class",
-            SymbolKind::Interface => "interface",
-            SymbolKind::TypeAlias => "type",
-            SymbolKind::Enum => "enum",
-            SymbolKind::Parameter => "param",
-            SymbolKind::Namespace => "namespace",
-        };
-
-        // Simple type display
-        let type_str = match &symbol.typ.kind {
-            TypeKind::Primitive(PrimitiveType::Number) => "number",
-            TypeKind::Primitive(PrimitiveType::String) => "string",
-            TypeKind::Primitive(PrimitiveType::Boolean) => "boolean",
-            TypeKind::Primitive(PrimitiveType::Nil) => "nil",
-            TypeKind::Function(_) => "function",
-            TypeKind::Object(_) => "object",
-            TypeKind::Array(_) => "array",
-            _ => "type",
-        };
-
-        format!("{}: {}", kind_str, type_str)
+    /// Map a cached symbol kind string to an LSP CompletionItemKind.
+    fn kind_str_to_completion_kind(kind: &str) -> CompletionItemKind {
+        match kind {
+            "const" | "let" | "param" => CompletionItemKind::VARIABLE,
+            "function" => CompletionItemKind::FUNCTION,
+            "class" => CompletionItemKind::CLASS,
+            "interface" => CompletionItemKind::INTERFACE,
+            "type" => CompletionItemKind::STRUCT,
+            "enum" => CompletionItemKind::ENUM,
+            "namespace" => CompletionItemKind::MODULE,
+            _ => CompletionItemKind::VARIABLE,
+        }
     }
 
     /// Get names of symbols imported via `import type { ... }`
@@ -1105,65 +1062,43 @@ mod tests {
     }
 
     #[test]
-    fn test_format_symbol_detail_variable() {
-        let _provider = CompletionProvider::new();
-
-        // Create a symbol representing a number variable
-        let symbol = Symbol {
-            name: "testVar".to_string(),
-            kind: luanext_typechecker::SymbolKind::Variable,
-            typ: luanext_parser::ast::types::Type::new(
-                luanext_parser::ast::types::TypeKind::Primitive(
-                    luanext_parser::ast::types::PrimitiveType::Number,
-                ),
-                luanext_parser::Span::new(0, 10, 1, 1),
-            ),
-            is_exported: false,
-            span: luanext_parser::Span::new(0, 10, 1, 1),
-            references: vec![],
-        };
-
-        let detail = CompletionProvider::format_symbol_detail(&symbol);
-        assert!(detail.contains("let"));
-        assert!(detail.contains("number"));
-    }
-
-    #[test]
-    fn test_format_symbol_detail_function() {
-        use bumpalo::Bump;
-
-        let arena = Bump::new();
-        let _provider = CompletionProvider::new();
-
-        let return_type = arena.alloc(luanext_parser::ast::types::Type::new(
-            luanext_parser::ast::types::TypeKind::Primitive(
-                luanext_parser::ast::types::PrimitiveType::Number,
-            ),
-            luanext_parser::Span::new(0, 6, 1, 1),
-        ));
-
-        let symbol = Symbol {
-            name: "testFunc".to_string(),
-            kind: luanext_typechecker::SymbolKind::Function,
-            typ: luanext_parser::ast::types::Type::new(
-                luanext_parser::ast::types::TypeKind::Function(
-                    luanext_parser::ast::types::FunctionType {
-                        type_parameters: None,
-                        parameters: &[],
-                        return_type,
-                        throws: None,
-                        span: luanext_parser::Span::new(0, 20, 1, 1),
-                    },
-                ),
-                luanext_parser::Span::new(0, 20, 1, 1),
-            ),
-            is_exported: false,
-            span: luanext_parser::Span::new(0, 20, 1, 1),
-            references: vec![],
-        };
-
-        let detail = CompletionProvider::format_symbol_detail(&symbol);
-        assert!(detail.contains("function"));
+    fn test_kind_str_to_completion_kind() {
+        assert_eq!(
+            CompletionProvider::kind_str_to_completion_kind("const"),
+            CompletionItemKind::VARIABLE
+        );
+        assert_eq!(
+            CompletionProvider::kind_str_to_completion_kind("let"),
+            CompletionItemKind::VARIABLE
+        );
+        assert_eq!(
+            CompletionProvider::kind_str_to_completion_kind("param"),
+            CompletionItemKind::VARIABLE
+        );
+        assert_eq!(
+            CompletionProvider::kind_str_to_completion_kind("function"),
+            CompletionItemKind::FUNCTION
+        );
+        assert_eq!(
+            CompletionProvider::kind_str_to_completion_kind("class"),
+            CompletionItemKind::CLASS
+        );
+        assert_eq!(
+            CompletionProvider::kind_str_to_completion_kind("interface"),
+            CompletionItemKind::INTERFACE
+        );
+        assert_eq!(
+            CompletionProvider::kind_str_to_completion_kind("type"),
+            CompletionItemKind::STRUCT
+        );
+        assert_eq!(
+            CompletionProvider::kind_str_to_completion_kind("enum"),
+            CompletionItemKind::ENUM
+        );
+        assert_eq!(
+            CompletionProvider::kind_str_to_completion_kind("namespace"),
+            CompletionItemKind::MODULE
+        );
     }
 
     #[test]
@@ -1325,113 +1260,11 @@ mod tests {
     }
 
     #[test]
-    fn test_format_symbol_detail_class() {
-        let _provider = CompletionProvider::new();
-
-        let symbol = Symbol {
-            name: "MyClass".to_string(),
-            kind: luanext_typechecker::SymbolKind::Class,
-            typ: luanext_parser::ast::types::Type::new(
-                luanext_parser::ast::types::TypeKind::Primitive(
-                    luanext_parser::ast::types::PrimitiveType::Unknown,
-                ),
-                luanext_parser::Span::new(0, 8, 1, 1),
-            ),
-            is_exported: false,
-            span: luanext_parser::Span::new(0, 8, 1, 1),
-            references: vec![],
-        };
-
-        let detail = CompletionProvider::format_symbol_detail(&symbol);
-        assert!(detail.contains("class"));
-    }
-
-    #[test]
-    fn test_format_symbol_detail_interface() {
-        let _provider = CompletionProvider::new();
-
-        let symbol = Symbol {
-            name: "MyInterface".to_string(),
-            kind: luanext_typechecker::SymbolKind::Interface,
-            typ: luanext_parser::ast::types::Type::new(
-                luanext_parser::ast::types::TypeKind::Primitive(
-                    luanext_parser::ast::types::PrimitiveType::Unknown,
-                ),
-                luanext_parser::Span::new(0, 11, 1, 1),
-            ),
-            is_exported: false,
-            span: luanext_parser::Span::new(0, 11, 1, 1),
-            references: vec![],
-        };
-
-        let detail = CompletionProvider::format_symbol_detail(&symbol);
-        assert!(detail.contains("interface"));
-    }
-
-    #[test]
-    fn test_format_symbol_detail_enum() {
-        let _provider = CompletionProvider::new();
-
-        let symbol = Symbol {
-            name: "MyEnum".to_string(),
-            kind: luanext_typechecker::SymbolKind::Enum,
-            typ: luanext_parser::ast::types::Type::new(
-                luanext_parser::ast::types::TypeKind::Primitive(
-                    luanext_parser::ast::types::PrimitiveType::Unknown,
-                ),
-                luanext_parser::Span::new(0, 7, 1, 1),
-            ),
-            is_exported: false,
-            span: luanext_parser::Span::new(0, 7, 1, 1),
-            references: vec![],
-        };
-
-        let detail = CompletionProvider::format_symbol_detail(&symbol);
-        assert!(detail.contains("enum"));
-    }
-
-    #[test]
-    fn test_format_symbol_detail_type_alias() {
-        let _provider = CompletionProvider::new();
-
-        let symbol = Symbol {
-            name: "MyType".to_string(),
-            kind: luanext_typechecker::SymbolKind::TypeAlias,
-            typ: luanext_parser::ast::types::Type::new(
-                luanext_parser::ast::types::TypeKind::Primitive(
-                    luanext_parser::ast::types::PrimitiveType::Unknown,
-                ),
-                luanext_parser::Span::new(0, 6, 1, 1),
-            ),
-            is_exported: false,
-            span: luanext_parser::Span::new(0, 6, 1, 1),
-            references: vec![],
-        };
-
-        let detail = CompletionProvider::format_symbol_detail(&symbol);
-        assert!(detail.contains("type"));
-    }
-
-    #[test]
-    fn test_format_symbol_detail_parameter() {
-        let _provider = CompletionProvider::new();
-
-        let symbol = Symbol {
-            name: "param".to_string(),
-            kind: luanext_typechecker::SymbolKind::Parameter,
-            typ: luanext_parser::ast::types::Type::new(
-                luanext_parser::ast::types::TypeKind::Primitive(
-                    luanext_parser::ast::types::PrimitiveType::String,
-                ),
-                luanext_parser::Span::new(0, 6, 1, 1),
-            ),
-            is_exported: false,
-            span: luanext_parser::Span::new(0, 6, 1, 1),
-            references: vec![],
-        };
-
-        let detail = CompletionProvider::format_symbol_detail(&symbol);
-        assert!(detail.contains("param"));
+    fn test_kind_str_to_completion_kind_unknown_defaults_to_variable() {
+        assert_eq!(
+            CompletionProvider::kind_str_to_completion_kind("unknown_kind"),
+            CompletionItemKind::VARIABLE
+        );
     }
 
     #[test]

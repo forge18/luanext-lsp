@@ -1,13 +1,16 @@
 use crate::arena_pool::with_pooled_arena;
+use crate::core::cache::{CachedSymbolInfo, TypeCheckResult};
 use crate::core::document::Document;
 use crate::traits::DiagnosticsProviderTrait;
 use lsp_types::*;
+use luanext_parser::ast::types::{PrimitiveType, TypeKind};
 use luanext_parser::string_interner::StringInterner;
 use luanext_parser::{Lexer, Parser, Span};
 use luanext_typechecker::cli::diagnostics::{
     CollectingDiagnosticHandler, DiagnosticHandler, DiagnosticLevel,
 };
-use luanext_typechecker::TypeChecker;
+use luanext_typechecker::{SymbolKind, TypeChecker};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Provides diagnostics (errors and warnings) for documents
@@ -19,47 +22,143 @@ impl DiagnosticsProvider {
         Self
     }
 
-    /// Analyze a document and return diagnostics (internal method)
-    pub fn provide_impl(&self, document: &Document) -> Vec<Diagnostic> {
-        let mut diagnostics = Vec::new();
+    /// Run type checking and cache the result, or return the cached result.
+    ///
+    /// This is the single entry point for type checking in the LSP.
+    /// All features (diagnostics, hover, completion) should call this
+    /// instead of running their own lex→parse→typecheck pipeline.
+    pub fn ensure_type_checked(document: &Document) -> TypeCheckResult {
+        // Check cache first — clone to release RefCell borrow before recording stats
+        let cached = document
+            .cache()
+            .type_check_result
+            .get_if_valid(document.version)
+            .cloned();
 
-        // Create a diagnostic handler to collect errors
+        if let Some(result) = cached {
+            document.cache_mut().stats_mut().record_hit();
+            document.cache().stats().maybe_log("type_check");
+            return result;
+        }
+
+        document.cache_mut().stats_mut().record_miss();
+
+        // Cache miss: run full lex→parse→typecheck pipeline
         let handler = Arc::new(CollectingDiagnosticHandler::new());
-
-        // Create interner
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
 
-        // Lex the document
         let mut lexer = Lexer::new(&document.text, handler.clone(), &interner);
         let tokens = match lexer.tokenize() {
             Ok(t) => t,
             Err(_) => {
-                // Collect lexer diagnostics
-                return Self::convert_diagnostics(handler);
+                let result = TypeCheckResult {
+                    symbols: HashMap::new(),
+                    diagnostics: Self::convert_diagnostics(handler),
+                };
+                document
+                    .cache_mut()
+                    .type_check_result
+                    .set(result.clone(), document.version);
+                return result;
             }
         };
 
-        // Parse and type check the document
-        with_pooled_arena(|arena| {
+        let result = with_pooled_arena(|arena| {
             let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
             let ast = match parser.parse() {
                 Ok(a) => a,
                 Err(_) => {
-                    // Collect parser diagnostics
-                    return Self::convert_diagnostics(handler);
+                    return TypeCheckResult {
+                        symbols: HashMap::new(),
+                        diagnostics: Self::convert_diagnostics(handler),
+                    };
                 }
             };
 
-            // Type check the document
             let mut type_checker = TypeChecker::new(handler.clone(), &interner, &common_ids, arena);
-            if let Err(_) = type_checker.check_program(&ast) {
-                return Self::convert_diagnostics(handler);
+            let _ = type_checker.check_program(&ast);
+
+            // Extract symbol information while still in arena scope
+            let symbol_table = type_checker.symbol_table();
+            let mut symbols = HashMap::new();
+            for (name, symbol) in symbol_table.all_visible_symbols() {
+                let kind = Self::format_kind_display(symbol.kind);
+                let type_display = Self::format_type_display(&symbol.typ.kind);
+                symbols.insert(name.clone(), CachedSymbolInfo { kind, type_display });
             }
 
-            // If we get here and there are still diagnostics (warnings), include them
-            diagnostics.extend(Self::convert_diagnostics(handler));
-            diagnostics
-        })
+            let diagnostics = Self::convert_diagnostics(handler);
+            TypeCheckResult {
+                symbols,
+                diagnostics,
+            }
+        });
+
+        document
+            .cache_mut()
+            .type_check_result
+            .set(result.clone(), document.version);
+        result
+    }
+
+    /// Analyze a document and return diagnostics (internal method).
+    /// Uses the shared type-check cache to avoid redundant work.
+    pub fn provide_impl(&self, document: &Document) -> Vec<Diagnostic> {
+        Self::ensure_type_checked(document).diagnostics
+    }
+
+    /// Format symbol kind as a display string.
+    fn format_kind_display(kind: SymbolKind) -> String {
+        match kind {
+            SymbolKind::Const => "const",
+            SymbolKind::Variable => "let",
+            SymbolKind::Function => "function",
+            SymbolKind::Class => "class",
+            SymbolKind::Interface => "interface",
+            SymbolKind::TypeAlias => "type",
+            SymbolKind::Enum => "enum",
+            SymbolKind::Parameter => "param",
+            SymbolKind::Namespace => "namespace",
+        }
+        .to_string()
+    }
+
+    /// Format a type kind as a simple display string.
+    pub fn format_type_display(kind: &TypeKind) -> String {
+        match kind {
+            TypeKind::Primitive(PrimitiveType::Nil) => "nil",
+            TypeKind::Primitive(PrimitiveType::Boolean) => "boolean",
+            TypeKind::Primitive(PrimitiveType::Number) => "number",
+            TypeKind::Primitive(PrimitiveType::Integer) => "integer",
+            TypeKind::Primitive(PrimitiveType::String) => "string",
+            TypeKind::Primitive(PrimitiveType::Unknown) => "unknown",
+            TypeKind::Primitive(PrimitiveType::Never) => "never",
+            TypeKind::Primitive(PrimitiveType::Void) => "void",
+            TypeKind::Primitive(PrimitiveType::Table) => "table",
+            TypeKind::Primitive(PrimitiveType::Coroutine) => "coroutine",
+            TypeKind::Primitive(PrimitiveType::Thread) => "thread",
+            TypeKind::Literal(_) => "literal",
+            TypeKind::Union(_) => "union type",
+            TypeKind::Intersection(_) => "intersection type",
+            TypeKind::Function(_) => "function",
+            TypeKind::Object(_) => "object",
+            TypeKind::Array(_) => "array",
+            TypeKind::Tuple(_) => "tuple",
+            TypeKind::TypeQuery(_) => "typeof",
+            TypeKind::Reference(_) => "type",
+            TypeKind::Nullable(_) => "nullable",
+            TypeKind::IndexAccess(_, _) => "indexed access",
+            TypeKind::Conditional(_) => "conditional type",
+            TypeKind::Infer(_) => "infer",
+            TypeKind::KeyOf(_) => "keyof",
+            TypeKind::Mapped(_) => "mapped type",
+            TypeKind::TemplateLiteral(_) => "template literal type",
+            TypeKind::Parenthesized(inner) => return Self::format_type_display(&inner.kind),
+            TypeKind::TypePredicate(_) => "type predicate",
+            TypeKind::Variadic(_) => "variadic",
+            TypeKind::Namespace(_) => "namespace",
+        }
+        .to_string()
     }
 
     /// Convert core diagnostics to LSP diagnostics
@@ -234,5 +333,93 @@ mod tests {
 
         // Should work through trait
         assert!(diagnostics.is_empty());
+    }
+
+    // ── ensure_type_checked tests ────────────────────────────────────
+
+    #[test]
+    fn test_ensure_type_checked_caches_result() {
+        let doc = Document::new_test("local x = 1".to_string(), 1);
+
+        // First call: computes and caches
+        let result1 = DiagnosticsProvider::ensure_type_checked(&doc);
+        assert!(result1.diagnostics.is_empty());
+
+        // Second call: returns cached (same version)
+        let result2 = DiagnosticsProvider::ensure_type_checked(&doc);
+        assert!(result2.diagnostics.is_empty());
+
+        // Cache should have recorded a hit on second call
+        let stats = doc.cache().stats().clone();
+        assert!(stats.hits >= 1, "Expected at least 1 cache hit");
+    }
+
+    #[test]
+    fn test_ensure_type_checked_empty_document() {
+        let doc = Document::new_test("".to_string(), 1);
+
+        let result = DiagnosticsProvider::ensure_type_checked(&doc);
+
+        assert!(result.symbols.is_empty());
+        assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_ensure_type_checked_captures_symbols() {
+        let doc = Document::new_test("local x: number = 1".to_string(), 1);
+
+        let result = DiagnosticsProvider::ensure_type_checked(&doc);
+
+        assert!(result.diagnostics.is_empty());
+        // Symbol "x" should be in the result
+        assert!(
+            result.symbols.contains_key("x"),
+            "Expected symbol 'x' in {:?}",
+            result.symbols.keys().collect::<Vec<_>>()
+        );
+        let sym = result.symbols.get("x").unwrap();
+        assert_eq!(sym.type_display, "number");
+    }
+
+    #[test]
+    fn test_ensure_type_checked_parse_error() {
+        let doc = Document::new_test("local = =".to_string(), 1);
+
+        let result = DiagnosticsProvider::ensure_type_checked(&doc);
+
+        // Should have parse error diagnostic
+        assert!(
+            !result.diagnostics.is_empty(),
+            "Expected diagnostics for parse error"
+        );
+        assert!(result.symbols.is_empty());
+    }
+
+    #[test]
+    fn test_provide_impl_uses_cache() {
+        let doc = Document::new_test("local x = 1".to_string(), 1);
+        let provider = DiagnosticsProvider::new();
+
+        // First call populates cache
+        let d1 = provider.provide_impl(&doc);
+        // Second call should hit cache
+        let d2 = provider.provide_impl(&doc);
+
+        assert_eq!(d1, d2);
+
+        let stats = doc.cache().stats().clone();
+        assert!(stats.hits >= 1, "Expected at least 1 cache hit");
+    }
+
+    #[test]
+    fn test_ensure_type_checked_function_symbol() {
+        let doc = Document::new_test("function foo() end".to_string(), 1);
+
+        let result = DiagnosticsProvider::ensure_type_checked(&doc);
+
+        assert!(result.diagnostics.is_empty());
+        if let Some(sym) = result.symbols.get("foo") {
+            assert_eq!(sym.kind, "function");
+        }
     }
 }

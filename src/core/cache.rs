@@ -11,13 +11,31 @@
 //! - [`DocumentCache`]: Per-document container holding all cache types
 //! - [`CacheStats`]: Hit/miss counters for observability
 
-// Some cache fields still use placeholder types (diagnostics, type_info) -
-// will be replaced with real types in subsequent phases.
-#![allow(dead_code)]
-
-use lsp_types::{CompletionItem, Hover, Position, SemanticTokens};
+use lsp_types::{CompletionItem, Diagnostic, Hover, Position, SemanticTokens};
 use std::collections::{HashMap, VecDeque};
-use std::time::Instant;
+
+/// Cached result of a single type-check run, extracted to owned types.
+///
+/// Created once per document version by `DiagnosticsProvider::ensure_type_checked()`.
+/// All LSP features (hover, completion, diagnostics) query this cache
+/// instead of running their own lex→parse→typecheck pass.
+#[derive(Debug, Clone)]
+pub struct TypeCheckResult {
+    /// Symbol name → owned symbol info (kind + type display string)
+    pub symbols: HashMap<String, CachedSymbolInfo>,
+    /// Diagnostics produced during this type-check run
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+/// Owned symbol information extracted from the type checker's symbol table.
+/// Stores only what LSP features need: the kind label and type display string.
+#[derive(Debug, Clone)]
+pub struct CachedSymbolInfo {
+    /// Display label for the symbol kind ("const", "let", "function", etc.)
+    pub kind: String,
+    /// Display string for the symbol's type ("number", "string", "function", etc.)
+    pub type_display: String,
+}
 
 /// A cache entry that tracks the document version it was computed from.
 ///
@@ -28,7 +46,6 @@ use std::time::Instant;
 pub struct VersionedCache<T> {
     value: Option<T>,
     version: i32,
-    last_updated: Instant,
 }
 
 impl<T> VersionedCache<T> {
@@ -37,7 +54,6 @@ impl<T> VersionedCache<T> {
         Self {
             value: None,
             version: -1,
-            last_updated: Instant::now(),
         }
     }
 
@@ -59,7 +75,6 @@ impl<T> VersionedCache<T> {
     pub fn set(&mut self, value: T, version: i32) {
         self.value = Some(value);
         self.version = version;
-        self.last_updated = Instant::now();
     }
 
     /// Clear the cached value.
@@ -70,11 +85,6 @@ impl<T> VersionedCache<T> {
     /// Get the version this cache was computed from.
     pub fn version(&self) -> i32 {
         self.version
-    }
-
-    /// Get when this cache was last updated.
-    pub fn last_updated(&self) -> Instant {
-        self.last_updated
     }
 }
 
@@ -157,6 +167,7 @@ impl<T> BoundedPositionCache<T> {
     }
 
     /// Remove entries whose positions fall within the given range (inclusive).
+    #[cfg(test)]
     pub fn invalidate_range(&mut self, start: Position, end: Position) {
         let positions_to_remove: Vec<Position> = self
             .entries
@@ -179,16 +190,19 @@ impl<T> BoundedPositionCache<T> {
     }
 
     /// Number of entries currently cached.
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
     /// Whether the cache is empty.
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
     /// The maximum capacity.
+    #[cfg(test)]
     pub fn capacity(&self) -> usize {
         self.max_capacity
     }
@@ -198,8 +212,6 @@ impl<T> BoundedPositionCache<T> {
 const DEFAULT_HOVER_CACHE_CAPACITY: usize = 100;
 /// Default max entries for completion cache.
 const DEFAULT_COMPLETION_CACHE_CAPACITY: usize = 50;
-/// Default max entries for type info cache.
-const DEFAULT_TYPE_INFO_CACHE_CAPACITY: usize = 100;
 
 /// Per-document cache container holding all cached analysis results.
 ///
@@ -213,10 +225,13 @@ pub struct DocumentCache {
     pub(crate) hover_cache: BoundedPositionCache<Hover>,
     /// Cached completion results per position.
     pub(crate) completion_cache: BoundedPositionCache<Vec<CompletionItem>>,
-    /// Cached diagnostics for the document.
-    pub(crate) diagnostics: VersionedCache<()>,
-    /// Cached type information per position.
-    pub(crate) type_info_cache: BoundedPositionCache<()>,
+    /// Cached type-check result (symbol table + diagnostics from a single type-check run).
+    /// Populated by `DiagnosticsProvider::ensure_type_checked()`, consumed by hover/completion.
+    pub(crate) type_check_result: VersionedCache<TypeCheckResult>,
+    /// Last diagnostics sent to the client (for deduplication).
+    /// NOT version-gated: stores whatever was last published, regardless of version.
+    /// This enables skipping `PublishDiagnostics` when edits don't change errors.
+    pub(crate) last_published_diagnostics: Option<Vec<Diagnostic>>,
     /// Cache statistics for observability.
     stats: CacheStats,
 }
@@ -228,33 +243,35 @@ impl DocumentCache {
             semantic_tokens: VersionedCache::new(),
             hover_cache: BoundedPositionCache::new(DEFAULT_HOVER_CACHE_CAPACITY),
             completion_cache: BoundedPositionCache::new(DEFAULT_COMPLETION_CACHE_CAPACITY),
-            diagnostics: VersionedCache::new(),
-            type_info_cache: BoundedPositionCache::new(DEFAULT_TYPE_INFO_CACHE_CAPACITY),
+            type_check_result: VersionedCache::new(),
+            last_published_diagnostics: None,
             stats: CacheStats::default(),
         }
     }
 
     /// Invalidate all caches (called on `didChange`).
+    ///
+    /// Note: `last_published_diagnostics` is intentionally NOT cleared here.
+    /// It stores what the client last saw and is used for deduplication.
     pub fn invalidate_all(&mut self) {
         self.semantic_tokens.invalidate();
         self.hover_cache.invalidate_all();
         self.completion_cache.invalidate_all();
-        self.diagnostics.invalidate();
-        self.type_info_cache.invalidate_all();
+        self.type_check_result.invalidate();
     }
 
     /// Invalidate position-based caches within a range.
     ///
-    /// Semantic tokens and diagnostics are document-wide, so they are
+    /// Semantic tokens and type-check results are document-wide, so they are
     /// always invalidated. Position-based caches only clear entries
     /// that fall within the affected range.
+    #[cfg(test)]
     pub fn partial_invalidate(&mut self, start: Position, end: Position) {
         self.semantic_tokens.invalidate();
-        self.diagnostics.invalidate();
+        self.type_check_result.invalidate();
 
         self.hover_cache.invalidate_range(start, end);
         self.completion_cache.invalidate_range(start, end);
-        self.type_info_cache.invalidate_range(start, end);
     }
 
     /// Get a reference to the cache statistics.
@@ -265,11 +282,6 @@ impl DocumentCache {
     /// Get a mutable reference to the cache statistics.
     pub fn stats_mut(&mut self) -> &mut CacheStats {
         &mut self.stats
-    }
-
-    /// Reset statistics counters.
-    pub fn reset_stats(&mut self) {
-        self.stats = CacheStats::default();
     }
 }
 
@@ -379,15 +391,6 @@ mod tests {
         assert_eq!(cache.version(), -1);
         cache.set((), 42);
         assert_eq!(cache.version(), 42);
-    }
-
-    #[test]
-    fn test_last_updated_changes_on_set() {
-        let mut cache = VersionedCache::new();
-        let t1 = cache.last_updated();
-        std::thread::sleep(std::time::Duration::from_millis(1));
-        cache.set((), 1);
-        assert!(cache.last_updated() >= t1);
     }
 
     #[test]
@@ -527,10 +530,10 @@ mod tests {
     fn test_new_document_cache() {
         let cache = DocumentCache::new();
         assert!(!cache.semantic_tokens.is_valid(0));
-        assert!(!cache.diagnostics.is_valid(0));
+        assert!(!cache.type_check_result.is_valid(0));
         assert!(cache.hover_cache.is_empty());
         assert!(cache.completion_cache.is_empty());
-        assert!(cache.type_info_cache.is_empty());
+        assert!(cache.last_published_diagnostics.is_none());
     }
 
     fn empty_tokens() -> SemanticTokens {
@@ -558,31 +561,47 @@ mod tests {
         }]
     }
 
+    fn test_type_check_result() -> TypeCheckResult {
+        let mut symbols = HashMap::new();
+        symbols.insert(
+            "x".to_string(),
+            CachedSymbolInfo {
+                kind: "let".to_string(),
+                type_display: "number".to_string(),
+            },
+        );
+        TypeCheckResult {
+            symbols,
+            diagnostics: vec![],
+        }
+    }
+
     #[test]
     fn test_document_cache_invalidate_all() {
         let mut cache = DocumentCache::new();
         cache.semantic_tokens.set(empty_tokens(), 1);
-        cache.diagnostics.set((), 1);
+        cache.type_check_result.set(test_type_check_result(), 1);
         cache.hover_cache.insert(pos(0, 0), test_hover(), 1);
         cache
             .completion_cache
             .insert(pos(0, 0), test_completion_items(), 1);
-        cache.type_info_cache.insert(pos(0, 0), (), 1);
+        cache.last_published_diagnostics = Some(vec![]);
 
         cache.invalidate_all();
 
         assert!(!cache.semantic_tokens.is_valid(1));
-        assert!(!cache.diagnostics.is_valid(1));
+        assert!(!cache.type_check_result.is_valid(1));
         assert!(cache.hover_cache.is_empty());
         assert!(cache.completion_cache.is_empty());
-        assert!(cache.type_info_cache.is_empty());
+        // last_published_diagnostics survives invalidate_all (intentional)
+        assert!(cache.last_published_diagnostics.is_some());
     }
 
     #[test]
     fn test_document_cache_partial_invalidate() {
         let mut cache = DocumentCache::new();
         cache.semantic_tokens.set(empty_tokens(), 1);
-        cache.diagnostics.set((), 1);
+        cache.type_check_result.set(test_type_check_result(), 1);
         cache.hover_cache.insert(pos(0, 0), test_hover(), 1);
         cache.hover_cache.insert(pos(5, 0), test_hover(), 1);
         cache.hover_cache.insert(pos(10, 0), test_hover(), 1);
@@ -591,9 +610,32 @@ mod tests {
 
         // Document-wide caches are always invalidated
         assert!(!cache.semantic_tokens.is_valid(1));
-        assert!(!cache.diagnostics.is_valid(1));
+        assert!(!cache.type_check_result.is_valid(1));
         // Position caches: only affected range is cleared
         assert_eq!(cache.hover_cache.len(), 2); // pos(0,0) and pos(10,0) remain
+    }
+
+    #[test]
+    fn test_last_published_diagnostics_survives_invalidate_all() {
+        let mut cache = DocumentCache::new();
+        cache.last_published_diagnostics = Some(vec![]);
+        cache.invalidate_all();
+        assert!(cache.last_published_diagnostics.is_some());
+    }
+
+    #[test]
+    fn test_type_check_result_cached_and_invalidated() {
+        let mut cache = VersionedCache::<TypeCheckResult>::new();
+        let result = test_type_check_result();
+        cache.set(result, 1);
+
+        assert!(cache.is_valid(1));
+        assert!(cache.get_if_valid(1).is_some());
+        assert_eq!(cache.get_if_valid(1).unwrap().symbols.len(), 1);
+
+        cache.invalidate();
+        assert!(!cache.is_valid(1));
+        assert!(cache.get_if_valid(1).is_none());
     }
 
     #[test]
@@ -618,9 +660,7 @@ mod tests {
             cache.completion_cache.capacity(),
             DEFAULT_COMPLETION_CACHE_CAPACITY
         );
-        assert_eq!(
-            cache.type_info_cache.capacity(),
-            DEFAULT_TYPE_INFO_CACHE_CAPACITY
-        );
+        assert!(!cache.type_check_result.is_valid(0));
+        assert!(cache.last_published_diagnostics.is_none());
     }
 }

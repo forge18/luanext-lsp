@@ -648,15 +648,28 @@ impl MessageHandler {
     ) -> Result<()> {
         if let Some(document) = document_manager.get(uri) {
             let diagnostics_provider = self.container.resolve::<DiagnosticsProvider>().unwrap();
-            let diagnostics = diagnostics_provider.provide(document);
-            Self::send_notification::<PublishDiagnostics>(
-                connection,
-                PublishDiagnosticsParams {
-                    uri: uri.clone(),
-                    diagnostics,
-                    version: None,
-                },
-            )?;
+            let new_diagnostics = diagnostics_provider.provide(document);
+
+            // Deduplication: skip sending if diagnostics are identical to what the client last saw
+            let should_send = {
+                let cache = document.cache();
+                match &cache.last_published_diagnostics {
+                    Some(prev) => *prev != new_diagnostics,
+                    None => true,
+                }
+            };
+
+            if should_send {
+                document.cache_mut().last_published_diagnostics = Some(new_diagnostics.clone());
+                Self::send_notification::<PublishDiagnostics>(
+                    connection,
+                    PublishDiagnosticsParams {
+                        uri: uri.clone(),
+                        diagnostics: new_diagnostics,
+                        version: None,
+                    },
+                )?;
+            }
         }
         Ok(())
     }
