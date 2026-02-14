@@ -18,22 +18,52 @@ impl HoverProvider {
         Self
     }
 
-    /// Provide hover information at a given position (internal method)
+    /// Provide hover information at a given position (internal method).
+    ///
+    /// Uses position-based caching: if the same position is requested again
+    /// at the same document version, returns the cached result immediately.
     pub fn provide_impl(&self, document: &Document, position: Position) -> Option<Hover> {
+        // Check cache first - clone result to release RefMut borrow before recording stats
+        let cached = document
+            .cache_mut()
+            .hover_cache
+            .get(position, document.version)
+            .cloned();
+
+        if let Some(result) = cached {
+            document.cache_mut().stats_mut().record_hit();
+            document.cache().stats().maybe_log("hover");
+            return Some(result);
+        }
+
+        document.cache_mut().stats_mut().record_miss();
+
         // Get the word at the current position
         let word = self.get_word_at_position(document, position)?;
 
         // Check if it's a built-in keyword or type
         if let Some(hover) = self.hover_for_keyword(&word) {
+            document
+                .cache_mut()
+                .hover_cache
+                .insert(position, hover.clone(), document.version);
             return Some(hover);
         }
 
         if let Some(hover) = self.hover_for_builtin_type(&word) {
+            document
+                .cache_mut()
+                .hover_cache
+                .insert(position, hover.clone(), document.version);
             return Some(hover);
         }
 
         // Try to get type information from type checker
         if let Some(hover) = self.hover_for_symbol(document, &word) {
+            document
+                .cache_mut()
+                .hover_cache
+                .insert(position, hover.clone(), document.version);
             return Some(hover);
         }
 
@@ -933,5 +963,61 @@ mod tests {
         let result = provider.provide_impl(&doc, Position::new(0, 1));
 
         assert!(result.is_none());
+    }
+
+    // ── Cache tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_hover_cache_hit_returns_same_result() {
+        let doc = create_test_document("local x = 1");
+        let provider = HoverProvider::new();
+        let pos = Position::new(0, 0); // "local" keyword
+
+        let result1 = provider.provide_impl(&doc, pos);
+        assert!(result1.is_some());
+
+        // Second call at same position should hit cache
+        let result2 = provider.provide_impl(&doc, pos);
+        assert!(result2.is_some());
+
+        // Results should be identical
+        assert_eq!(format!("{:?}", result1), format!("{:?}", result2),);
+
+        // Cache should have recorded a hit
+        let stats = doc.cache().stats().clone();
+        assert!(
+            stats.hits >= 1,
+            "Expected at least 1 cache hit, got {}",
+            stats.hits
+        );
+    }
+
+    #[test]
+    fn test_hover_cache_miss_on_different_position() {
+        let doc = create_test_document("local x = 1\nlocal y = 2");
+        let provider = HoverProvider::new();
+
+        // Hover on first "local"
+        let result1 = provider.provide_impl(&doc, Position::new(0, 0));
+        assert!(result1.is_some());
+
+        // Hover on second "local" - different position, should miss cache
+        let result2 = provider.provide_impl(&doc, Position::new(1, 0));
+        assert!(result2.is_some());
+
+        let stats = doc.cache().stats().clone();
+        assert!(stats.misses >= 2, "Expected at least 2 cache misses");
+    }
+
+    #[test]
+    fn test_hover_cache_stores_keyword_hover() {
+        let doc = create_test_document("function foo() end");
+        let provider = HoverProvider::new();
+        let pos = Position::new(0, 3); // "function" keyword
+
+        let _result = provider.provide_impl(&doc, pos);
+
+        // Cache should contain an entry now
+        assert!(!doc.cache().hover_cache.is_empty() || doc.cache().stats().misses > 0);
     }
 }

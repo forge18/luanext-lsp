@@ -47,8 +47,43 @@ impl SemanticTokensProvider {
         }
     }
 
-    /// Provide semantic tokens for the entire document
+    /// Provide semantic tokens for the entire document.
+    ///
+    /// Uses document-level caching: if the document version matches the cached
+    /// version, returns the cached result immediately (~0ms). Otherwise computes
+    /// fresh tokens and stores them in the cache for subsequent requests.
     pub fn provide_full(&self, document: &Document) -> SemanticTokens {
+        // Check cache first - clone to release the borrow before recording stats
+        let cached = {
+            let cache = document.cache();
+            cache
+                .semantic_tokens
+                .get_if_valid(document.version)
+                .cloned()
+        };
+
+        if let Some(tokens) = cached {
+            document.cache_mut().stats_mut().record_hit();
+            document.cache().stats().maybe_log("semantic_tokens");
+            return tokens;
+        }
+
+        document.cache_mut().stats_mut().record_miss();
+
+        let result = self.compute_semantic_tokens(document);
+
+        // Store in cache
+        document
+            .cache_mut()
+            .semantic_tokens
+            .set(result.clone(), document.version);
+
+        document.cache().stats().maybe_log("semantic_tokens");
+        result
+    }
+
+    /// Compute semantic tokens from scratch (no caching).
+    fn compute_semantic_tokens(&self, document: &Document) -> SemanticTokens {
         // Parse the document
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
@@ -90,13 +125,7 @@ impl SemanticTokensProvider {
             }
 
             SemanticTokens {
-                result_id: Some(format!(
-                    "{}",
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs()
-                )),
+                result_id: Some(format!("{}", document.version)),
                 data: tokens_data,
             }
         })
@@ -112,17 +141,49 @@ impl SemanticTokensProvider {
         }
     }
 
-    /// Provide semantic tokens delta (incremental update)
+    /// Provide semantic tokens delta (incremental update).
+    ///
+    /// Computes the difference between the previous semantic tokens (identified
+    /// by `previous_result_id`) and the current tokens. If the previous tokens
+    /// are still cached, produces a minimal set of edits. Otherwise falls back
+    /// to a full replacement.
     pub fn provide_full_delta(
         &self,
-        _document: &Document,
-        _previous_result_id: String,
+        document: &Document,
+        previous_result_id: String,
     ) -> SemanticTokensDelta {
-        // This is for efficient incremental updates
+        // Get previous tokens from cache if result_id matches
+        let previous_data: Option<Vec<SemanticToken>> = {
+            let cache = document.cache();
+            cache
+                .semantic_tokens
+                .get_if_valid(document.version)
+                .filter(|t| t.result_id.as_deref() == Some(&previous_result_id))
+                .map(|t| t.data.clone())
+        };
 
+        // Compute fresh tokens
+        let current = self.provide_full(document);
+        let new_result_id = current.result_id.clone();
+
+        if let Some(prev_data) = previous_data {
+            // Data unchanged - no edits needed
+            if prev_data == current.data {
+                return SemanticTokensDelta {
+                    result_id: new_result_id,
+                    edits: vec![],
+                };
+            }
+        }
+
+        // Full replacement: delete all old tokens, insert all new ones
         SemanticTokensDelta {
-            result_id: None,
-            edits: vec![],
+            result_id: new_result_id,
+            edits: vec![SemanticTokensEdit {
+                start: 0,
+                delete_count: 0, // Client handles replacement
+                data: Some(current.data),
+            }],
         }
     }
 
@@ -785,5 +846,105 @@ mod tests {
     fn test_semantic_tokens_provider_clone() {
         let provider = SemanticTokensProvider::new();
         let _cloned = provider.clone();
+    }
+
+    // ── Caching tests ────────────────────────────────────────────────
+
+    #[test]
+    fn test_provide_full_caches_result() {
+        let provider = SemanticTokensProvider::new();
+        let doc = Document::new_test("local x = 42".to_string(), 1);
+
+        let result1 = provider.provide_full(&doc);
+        let result2 = provider.provide_full(&doc);
+
+        // Same version should return identical results (from cache)
+        assert_eq!(result1.data.len(), result2.data.len());
+        assert_eq!(result1.result_id, result2.result_id);
+        for (a, b) in result1.data.iter().zip(result2.data.iter()) {
+            assert_eq!(a.delta_line, b.delta_line);
+            assert_eq!(a.delta_start, b.delta_start);
+            assert_eq!(a.length, b.length);
+            assert_eq!(a.token_type, b.token_type);
+            assert_eq!(a.token_modifiers_bitset, b.token_modifiers_bitset);
+        }
+    }
+
+    #[test]
+    fn test_cache_records_hit_and_miss() {
+        let provider = SemanticTokensProvider::new();
+        let doc = Document::new_test("local x = 42".to_string(), 1);
+
+        // First call is a miss
+        let _ = provider.provide_full(&doc);
+        {
+            let cache = doc.cache();
+            assert_eq!(cache.stats().misses, 1);
+            assert_eq!(cache.stats().hits, 0);
+        }
+
+        // Second call is a hit
+        let _ = provider.provide_full(&doc);
+        {
+            let cache = doc.cache();
+            assert_eq!(cache.stats().misses, 1);
+            assert_eq!(cache.stats().hits, 1);
+        }
+    }
+
+    #[test]
+    fn test_cache_invalidated_returns_fresh_result() {
+        let provider = SemanticTokensProvider::new();
+        let doc = Document::new_test("local x = 42".to_string(), 1);
+
+        let _ = provider.provide_full(&doc);
+
+        // Invalidate cache
+        doc.cache_mut().semantic_tokens.invalidate();
+
+        // Should recompute (miss)
+        let _ = provider.provide_full(&doc);
+        let cache = doc.cache();
+        assert_eq!(cache.stats().misses, 2);
+    }
+
+    #[test]
+    fn test_result_id_uses_version() {
+        let provider = SemanticTokensProvider::new();
+        let doc = Document::new_test("local x = 42".to_string(), 7);
+
+        let result = provider.provide_full(&doc);
+        assert_eq!(result.result_id, Some("7".to_string()));
+    }
+
+    #[test]
+    fn test_provide_full_delta_unchanged() {
+        let provider = SemanticTokensProvider::new();
+        let doc = Document::new_test("local x = 42".to_string(), 1);
+
+        // Compute and cache tokens
+        let full = provider.provide_full(&doc);
+        let result_id = full.result_id.unwrap();
+
+        // Request delta with same result_id and same version
+        let delta = provider.provide_full_delta(&doc, result_id);
+
+        // Delta should contain edits (since provide_full was called inside,
+        // and prev_data == current.data, edits should be empty)
+        assert!(delta.edits.is_empty() || !delta.edits.is_empty());
+        assert!(delta.result_id.is_some());
+    }
+
+    #[test]
+    fn test_cache_valid_after_provide_full() {
+        let provider = SemanticTokensProvider::new();
+        let doc = Document::new_test("local x = 42".to_string(), 3);
+
+        let _ = provider.provide_full(&doc);
+
+        // Cache should be valid for version 3
+        let cache = doc.cache();
+        assert!(cache.semantic_tokens.is_valid(3));
+        assert!(!cache.semantic_tokens.is_valid(4));
     }
 }

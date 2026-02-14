@@ -26,17 +26,46 @@ impl CompletionProvider {
         self.provide_with_workspace(document, position, None)
     }
 
-    /// Provide completion items at a given position with workspace context
+    /// Provide completion items at a given position with workspace context.
+    ///
+    /// Uses position-based caching for expensive contexts (Statement, MemberAccess,
+    /// MethodCall). Cheap contexts (TypeAnnotation, Decorator) return hardcoded
+    /// lists and are not cached.
     pub fn provide_with_workspace(
         &self,
         document: &Document,
         position: Position,
         workspace_root: Option<&Path>,
     ) -> Vec<CompletionItem> {
-        let mut items = Vec::new();
-
         // Determine completion context from the text before the cursor
         let context = self.get_completion_context(document, position);
+
+        // Only cache expensive contexts that involve type checking
+        let use_cache = matches!(
+            context,
+            CompletionContext::Statement
+                | CompletionContext::MemberAccess
+                | CompletionContext::MethodCall
+        );
+
+        // Check cache for expensive contexts - clone result to release RefMut borrow
+        if use_cache {
+            let cached = document
+                .cache_mut()
+                .completion_cache
+                .get(position, document.version)
+                .cloned();
+
+            if let Some(result) = cached {
+                document.cache_mut().stats_mut().record_hit();
+                document.cache().stats().maybe_log("completion");
+                return result;
+            }
+
+            document.cache_mut().stats_mut().record_miss();
+        }
+
+        let mut items = Vec::new();
 
         match context {
             CompletionContext::MemberAccess => {
@@ -64,6 +93,14 @@ impl CompletionProvider {
                 // Complete symbols from type checker
                 items.extend(self.complete_symbols(document));
             }
+        }
+
+        // Store in cache for expensive contexts
+        if use_cache {
+            document
+                .cache_mut()
+                .completion_cache
+                .insert(position, items.clone(), document.version);
         }
 
         items
@@ -1770,5 +1807,77 @@ mod tests {
         for completion in &completions {
             assert_eq!(completion.kind, Some(CompletionItemKind::MODULE));
         }
+    }
+
+    // ── Cache tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_completion_cache_hit_returns_same_result() {
+        let doc = create_test_document("local x = 1");
+        let provider = CompletionProvider::new();
+        let pos = Position::new(0, 0); // Statement context
+
+        let result1 = provider.provide(&doc, pos);
+        assert!(!result1.is_empty());
+
+        // Second call at same position should hit cache
+        let result2 = provider.provide(&doc, pos);
+        assert!(!result2.is_empty());
+
+        // Results should be identical
+        assert_eq!(result1.len(), result2.len());
+        for (a, b) in result1.iter().zip(result2.iter()) {
+            assert_eq!(a.label, b.label);
+        }
+
+        // Cache should have recorded a hit
+        let stats = doc.cache().stats().clone();
+        assert!(
+            stats.hits >= 1,
+            "Expected at least 1 cache hit, got {}",
+            stats.hits
+        );
+    }
+
+    #[test]
+    fn test_completion_cache_not_used_for_type_annotation() {
+        let doc = create_test_document("local x: ");
+        let provider = CompletionProvider::new();
+        let pos = Position::new(0, 9); // TypeAnnotation context
+
+        let _result1 = provider.provide(&doc, pos);
+        let _result2 = provider.provide(&doc, pos);
+
+        // TypeAnnotation is cheap and should NOT be cached,
+        // so no stats should be recorded
+        let stats = doc.cache().stats().clone();
+        assert_eq!(stats.hits, 0, "TypeAnnotation should not use cache");
+        assert_eq!(stats.misses, 0, "TypeAnnotation should not record misses");
+    }
+
+    #[test]
+    fn test_completion_cache_not_used_for_decorator() {
+        let doc = create_test_document("@");
+        let provider = CompletionProvider::new();
+        let pos = Position::new(0, 1); // Decorator context
+
+        let _result1 = provider.provide(&doc, pos);
+        let _result2 = provider.provide(&doc, pos);
+
+        // Decorator is cheap and should NOT be cached
+        let stats = doc.cache().stats().clone();
+        assert_eq!(stats.hits, 0, "Decorator should not use cache");
+    }
+
+    #[test]
+    fn test_completion_cache_miss_on_different_position() {
+        let doc = create_test_document("local x = 1\nlocal y = 2");
+        let provider = CompletionProvider::new();
+
+        let _result1 = provider.provide(&doc, Position::new(0, 0));
+        let _result2 = provider.provide(&doc, Position::new(1, 0));
+
+        let stats = doc.cache().stats().clone();
+        assert!(stats.misses >= 2, "Expected at least 2 cache misses");
     }
 }

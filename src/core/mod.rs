@@ -2,6 +2,7 @@
 //! Core document management for the LSP server
 
 pub mod analysis;
+pub mod cache;
 pub mod diagnostics;
 pub mod document;
 pub mod heuristics;

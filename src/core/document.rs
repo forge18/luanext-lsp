@@ -90,6 +90,8 @@ pub struct Document {
     incremental_tree: RefCell<Option<luanext_parser::incremental::IncrementalParseTree<'static>>>,
     /// Performance metrics for incremental vs full parsing
     pub metrics: Arc<crate::core::metrics::ParseMetrics>,
+    /// Per-document cache for analysis results (semantic tokens, hover, etc.)
+    cache: RefCell<crate::core::cache::DocumentCache>,
 }
 
 impl std::fmt::Debug for Document {
@@ -106,6 +108,7 @@ impl std::fmt::Debug for Document {
                 &self.symbol_table.as_ref().map(|_| "<cached>"),
             )
             .field("module_id", &self.module_id)
+            .field("cache", &"<DocumentCache>")
             .finish()
     }
 }
@@ -124,6 +127,7 @@ impl Document {
             #[cfg(feature = "incremental-parsing")]
             incremental_tree: RefCell::new(None),
             metrics: Arc::new(crate::core::metrics::ParseMetrics::new()),
+            cache: RefCell::new(crate::core::cache::DocumentCache::new()),
         }
     }
 
@@ -243,6 +247,16 @@ impl Document {
         Some((leaked_program, interner_arc, common_ids_arc, arena))
     }
 
+    /// Get a reference to the document cache.
+    pub fn cache(&self) -> std::cell::Ref<'_, crate::core::cache::DocumentCache> {
+        self.cache.borrow()
+    }
+
+    /// Get a mutable reference to the document cache.
+    pub fn cache_mut(&self) -> std::cell::RefMut<'_, crate::core::cache::DocumentCache> {
+        self.cache.borrow_mut()
+    }
+
     #[cfg(test)]
     pub(crate) fn clear_cache(&self) {
         *self.ast.borrow_mut() = None;
@@ -250,6 +264,7 @@ impl Document {
         {
             *self.incremental_tree.borrow_mut() = None;
         }
+        self.cache.borrow_mut().invalidate_all();
     }
 }
 
@@ -321,6 +336,7 @@ impl DocumentManager {
             #[cfg(feature = "incremental-parsing")]
             incremental_tree: RefCell::new(None),
             metrics: Arc::new(crate::core::metrics::ParseMetrics::new()),
+            cache: RefCell::new(crate::core::cache::DocumentCache::new()),
         };
 
         if let Some(ref mid) = module_id {
@@ -363,6 +379,10 @@ impl DocumentManager {
             #[cfg(feature = "incremental-parsing")]
             let mut text_edits = Vec::new();
 
+            // Collect token edits for incremental semantic token updates
+            let mut token_edits: Vec<crate::features::semantic::incremental::TokenTextEdit> =
+                Vec::new();
+
             for change in params.content_changes {
                 if let Some(range) = change.range {
                     let start_offset = Self::position_to_offset(&doc.text, range.start);
@@ -377,6 +397,22 @@ impl DocumentManager {
                         });
                     }
 
+                    // Collect semantic token edit info
+                    let new_lines = change.text.matches('\n').count() as u32;
+                    let new_last_line_length = if new_lines > 0 {
+                        change.text.rsplit('\n').next().map_or(0, |s| s.len()) as u32
+                    } else {
+                        change.text.len() as u32
+                    };
+                    token_edits.push(crate::features::semantic::incremental::TokenTextEdit {
+                        start_line: range.start.line,
+                        start_char: range.start.character,
+                        end_line: range.end.line,
+                        end_char: range.end.character,
+                        new_line_count: new_lines,
+                        new_last_line_length,
+                    });
+
                     // Apply the edit to the document text
                     let mut new_text = String::new();
                     new_text.push_str(&doc.text[..start_offset]);
@@ -386,6 +422,7 @@ impl DocumentManager {
                 } else {
                     // Full document replacement
                     doc.text = change.text;
+                    token_edits.clear();
                     #[cfg(feature = "incremental-parsing")]
                     text_edits.clear();
                 }
@@ -393,6 +430,42 @@ impl DocumentManager {
 
             // Clear AST cache
             *doc.ast.borrow_mut() = None;
+
+            // Try incremental semantic token update for single-line edits
+            let mut semantic_tokens_updated = false;
+            if token_edits.len() == 1 && token_edits[0].is_single_line() {
+                let new_version = doc.version;
+                let mut cache = doc.cache.borrow_mut();
+                // Get old version before we check - cache stores the version it was computed at
+                let old_version = cache.semantic_tokens.version();
+                if let Some(prev) = cache.semantic_tokens.get_if_valid(old_version) {
+                    let prev_clone = prev.clone();
+                    if let Some(updated) =
+                        crate::features::semantic::incremental::update_semantic_tokens(
+                            &prev_clone,
+                            &token_edits[0],
+                            format!("{}", new_version),
+                        )
+                    {
+                        cache.semantic_tokens.set(updated, new_version);
+                        semantic_tokens_updated = true;
+                    }
+                }
+            }
+
+            if !semantic_tokens_updated {
+                // Full invalidation of semantic token cache
+                doc.cache.borrow_mut().semantic_tokens.invalidate();
+            }
+
+            // Invalidate other caches (hover, completion, diagnostics, type info)
+            {
+                let mut cache = doc.cache.borrow_mut();
+                cache.hover_cache.invalidate_all();
+                cache.completion_cache.invalidate_all();
+                cache.diagnostics.invalidate();
+                cache.type_info_cache.invalidate_all();
+            }
 
             // Clear incremental tree if forcing full parse
             #[cfg(feature = "incremental-parsing")]
@@ -443,7 +516,20 @@ impl DocumentManager {
         }
     }
 
-    pub fn save(&mut self, _params: DidSaveTextDocumentParams) {}
+    pub fn save(&mut self, params: DidSaveTextDocumentParams) {
+        let uri = params.text_document.uri;
+        if let Some(doc) = self.documents.get_mut(&uri) {
+            // If the saved text differs from current text (e.g., formatter ran on save),
+            // update the text and invalidate all caches. Otherwise keep caches valid.
+            if let Some(saved_text) = params.text {
+                if saved_text != doc.text {
+                    doc.text = saved_text;
+                    *doc.ast.borrow_mut() = None;
+                    doc.cache.borrow_mut().invalidate_all();
+                }
+            }
+        }
+    }
 
     pub fn close(&mut self, params: DidCloseTextDocumentParams) {
         let uri = &params.text_document.uri;
@@ -1205,5 +1291,76 @@ mod tests {
     fn test_document_manager_with_real_path() {
         let dm = DocumentManager::new_test();
         assert!(dm.workspace_root.to_string_lossy().contains("test"));
+    }
+
+    #[test]
+    fn test_document_cache_accessible() {
+        let doc = Document::new_test("local x = 1".to_string(), 1);
+
+        // Cache should be accessible and initially empty
+        let cache = doc.cache();
+        assert!(!cache.semantic_tokens.is_valid(1));
+        assert!(cache.hover_cache.is_empty());
+        drop(cache);
+
+        // Mutable access should work too
+        let mut cache = doc.cache_mut();
+        cache.semantic_tokens.set(
+            lsp_types::SemanticTokens {
+                result_id: None,
+                data: vec![],
+            },
+            1,
+        );
+        assert!(cache.semantic_tokens.is_valid(1));
+    }
+
+    #[test]
+    fn test_document_change_invalidates_cache() {
+        let mut dm = DocumentManager::new_test();
+
+        let open_params = DidOpenTextDocumentParams {
+            text_document: lsp_types::TextDocumentItem {
+                uri: Uri::from_str("file:///test.lua").unwrap(),
+                language_id: "lua".to_string(),
+                version: 1,
+                text: "local x = 1".to_string(),
+            },
+        };
+        dm.open(open_params);
+
+        let uri = Uri::from_str("file:///test.lua").unwrap();
+
+        // Populate cache
+        {
+            let doc = dm.get(&uri).unwrap();
+            doc.cache_mut().semantic_tokens.set(
+                lsp_types::SemanticTokens {
+                    result_id: None,
+                    data: vec![],
+                },
+                1,
+            );
+            assert!(doc.cache().semantic_tokens.is_valid(1));
+        }
+
+        // Change document - should invalidate cache
+        let change_params = DidChangeTextDocumentParams {
+            text_document: lsp_types::VersionedTextDocumentIdentifier {
+                uri: Uri::from_str("file:///test.lua").unwrap(),
+                version: 2,
+            },
+            content_changes: vec![lsp_types::TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "local x = 2".to_string(),
+            }],
+        };
+        dm.change(change_params);
+
+        // Cache should be invalidated
+        let doc = dm.get(&uri).unwrap();
+        assert!(!doc.cache().semantic_tokens.is_valid(1));
+        assert!(!doc.cache().semantic_tokens.is_valid(2));
     }
 }
