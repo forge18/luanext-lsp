@@ -264,14 +264,15 @@ impl CompletionProvider {
 
         let result = DiagnosticsProvider::ensure_type_checked(document);
 
-        // Get type-only imports and re-exports from cached AST (cheap, no type checking)
-        let (type_only_imports, reexports) = match document.get_or_parse_ast() {
+        // Get type-only imports, re-exports, and template captures from cached AST (cheap, no type checking)
+        let (type_only_imports, reexports, template_captures) = match document.get_or_parse_ast() {
             Some((ast, interner, _, _)) => {
                 let imports = Self::get_type_only_imports(ast, &interner);
                 let reexports = Self::get_reexported_symbols(ast, &interner);
-                (imports, reexports)
+                let captures = Self::get_template_pattern_captures(ast, &interner);
+                (imports, reexports, captures)
             }
-            None => (HashSet::new(), HashMap::new()),
+            None => (HashSet::new(), HashMap::new(), HashSet::new()),
         };
 
         let mut items = Vec::new();
@@ -284,6 +285,9 @@ impl CompletionProvider {
             }
             if let Some(source) = reexports.get(name) {
                 detail.push_str(&format!(" (re-exported from {})", source));
+            }
+            if template_captures.contains(name) {
+                detail.push_str(" (captured variable)");
             }
 
             items.push(CompletionItem {
@@ -333,6 +337,70 @@ impl CompletionProvider {
             }
         }
         imports
+    }
+
+    /// Get names of variables captured from template patterns in match expressions
+    fn get_template_pattern_captures(
+        ast: &luanext_parser::ast::Program,
+        interner: &StringInterner,
+    ) -> HashSet<String> {
+        use luanext_parser::ast::expression::{Expression, ExpressionKind};
+        use luanext_parser::ast::pattern::{Pattern, TemplatePatternPart};
+
+        let mut captures = HashSet::new();
+
+        // Helper to extract captures from a match expression
+        fn extract_from_match(
+            match_expr: &luanext_parser::ast::expression::MatchExpression,
+            interner: &StringInterner,
+            captures: &mut HashSet<String>,
+        ) {
+            for arm in match_expr.arms.iter() {
+                if let Pattern::Template(template_pattern) = &arm.pattern {
+                    for part in template_pattern.parts.iter() {
+                        if let TemplatePatternPart::Capture(ident) = part {
+                            captures.insert(interner.resolve(ident.node).to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Helper to search expressions for match expressions (shallow search)
+        fn search_expr_shallow(
+            expr: &Expression,
+            interner: &StringInterner,
+            captures: &mut HashSet<String>,
+        ) {
+            if let ExpressionKind::Match(match_expr) = &expr.kind {
+                extract_from_match(match_expr, interner, captures);
+            }
+        }
+
+        // Search all top-level statements
+        for stmt in ast.statements {
+            match stmt {
+                Statement::Expression(expr) => {
+                    search_expr_shallow(expr, interner, &mut captures);
+                }
+                Statement::Variable(var_decl) => {
+                    search_expr_shallow(&var_decl.initializer, interner, &mut captures);
+                }
+                Statement::Function(func) => {
+                    // Shallow scan of function bodies
+                    for func_stmt in func.body.statements {
+                        if let Statement::Expression(expr) = func_stmt {
+                            search_expr_shallow(expr, interner, &mut captures);
+                        } else if let Statement::Variable(var_decl) = func_stmt {
+                            search_expr_shallow(&var_decl.initializer, interner, &mut captures);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        captures
     }
 
     /// Get symbols that are re-exported and their source modules

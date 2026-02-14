@@ -95,6 +95,9 @@ impl HoverProvider {
             if let Some(source_module) = Self::get_reexport_source(ast, word, &interner) {
                 markdown.push_str(&format!("\n\n*Re-exported from `{}`*", source_module));
             }
+            if Self::is_template_pattern_capture(ast, word, &interner) {
+                markdown.push_str("\n\n*Captured from template pattern*");
+            }
         }
 
         Some(Hover {
@@ -161,6 +164,87 @@ impl HoverProvider {
             }
         }
         None
+    }
+
+    /// Check if a symbol name is a capture from a template pattern in a match expression
+    ///
+    /// This is a simplified version that scans for Match expressions in a limited scope.
+    /// It checks all match arms with template patterns for the given symbol name.
+    fn is_template_pattern_capture(
+        ast: &luanext_parser::ast::Program,
+        symbol_name: &str,
+        interner: &StringInterner,
+    ) -> bool {
+        use luanext_parser::ast::expression::{Expression, ExpressionKind};
+        use luanext_parser::ast::pattern::{Pattern, TemplatePatternPart};
+
+        // Helper to check if a match expression contains our capture
+        fn check_match_expr(
+            match_expr: &luanext_parser::ast::expression::MatchExpression,
+            symbol_name: &str,
+            interner: &StringInterner,
+        ) -> bool {
+            for arm in match_expr.arms.iter() {
+                if let Pattern::Template(template_pattern) = &arm.pattern {
+                    for part in template_pattern.parts.iter() {
+                        if let TemplatePatternPart::Capture(ident) = part {
+                            if interner.resolve(ident.node) == symbol_name {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            false
+        }
+
+        // Helper to search expressions for match expressions (shallow search)
+        fn search_expr_shallow(
+            expr: &Expression,
+            symbol_name: &str,
+            interner: &StringInterner,
+        ) -> bool {
+            match &expr.kind {
+                ExpressionKind::Match(match_expr) => {
+                    check_match_expr(match_expr, symbol_name, interner)
+                }
+                _ => false,
+            }
+        }
+
+        // Search all top-level statements
+        for stmt in ast.statements {
+            match stmt {
+                Statement::Expression(expr) => {
+                    if search_expr_shallow(expr, symbol_name, interner) {
+                        return true;
+                    }
+                }
+                Statement::Variable(var_decl) => {
+                    // Check variable initializer
+                    if search_expr_shallow(&var_decl.initializer, symbol_name, interner) {
+                        return true;
+                    }
+                }
+                Statement::Function(func) => {
+                    // Shallow scan of function bodies
+                    for func_stmt in func.body.statements {
+                        if let Statement::Expression(expr) = func_stmt {
+                            if search_expr_shallow(expr, symbol_name, interner) {
+                                return true;
+                            }
+                        } else if let Statement::Variable(var_decl) = func_stmt {
+                            if search_expr_shallow(&var_decl.initializer, symbol_name, interner) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        false
     }
 
     /// Get the word at the cursor position
