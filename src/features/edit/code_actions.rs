@@ -729,8 +729,7 @@ mod tests {
         };
         let uri = "file:///test.lua".parse::<Uri>().unwrap();
 
-        let actions = provider.provide(&uri, &doc, range, context);
-        assert!(actions.is_empty() || actions.len() >= 0);
+        let _actions = provider.provide(&uri, &doc, range, context);
     }
 
     #[test]
@@ -748,8 +747,7 @@ mod tests {
         };
         let uri = "file:///test.lua".parse::<Uri>().unwrap();
 
-        let actions = provider.provide(&uri, &doc, range, context);
-        assert!(actions.is_empty() || actions.len() >= 0);
+        let _actions = provider.provide(&uri, &doc, range, context);
     }
 
     #[test]
@@ -764,8 +762,7 @@ mod tests {
         };
         let uri = "file:///test.lua".parse::<Uri>().unwrap();
 
-        let actions = provider.provide(&uri, &doc, range, context);
-        assert!(actions.is_empty() || actions.len() >= 0);
+        let _actions = provider.provide(&uri, &doc, range, context);
     }
 
     #[test]
@@ -780,8 +777,7 @@ mod tests {
         };
         let uri = "file:///test.lua".parse::<Uri>().unwrap();
 
-        let actions = provider.provide(&uri, &doc, range, context);
-        assert!(actions.is_empty() || actions.len() >= 0);
+        let _actions = provider.provide(&uri, &doc, range, context);
     }
 
     #[test]
@@ -795,8 +791,7 @@ mod tests {
         };
         let uri = "file:///test.lua".parse::<Uri>().unwrap();
 
-        let actions = provider.provide(&uri, &doc, Range::default(), context);
-        assert!(actions.is_empty() || actions.len() >= 0);
+        let _actions = provider.provide(&uri, &doc, Range::default(), context);
     }
 
     #[test]
@@ -810,8 +805,7 @@ mod tests {
         };
         let uri = "file:///test.lua".parse::<Uri>().unwrap();
 
-        let actions = provider.provide(&uri, &doc, Range::default(), context);
-        assert!(actions.is_empty() || actions.len() >= 0);
+        let _actions = provider.provide(&uri, &doc, Range::default(), context);
     }
 
     #[test]
@@ -825,8 +819,7 @@ mod tests {
         };
         let uri = "file:///test.lua".parse::<Uri>().unwrap();
 
-        let actions = provider.provide(&uri, &doc, Range::default(), context);
-        assert!(actions.is_empty() || actions.len() >= 0);
+        let _actions = provider.provide(&uri, &doc, Range::default(), context);
     }
 
     #[test]
@@ -840,8 +833,7 @@ mod tests {
         };
         let uri = "file:///test.lua".parse::<Uri>().unwrap();
 
-        let actions = provider.provide(&uri, &doc, Range::default(), context);
-        assert!(actions.is_empty() || actions.len() >= 0);
+        let _actions = provider.provide(&uri, &doc, Range::default(), context);
     }
 
     #[test]

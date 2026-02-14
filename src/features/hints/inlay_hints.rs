@@ -395,8 +395,7 @@ mod tests {
             },
         };
 
-        let hints = provider.provide(&doc, range);
-        assert!(hints.is_empty() || hints.len() >= 0);
+        let _hints = provider.provide(&doc, range);
     }
 
     #[test]
@@ -587,9 +586,9 @@ mod tests {
 
         let hints = provider.provide(&doc, range);
 
+        // Verify all hints have valid positions
         for hint in hints {
-            assert!(hint.position.line >= 0);
-            assert!(hint.position.character >= 0);
+            assert!(hint.position.character < 1000, "Hint position should be reasonable");
         }
     }
 
@@ -609,8 +608,7 @@ mod tests {
             },
         };
 
-        let hints = provider.provide(&doc, range);
-        assert!(hints.is_empty() || hints.len() >= 0);
+        let _hints = provider.provide(&doc, range);
     }
 
     #[test]
@@ -629,8 +627,7 @@ mod tests {
             },
         };
 
-        let hints = provider.provide(&doc, range);
-        assert!(hints.is_empty() || hints.len() >= 0);
+        let _hints = provider.provide(&doc, range);
     }
 
     #[test]
@@ -931,7 +928,6 @@ mod tests {
         let hints = provider.provide(&doc, range);
 
         for hint in hints {
-            assert!(hint.position.line >= 0);
             assert!(hint.position.line <= 1);
         }
     }
@@ -1113,8 +1109,7 @@ mod tests {
             end: Position::new(4, 0),
         };
 
-        let hints = provider.provide(&doc, range);
-        assert!(hints.len() >= 0);
+        let _hints = provider.provide(&doc, range);
     }
 
     #[test]

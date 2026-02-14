@@ -1531,7 +1531,7 @@ mod tests {
         let result = provider.prepare(&doc, Position::new(0, 6));
         assert!(result.is_some());
 
-        if let Some(PrepareRenameResponse::RangeWithPlaceholder { range, placeholder }) = result {
+        if let Some(PrepareRenameResponse::RangeWithPlaceholder { range: _, placeholder }) = result {
             assert_eq!(placeholder, "myFunction");
         }
     }
@@ -1567,7 +1567,7 @@ mod tests {
     }
 
     #[test]
-    fn test_span_to_range_negative_column() {
+    fn test_span_to_range_at_line_zero() {
         let span = Span {
             start: 0,
             end: 5,
@@ -1575,7 +1575,9 @@ mod tests {
             column: 0,
         };
         let range = span_to_range(&span);
-        assert!(range.end.character >= 0);
+        assert_eq!(range.start.line, 0);
+        assert_eq!(range.start.character, 0);
+        assert_eq!(range.end.character, 4); // column (0) + len (5) - 1 = 4
     }
 
     #[test]

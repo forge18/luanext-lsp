@@ -15,6 +15,7 @@ mod test_utils {
     use luanext_typechecker::module_resolver::ModuleId;
     use std::path::PathBuf;
 
+    #[allow(dead_code)]
     pub fn create_uri(path: &str) -> Uri {
         Uri::from_str(&format!("file://{}", path)).unwrap()
     }
@@ -238,7 +239,7 @@ local result = execute(
 // Test 7: Complete with circular type references
 #[test]
 fn test_complete_with_circular_types() {
-    let nodeA_code = r#"
+    let node_a_code = r#"
 import type { NodeB } from './nodeB'
 
 export interface NodeA {
@@ -247,7 +248,7 @@ export interface NodeA {
 }
 "#;
 
-    let nodeB_code = r#"
+    let node_b_code = r#"
 import type { NodeA } from './nodeA'
 
 export interface NodeB {
@@ -263,8 +264,8 @@ import type { NodeB } from './nodeB'
 local node: NodeA | NodeB =
 "#;
 
-    let nodeA_doc = create_document_with_module_id(nodeA_code, "nodeA");
-    let nodeB_doc = create_document_with_module_id(nodeB_code, "nodeB");
+    let _node_a_doc = create_document_with_module_id(node_a_code, "nodeA");
+    let _node_b_doc = create_document_with_module_id(node_b_code, "nodeB");
     let usage_doc = create_document_with_module_id(usage_code, "usage");
 
     let provider = CompletionProvider::new();

@@ -705,7 +705,7 @@ impl SymbolIndex {
 mod tests {
     use super::*;
     use luanext_parser::{Lexer, Parser};
-    use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+    
     use std::str::FromStr;
     use std::sync::Arc;
 
@@ -1027,7 +1027,7 @@ mod tests {
 
     #[test]
     fn test_all_symbol_kinds_display() {
-        use std::str::FromStr;
+        
 
         let kinds: Vec<SymbolKind> = vec![
             SymbolKind::FILE,
@@ -1220,8 +1220,8 @@ mod tests {
 
     #[test]
     fn test_export_indexing() {
-        use luanext_parser::ast::statement::{ExportKind, Statement};
-        use luanext_parser::{Lexer, Parser, Span};
+        
+        use luanext_parser::{Lexer, Parser};
         use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 
         let mut index = SymbolIndex::new();

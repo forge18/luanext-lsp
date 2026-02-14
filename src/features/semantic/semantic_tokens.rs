@@ -679,8 +679,7 @@ mod tests {
         let provider = SemanticTokensProvider::new();
         let doc = Document::new_test("-- this is a comment".to_string(), 1);
 
-        let result = provider.provide_full(&doc);
-        assert!(result.data.is_empty() || result.data.len() >= 0);
+        let _result = provider.provide_full(&doc);
     }
 
     #[test]
@@ -706,8 +705,7 @@ mod tests {
         let provider = SemanticTokensProvider::new();
         let doc = Document::new_test("foo()".to_string(), 1);
 
-        let result = provider.provide_full(&doc);
-        assert!(result.data.is_empty() || result.data.len() >= 0);
+        let _result = provider.provide_full(&doc);
     }
 
     #[test]
@@ -715,8 +713,7 @@ mod tests {
         let provider = SemanticTokensProvider::new();
         let doc = Document::new_test("obj:method()".to_string(), 1);
 
-        let result = provider.provide_full(&doc);
-        assert!(result.data.is_empty() || result.data.len() >= 0);
+        let _result = provider.provide_full(&doc);
     }
 
     #[test]
@@ -733,8 +730,7 @@ mod tests {
         let provider = SemanticTokensProvider::new();
         let doc = Document::new_test("interface MyInterface end".to_string(), 1);
 
-        let result = provider.provide_full(&doc);
-        assert!(result.data.is_empty() || result.data.len() >= 0);
+        let _result = provider.provide_full(&doc);
     }
 
     #[test]
@@ -742,8 +738,7 @@ mod tests {
         let provider = SemanticTokensProvider::new();
         let doc = Document::new_test("enum MyEnum\n  A\n  B\nend".to_string(), 1);
 
-        let result = provider.provide_full(&doc);
-        assert!(result.data.is_empty() || result.data.len() >= 0);
+        let _result = provider.provide_full(&doc);
     }
 
     #[test]
@@ -755,8 +750,7 @@ mod tests {
             start: Position::new(1, 0),
             end: Position::new(2, 10),
         };
-        let result = provider.provide_range(&doc, range);
-        assert!(result.data.is_empty() || result.data.len() >= 0);
+        let _result = provider.provide_range(&doc, range);
     }
 
     #[test]
@@ -768,8 +762,7 @@ mod tests {
             start: Position::new(0, 0),
             end: Position::new(10, 0),
         };
-        let result = provider.provide_range(&doc, range);
-        assert!(result.data.is_empty() || result.data.len() >= 0);
+        let _result = provider.provide_range(&doc, range);
     }
 
     #[test]
@@ -777,8 +770,7 @@ mod tests {
         let provider = SemanticTokensProvider::new();
         let doc = Document::new_test("local x = 1".to_string(), 1);
 
-        let result = provider.provide_full_delta(&doc, "".to_string());
-        assert!(result.edits.is_empty() || result.edits.len() >= 0);
+        let _result = provider.provide_full_delta(&doc, "".to_string());
     }
 
     #[test]
@@ -786,8 +778,7 @@ mod tests {
         let provider = SemanticTokensProvider::new();
         let doc = Document::new_test("local x = 1".to_string(), 1);
 
-        let result = provider.provide_full_delta(&doc, "previous".to_string());
-        assert!(result.edits.is_empty() || result.edits.len() >= 0);
+        let _result = provider.provide_full_delta(&doc, "previous".to_string());
     }
 
     #[test]

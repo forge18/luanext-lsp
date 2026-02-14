@@ -198,7 +198,7 @@ fn main_loop(connection: Connection, params: InitializeParams) -> Result<()> {
 mod tests {
     use super::*;
     use lsp_server::{Request, RequestId};
-    use std::str::FromStr;
+    
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 
@@ -606,11 +606,11 @@ mod tests {
         let (connection, _) = lsp_server::Connection::stdio();
 
         struct WrapperHolder<'a> {
-            wrapper: ConnectionWrapper<'a>,
+            _wrapper: ConnectionWrapper<'a>,
         }
 
         let holder = WrapperHolder {
-            wrapper: ConnectionWrapper(&connection),
+            _wrapper: ConnectionWrapper(&connection),
         };
         let _ = holder;
     }
@@ -621,7 +621,7 @@ mod tests {
 
         let compiler_options = CompilerOptions::default();
         let workspace_root = PathBuf::from("/test");
-        let config = ModuleConfig::from_compiler_options(&compiler_options, &workspace_root);
+        let _config = ModuleConfig::from_compiler_options(&compiler_options, &workspace_root);
 
         assert!(!workspace_root.to_string_lossy().is_empty());
     }

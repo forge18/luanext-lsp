@@ -1472,7 +1472,7 @@ mod tests {
     #[test]
     fn test_get_importers_multiple_files() {
         let mut index = SymbolIndex::new();
-        let uri1 = make_uri("/source.lua");
+        let _uri1 = make_uri("/source.lua");
         let uri2 = make_uri("/importer1.lua");
         let uri3 = make_uri("/importer2.lua");
 

@@ -4,6 +4,8 @@
 pub mod analysis;
 pub mod diagnostics;
 pub mod document;
+pub mod heuristics;
+pub mod metrics;
 
 pub use diagnostics::DiagnosticsProvider;
 pub use document::{Document, DocumentManager, DocumentManagerTrait};

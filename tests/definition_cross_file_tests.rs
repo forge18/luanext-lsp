@@ -43,11 +43,11 @@ local result = add(1, 2)
 "#;
 
     let math_doc = create_document_with_module_id(math_code, "math");
-    let main_doc = create_document_with_module_id(main_code, "main");
+    let _main_doc = create_document_with_module_id(main_code, "main");
 
     let provider = DefinitionProvider::new();
     let math_uri = create_uri("/test/math.luax");
-    let main_uri = create_uri("/test/main.luax");
+    let _main_uri = create_uri("/test/main.luax");
 
     // When user hovers on 'add' in the import statement or call
     // We expect definition to point to math.luax
@@ -136,11 +136,11 @@ export function process(): void {
 export { process } from './original'
 "#;
 
-    let original_doc = create_document_with_module_id(original_code, "original");
+    let _original_doc = create_document_with_module_id(original_code, "original");
     let reexport_doc = create_document_with_module_id(reexport_code, "reexport");
 
     let provider = DefinitionProvider::new();
-    let original_uri = create_uri("/test/original.luax");
+    let _original_uri = create_uri("/test/original.luax");
     let reexport_uri = create_uri("/test/reexport.luax");
 
     // Verify no panic on re-export definition
@@ -164,8 +164,8 @@ export { transform } from './base'
 export { transform } from './middle'
 "#;
 
-    let base_doc = create_document_with_module_id(base_code, "base");
-    let middle_doc = create_document_with_module_id(middle_code, "middle");
+    let _base_doc = create_document_with_module_id(base_code, "base");
+    let _middle_doc = create_document_with_module_id(middle_code, "middle");
     let outer_doc = create_document_with_module_id(outer_code, "outer");
 
     let provider = DefinitionProvider::new();
@@ -191,7 +191,7 @@ local config: Config = {}
 "#;
 
     let types_doc = create_document_with_module_id(types_code, "types");
-    let usage_doc = create_document_with_module_id(usage_code, "usage");
+    let _usage_doc = create_document_with_module_id(usage_code, "usage");
 
     let provider = DefinitionProvider::new();
     let types_uri = create_uri("/test/types.luax");
@@ -223,7 +223,7 @@ local trimmed = utils.trim('  hello  ')
 "#;
 
     let utils_doc = create_document_with_module_id(utils_code, "utils");
-    let usage_doc = create_document_with_module_id(usage_code, "usage");
+    let _usage_doc = create_document_with_module_id(usage_code, "usage");
 
     let provider = DefinitionProvider::new();
     let utils_uri = create_uri("/test/utils.luax");
@@ -235,7 +235,7 @@ local trimmed = utils.trim('  hello  ')
 // Test 9: Go to definition with circular type references
 #[test]
 fn test_definition_circular_type_references() {
-    let nodeA_code = r#"
+    let node_a_code = r#"
 import type { NodeB } from './nodeB'
 
 export interface NodeA {
@@ -244,7 +244,7 @@ export interface NodeA {
 }
 "#;
 
-    let nodeB_code = r#"
+    let node_b_code = r#"
 import type { NodeA } from './nodeA'
 
 export interface NodeB {
@@ -253,16 +253,16 @@ export interface NodeB {
 }
 "#;
 
-    let nodeA_doc = create_document_with_module_id(nodeA_code, "nodeA");
-    let nodeB_doc = create_document_with_module_id(nodeB_code, "nodeB");
+    let node_a_doc = create_document_with_module_id(node_a_code, "nodeA");
+    let node_b_doc = create_document_with_module_id(node_b_code, "nodeB");
 
     let provider = DefinitionProvider::new();
-    let nodeA_uri = create_uri("/test/nodeA.luax");
-    let nodeB_uri = create_uri("/test/nodeB.luax");
+    let node_a_uri = create_uri("/test/nodeA.luax");
+    let node_b_uri = create_uri("/test/nodeB.luax");
 
     // Verify no panic even with circular type dependencies
-    let _result = provider.provide(&nodeA_uri, &nodeA_doc, Position::new(3, 16));
-    let _result = provider.provide(&nodeB_uri, &nodeB_doc, Position::new(3, 16));
+    let _result = provider.provide(&node_a_uri, &node_a_doc, Position::new(3, 16));
+    let _result = provider.provide(&node_b_uri, &node_b_doc, Position::new(3, 16));
 }
 
 // Test 10: Go to definition fails gracefully for missing imports

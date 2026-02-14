@@ -692,10 +692,10 @@ mod tests {
     #[test]
     fn test_hover_format_type_object() {
         use bumpalo::Bump;
-        use luanext_parser::ast::types::{PrimitiveType, Type, TypeKind};
+        use luanext_parser::ast::types::{Type, TypeKind};
         use luanext_parser::string_interner::StringInterner;
 
-        let arena = Bump::new();
+        let _arena = Bump::new();
         let interner = StringInterner::new();
 
         let object_type = Type::new(
@@ -715,7 +715,7 @@ mod tests {
         use luanext_parser::ast::types::{Type, TypeKind};
         use luanext_parser::string_interner::StringInterner;
 
-        let arena = Bump::new();
+        let _arena = Bump::new();
         let interner = StringInterner::new();
 
         let tuple_type = Type::new(TypeKind::Tuple(&[]), luanext_parser::Span::new(0, 5, 1, 1));
@@ -729,7 +729,7 @@ mod tests {
         use luanext_parser::ast::types::{Type, TypeKind};
         use luanext_parser::string_interner::StringInterner;
 
-        let arena = Bump::new();
+        let _arena = Bump::new();
         let interner = StringInterner::new();
 
         let union_type = Type::new(TypeKind::Union(&[]), luanext_parser::Span::new(0, 10, 1, 1));
@@ -743,7 +743,7 @@ mod tests {
         use luanext_parser::ast::types::{Type, TypeKind};
         use luanext_parser::string_interner::StringInterner;
 
-        let arena = Bump::new();
+        let _arena = Bump::new();
         let interner = StringInterner::new();
 
         let intersection_type = Type::new(

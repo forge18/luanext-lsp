@@ -89,11 +89,13 @@ impl LspTestWorkspace {
     }
 
     /// Get all open documents
+    #[allow(clippy::mutable_key_type)]
     pub fn documents(&self) -> &HashMap<Uri, Document> {
         &self.documents
     }
 
     /// Get all open documents (mutable)
+    #[allow(clippy::mutable_key_type)]
     pub fn documents_mut(&mut self) -> &mut HashMap<Uri, Document> {
         &mut self.documents
     }

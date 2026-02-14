@@ -250,10 +250,10 @@ mod tests {
 
         #[derive(Clone)]
         struct OtherService {
-            value: i32,
+            _value: i32,
         }
 
-        container.register(|_| OtherService { value: 2 }, ServiceLifetime::Singleton);
+        container.register(|_| OtherService { _value: 2 }, ServiceLifetime::Singleton);
         assert_eq!(container.service_count(), 2);
     }
 
@@ -285,10 +285,10 @@ mod tests {
 
         #[derive(Clone)]
         struct OtherService {
-            value: i32,
+            _value: i32,
         }
 
-        container.register(|_| OtherService { value: 2 }, ServiceLifetime::Singleton);
+        container.register(|_| OtherService { _value: 2 }, ServiceLifetime::Singleton);
 
         assert!(container.is_registered::<TestService>());
         assert_eq!(container.service_count(), 2);

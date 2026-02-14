@@ -14,6 +14,7 @@ mod test_utils {
     use luanext_typechecker::module_resolver::ModuleId;
     use std::path::PathBuf;
 
+    #[allow(dead_code)]
     pub fn create_uri(path: &str) -> Uri {
         Uri::from_str(&format!("file://{}", path)).unwrap()
     }
@@ -156,7 +157,7 @@ export function transform(value: string): string {
 export { transform } from './original'
 "#;
 
-    let original_doc = create_document_with_module_id(original_code, "original");
+    let _original_doc = create_document_with_module_id(original_code, "original");
     let reexport_doc = create_document_with_module_id(reexport_code, "reexport");
 
     let provider = HoverProvider::new();
@@ -187,7 +188,7 @@ function initializeApp(config: Config): void {
 end
 "#;
 
-    let types_doc = create_document_with_module_id(types_code, "types");
+    let _types_doc = create_document_with_module_id(types_code, "types");
     let usage_doc = create_document_with_module_id(usage_code, "usage");
 
     let provider = HoverProvider::new();
@@ -200,15 +201,13 @@ end
         match &hover_info.contents {
             HoverContents::Markup(markup) => {
                 // Current implementation shows "type-only" annotation
-                if markup.value.contains("type-only") {
-                    assert!(true, "Type-only imports correctly marked");
-                } else {
-                    // It's also ok if it just shows the type info
-                    assert!(
-                        markup.value.contains("Config") || markup.value.contains("interface"),
-                        "Hover should show type information"
-                    );
-                }
+                // It's also ok if it just shows the type info
+                assert!(
+                    markup.value.contains("type-only")
+                        || markup.value.contains("Config")
+                        || markup.value.contains("interface"),
+                    "Hover should show type-only annotation or type information"
+                );
             }
             _ => panic!("Expected Markup hover content"),
         }
@@ -233,8 +232,8 @@ export { execute } from './base'
 export { execute } from './middle'
 "#;
 
-    let base_doc = create_document_with_module_id(base_code, "base");
-    let middle_doc = create_document_with_module_id(middle_code, "middle");
+    let _base_doc = create_document_with_module_id(base_code, "base");
+    let _middle_doc = create_document_with_module_id(middle_code, "middle");
     let outer_doc = create_document_with_module_id(outer_code, "outer");
 
     let provider = HoverProvider::new();
@@ -249,7 +248,7 @@ export { execute } from './middle'
 // Test 7: Hover on symbol with circular type reference (graceful degradation)
 #[test]
 fn test_hover_circular_type_reference() {
-    let nodeA_code = r#"
+    let node_a_code = r#"
 import type { NodeB } from './nodeB'
 
 export interface NodeA {
@@ -258,7 +257,7 @@ export interface NodeA {
 }
 "#;
 
-    let nodeB_code = r#"
+    let node_b_code = r#"
 import type { NodeA } from './nodeA'
 
 export interface NodeB {
@@ -267,14 +266,14 @@ export interface NodeB {
 }
 "#;
 
-    let nodeA_doc = create_document_with_module_id(nodeA_code, "nodeA");
-    let nodeB_doc = create_document_with_module_id(nodeB_code, "nodeB");
+    let node_a_doc = create_document_with_module_id(node_a_code, "nodeA");
+    let node_b_doc = create_document_with_module_id(node_b_code, "nodeB");
 
     let provider = HoverProvider::new();
 
     // Should handle circular type dependencies gracefully without panic
-    let hover_a = provider.provide(&nodeA_doc, Position::new(3, 16));
-    let hover_b = provider.provide(&nodeB_doc, Position::new(3, 16));
+    let hover_a = provider.provide(&node_a_doc, Position::new(3, 16));
+    let hover_b = provider.provide(&node_b_doc, Position::new(3, 16));
 
     // Both should not panic - graceful degradation
     let _ = (hover_a, hover_b);

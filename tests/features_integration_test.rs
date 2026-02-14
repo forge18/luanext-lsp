@@ -6,9 +6,7 @@ use lsp_types::*;
 use luanext_lsp::core::document::Document;
 use luanext_lsp::features::edit::CompletionProvider;
 use luanext_lsp::features::navigation::{DefinitionProvider, ReferencesProvider};
-use luanext_lsp::traits::{
-    CompletionProviderTrait, DefinitionProviderTrait, ReferencesProviderTrait,
-};
+use luanext_lsp::traits::{DefinitionProviderTrait, ReferencesProviderTrait};
 use std::str::FromStr;
 
 fn create_document(text: &str) -> Document {
@@ -346,10 +344,7 @@ mod integration_tests {
     use luanext_lsp::features::semantic::SemanticTokensProvider;
     use luanext_lsp::features::structure::FoldingRangeProvider;
     use luanext_lsp::features::structure::SymbolsProvider;
-    use luanext_lsp::traits::{
-        CodeActionsProviderTrait, FoldingRangeProviderTrait, InlayHintsProviderTrait,
-        SemanticTokensProviderTrait, SignatureHelpProviderTrait, SymbolsProviderTrait,
-    };
+    use luanext_lsp::traits::SymbolsProviderTrait;
 
     #[test]
     fn test_full_workflow_variable() {
@@ -518,11 +513,8 @@ mod integration_tests {
             end: Position::new(10, 0),
         };
         let result = provider.provide(&doc, range);
-        let is_empty = result.is_empty();
-        assert!(
-            is_empty || !is_empty,
-            "Empty document should be handled gracefully"
-        );
+        // Test passes if provide() doesn't panic on empty document
+        let _ = result;
     }
 
     #[test]

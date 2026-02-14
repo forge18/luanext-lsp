@@ -16,7 +16,7 @@ fn generate_realistic_module(module_id: usize, import_count: usize) -> String {
             i, i, i
         ));
     }
-    code.push_str("\n");
+    code.push('\n');
 
     // Add interfaces
     code.push_str(&format!(
@@ -121,7 +121,7 @@ fn generate_document_with_many_references(reference_count: usize) -> String {
         ));
     }
 
-    code.push_str("\n");
+    code.push('\n');
 
     // Create a function that uses all imports
     code.push_str("function orchestrate(): void\n");

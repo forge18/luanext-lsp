@@ -71,6 +71,8 @@ pub struct DocumentManager {
     workspace_root: PathBuf,
     /// Reverse index for fast cross-file symbol lookups
     symbol_index: SymbolIndex,
+    /// Strategy analyzer for incremental parsing heuristics
+    strategy_analyzer: crate::core::heuristics::ParseStrategyAnalyzer,
 }
 
 /// Represents a single document with cached analysis
@@ -83,6 +85,10 @@ pub struct Document {
     pub symbol_table: Option<Arc<SymbolTable<'static>>>,
     /// Module ID for this document (used for cross-file symbol resolution)
     pub module_id: Option<ModuleId>,
+    /// Incremental parse tree for efficient re-parsing (invalidated on change)
+    incremental_tree: RefCell<Option<luanext_parser::incremental::IncrementalParseTree<'static>>>,
+    /// Performance metrics for incremental vs full parsing
+    pub metrics: Arc<crate::core::metrics::ParseMetrics>,
 }
 
 impl std::fmt::Debug for Document {
@@ -114,6 +120,8 @@ impl Document {
             ast: RefCell::new(None),
             symbol_table: None,
             module_id: None,
+            incremental_tree: RefCell::new(None),
+            metrics: Arc::new(crate::core::metrics::ParseMetrics::new()),
         }
     }
 
@@ -127,14 +135,41 @@ impl Document {
             ));
         }
 
+        // No cached AST, do full parse
+        self.parse_with_edits(&[])
+    }
+
+    /// Parse with optional incremental support
+    /// If edits is empty, does full parse. Otherwise attempts incremental parse.
+    pub(crate) fn parse_with_edits(
+        &self,
+        edits: &[luanext_parser::incremental::TextEdit],
+    ) -> Option<ParsedAst> {
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common_ids) = StringInterner::new_with_common_identifiers();
-        let arena = bumpalo::Bump::new();
+
+        // Create arena and wrap in Arc immediately to avoid borrow issues
+        let arena = Arc::new(bumpalo::Bump::new());
+
         let mut lexer = Lexer::new(&self.text, handler.clone(), &interner);
         let tokens = lexer.tokenize().ok()?;
 
         let mut parser = Parser::new(tokens, handler, &interner, &common_ids, &arena);
-        let program = parser.parse().ok()?;
+
+        // Try incremental parsing if we have a previous tree and edits
+        let (program, new_tree) = if !edits.is_empty() {
+            let prev_tree = self.incremental_tree.borrow();
+            match parser.parse_incremental(prev_tree.as_ref(), edits, &self.text) {
+                Ok((prog, tree)) => (prog, Some(tree)),
+                Err(_) => {
+                    // Fallback to full parse on error
+                    (parser.parse().ok()?, None)
+                }
+            }
+        } else {
+            // No edits or no previous tree - do full parse
+            (parser.parse().ok()?, None)
+        };
 
         // Leak the arena to make the lifetime 'static
         // This is safe because the data is stored in an Arc and will live as long as needed
@@ -145,20 +180,28 @@ impl Document {
 
         let interner_arc = Arc::new(interner);
         let common_ids_arc = Arc::new(common_ids);
-        let arena_arc = Arc::new(arena);
 
         *self.ast.borrow_mut() = Some((
             leaked_program,
             Arc::clone(&interner_arc),
             Arc::clone(&common_ids_arc),
-            Arc::clone(&arena_arc),
+            Arc::clone(&arena),
         ));
 
-        Some((leaked_program, interner_arc, common_ids_arc, arena_arc))
+        // Store the incremental tree if we got one
+        if let Some(tree) = new_tree {
+            let leaked_tree: luanext_parser::incremental::IncrementalParseTree<'static> =
+                unsafe { std::mem::transmute(tree) };
+            *self.incremental_tree.borrow_mut() = Some(leaked_tree);
+        }
+
+        Some((leaked_program, interner_arc, common_ids_arc, arena))
     }
 
+    #[cfg(test)]
     pub(crate) fn clear_cache(&self) {
         *self.ast.borrow_mut() = None;
+        *self.incremental_tree.borrow_mut() = None;
     }
 }
 
@@ -176,6 +219,9 @@ impl DocumentManager {
             module_id_to_uri: HashMap::new(),
             workspace_root,
             symbol_index: SymbolIndex::new(),
+            strategy_analyzer: crate::core::heuristics::ParseStrategyAnalyzer::new(
+                crate::core::heuristics::IncrementalConfig::from_env(),
+            ),
         }
     }
 
@@ -224,6 +270,8 @@ impl DocumentManager {
             ast: RefCell::new(None),
             symbol_table: None,
             module_id: module_id.clone(),
+            incremental_tree: RefCell::new(None),
+            metrics: Arc::new(crate::core::metrics::ParseMetrics::new()),
         };
 
         if let Some(ref mid) = module_id {
@@ -240,26 +288,76 @@ impl DocumentManager {
         let uri = params.text_document.uri.clone();
 
         if let Some(doc) = self.documents.get_mut(&uri) {
+            let start_time = std::time::Instant::now();
             doc.version = params.text_document.version;
+
+            // Analyze parse strategy BEFORE building TextEdits
+            let statement_count = doc
+                .incremental_tree
+                .borrow()
+                .as_ref()
+                .map(|t| t.statements.len());
+
+            let strategy = self.strategy_analyzer.analyze_lsp_changes(
+                &params.content_changes,
+                &doc.text,
+                statement_count,
+            );
+
+            let use_incremental =
+                !matches!(strategy, crate::core::heuristics::ParseStrategy::FullParse);
+
+            // Build TextEdits for incremental parsing
+            let mut text_edits = Vec::new();
 
             for change in params.content_changes {
                 if let Some(range) = change.range {
                     let start_offset = Self::position_to_offset(&doc.text, range.start);
                     let end_offset = Self::position_to_offset(&doc.text, range.end);
+
+                    // Create TextEdit only if using incremental
+                    if use_incremental {
+                        text_edits.push(luanext_parser::incremental::TextEdit {
+                            range: (start_offset as u32, end_offset as u32),
+                            new_text: change.text.clone(),
+                        });
+                    }
+
+                    // Apply the edit to the document text
                     let mut new_text = String::new();
                     new_text.push_str(&doc.text[..start_offset]);
                     new_text.push_str(&change.text);
                     new_text.push_str(&doc.text[end_offset..]);
                     doc.text = new_text;
                 } else {
+                    // Full document replacement
                     doc.text = change.text;
+                    text_edits.clear();
                 }
             }
 
-            doc.clear_cache();
+            // Clear AST cache
+            *doc.ast.borrow_mut() = None;
 
+            // Clear incremental tree if forcing full parse
+            if !use_incremental {
+                *doc.incremental_tree.borrow_mut() = None;
+            }
+
+            // Re-parse with incremental support
             if let Some(module_id) = &doc.module_id {
-                if let Some((ast, interner, _common_ids, _arena)) = doc.get_or_parse_ast() {
+                if let Some((ast, interner, _common_ids, _arena)) =
+                    doc.parse_with_edits(&text_edits)
+                {
+                    let elapsed = start_time.elapsed();
+
+                    // Record metrics
+                    if use_incremental {
+                        doc.metrics.record_incremental_parse(elapsed);
+                    } else {
+                        doc.metrics.record_full_parse(elapsed);
+                    }
+
                     self.symbol_index.update_document(
                         &uri,
                         module_id.as_str(),
@@ -276,6 +374,11 @@ impl DocumentManager {
                                 })
                         },
                     );
+
+                    // Log metrics every 100 parses
+                    if doc.version % 100 == 0 {
+                        doc.metrics.maybe_log_stats();
+                    }
                 }
             }
         }

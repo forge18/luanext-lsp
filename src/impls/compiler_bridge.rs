@@ -788,7 +788,7 @@ mod tests {
             column: 0,
         };
 
-        let related = Span {
+        let _related = Span {
             start: 10,
             end: 15,
             line: 2,
@@ -970,7 +970,7 @@ mod tests {
             (CoreLevel::Info, DiagnosticLevel::Info),
         ];
 
-        for (core, expected) in levels {
+        for (core, _expected) in levels {
             let diag = Diagnostic::new(
                 Span {
                     start: 0,
@@ -985,7 +985,7 @@ mod tests {
                 },
                 "test".to_string(),
             );
-            assert!(matches!(diag.level, expected));
+            assert!(matches!(diag.level, _expected));
         }
     }
 

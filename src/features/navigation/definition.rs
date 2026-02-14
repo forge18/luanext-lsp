@@ -922,7 +922,9 @@ mod tests {
         };
         let range = span_to_range(&span);
 
-        // Should not panic
-        assert!(range.start.character >= 0);
+        // Verify range is valid (line is saturating_sub(1), so line 1 becomes 0)
+        assert_eq!(range.start.line, 0);
+        assert_eq!(range.start.character, 0);
+        assert_eq!(range.end.character, 0);
     }
 }

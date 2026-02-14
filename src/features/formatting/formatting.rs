@@ -462,8 +462,7 @@ mod tests {
             trim_final_newlines: Some(false),
         };
 
-        let edits = provider.format_document(&doc, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_document(&doc, options);
     }
 
     #[test]
@@ -472,8 +471,7 @@ mod tests {
         let doc = Document::new_test("".to_string(), 1);
 
         let options = FormattingOptions::default();
-        let edits = provider.format_document(&doc, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_document(&doc, options);
     }
 
     #[test]
@@ -490,8 +488,7 @@ mod tests {
             trim_final_newlines: Some(false),
         };
 
-        let edits = provider.format_document(&doc, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_document(&doc, options);
     }
 
     #[test]
@@ -511,8 +508,7 @@ mod tests {
             trim_final_newlines: Some(false),
         };
 
-        let edits = provider.format_document(&doc, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_document(&doc, options);
     }
 
     #[test]
@@ -522,8 +518,7 @@ mod tests {
 
         let options = FormattingOptions::default();
         let position = Position::new(0, 12);
-        let edits = provider.format_on_type(&doc, position, ";", options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_on_type(&doc, position, ";", options);
     }
 
     #[test]
@@ -533,8 +528,7 @@ mod tests {
 
         let options = FormattingOptions::default();
         let position = Position::new(0, 12);
-        let edits = provider.format_on_type(&doc, position, "(", options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_on_type(&doc, position, "(", options);
     }
 
     #[test]
@@ -555,8 +549,7 @@ mod tests {
             start: Position::new(1, 0),
             end: Position::new(2, 10),
         };
-        let edits = provider.format_range(&doc, range, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_range(&doc, range, options);
     }
 
     #[test]
@@ -569,8 +562,7 @@ mod tests {
             start: Position::new(0, 0),
             end: Position::new(0, 0),
         };
-        let edits = provider.format_range(&doc, range, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_range(&doc, range, options);
     }
 
     #[test]
@@ -583,8 +575,7 @@ mod tests {
             start: Position::new(10, 0),
             end: Position::new(20, 10),
         };
-        let edits = provider.format_range(&doc, range, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_range(&doc, range, options);
     }
 
     #[test]
@@ -610,8 +601,7 @@ mod tests {
             trim_final_newlines: Some(false),
         };
 
-        let edits = provider.format_document(&doc, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_document(&doc, options);
     }
 
     #[test]
@@ -628,8 +618,7 @@ mod tests {
             trim_final_newlines: Some(false),
         };
 
-        let edits = provider.format_document(&doc, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_document(&doc, options);
     }
 
     #[test]
@@ -646,8 +635,7 @@ mod tests {
             trim_final_newlines: Some(false),
         };
 
-        let edits = provider.format_document(&doc, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_document(&doc, options);
     }
 
     #[test]
@@ -656,8 +644,7 @@ mod tests {
         let doc = Document::new_test("type Point = { x: number, y: number }".to_string(), 1);
 
         let options = FormattingOptions::default();
-        let edits = provider.format_document(&doc, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_document(&doc, options);
     }
 
     #[test]
@@ -702,8 +689,7 @@ mod tests {
 
         let options = FormattingOptions::default();
         let position = Position::new(0, 11);
-        let edits = provider.format_on_type(&doc, position, "}", options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_on_type(&doc, position, "}", options);
     }
 
     #[test]
@@ -713,8 +699,7 @@ mod tests {
 
         let options = FormattingOptions::default();
         let position = Position::new(0, 15);
-        let edits = provider.format_on_type(&doc, position, ",", options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_on_type(&doc, position, ",", options);
     }
 
     #[test]
@@ -724,8 +709,7 @@ mod tests {
 
         let options = FormattingOptions::default();
         let position = Position::new(0, 13);
-        let edits = provider.format_on_type(&doc, position, "end", options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_on_type(&doc, position, "end", options);
     }
 
     #[test]
@@ -739,8 +723,7 @@ mod tests {
             ..Default::default()
         };
 
-        let edits = provider.format_document(&doc, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_document(&doc, options);
     }
 
     #[test]
@@ -757,8 +740,7 @@ mod tests {
             ..Default::default()
         };
 
-        let edits = provider.format_document(&doc, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_document(&doc, options);
     }
 
     #[test]
@@ -771,8 +753,7 @@ mod tests {
             start: Position::new(0, 0),
             end: Position::new(0, 10),
         };
-        let edits = provider.format_range(&doc, range, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_range(&doc, range, options);
     }
 
     #[test]
@@ -785,8 +766,7 @@ mod tests {
             start: Position::new(2, 0),
             end: Position::new(2, 10),
         };
-        let edits = provider.format_range(&doc, range, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_range(&doc, range, options);
     }
 
     #[test]
@@ -800,8 +780,7 @@ mod tests {
             ..Default::default()
         };
 
-        let edits = provider.format_document(&doc, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_document(&doc, options);
     }
 
     #[test]
@@ -818,8 +797,7 @@ mod tests {
             ..Default::default()
         };
 
-        let edits = provider.format_document(&doc, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_document(&doc, options);
     }
 
     #[test]
@@ -833,8 +811,7 @@ mod tests {
             ..Default::default()
         };
 
-        let edits = provider.format_document(&doc, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_document(&doc, options);
     }
 
     #[test]
@@ -843,8 +820,7 @@ mod tests {
         let doc = Document::new_test("for i = 1, 10 do print(i) end".to_string(), 1);
 
         let options = FormattingOptions::default();
-        let edits = provider.format_document(&doc, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_document(&doc, options);
     }
 
     #[test]
@@ -861,7 +837,6 @@ mod tests {
             ..Default::default()
         };
 
-        let edits = provider.format_document(&doc, options);
-        assert!(edits.is_empty() || edits.len() >= 0);
+        let _edits = provider.format_document(&doc, options);
     }
 }

@@ -50,8 +50,8 @@ end
 "#;
 
     let lib_doc = create_document_with_module_id(lib_code, "lib");
-    let client1_doc = create_document_with_module_id(client1_code, "client1");
-    let client2_doc = create_document_with_module_id(client2_code, "client2");
+    let _client1_doc = create_document_with_module_id(client1_code, "client1");
+    let _client2_doc = create_document_with_module_id(client2_code, "client2");
 
     let provider = ReferencesProvider::new();
     let lib_uri = create_uri("/test/lib.luax");
@@ -88,7 +88,7 @@ process({1, 2, 3})
 
     let original_doc = create_document_with_module_id(original_code, "original");
     let reexport_doc = create_document_with_module_id(reexport_code, "reexport");
-    let consumer_doc = create_document_with_module_id(consumer_code, "consumer");
+    let _consumer_doc = create_document_with_module_id(consumer_code, "consumer");
 
     let provider = ReferencesProvider::new();
     let original_uri = create_uri("/test/original.luax");
@@ -128,9 +128,9 @@ local result = transform('hello')
 "#;
 
     let base_doc = create_document_with_module_id(base_code, "base");
-    let middle_doc = create_document_with_module_id(middle_code, "middle");
-    let outer_doc = create_document_with_module_id(outer_code, "outer");
-    let consumer_doc = create_document_with_module_id(consumer_code, "consumer");
+    let _middle_doc = create_document_with_module_id(middle_code, "middle");
+    let _outer_doc = create_document_with_module_id(outer_code, "outer");
+    let _consumer_doc = create_document_with_module_id(consumer_code, "consumer");
 
     let provider = ReferencesProvider::new();
     let base_uri = create_uri("/test/base.luax");
@@ -161,7 +161,7 @@ end
 "#;
 
     let types_doc = create_document_with_module_id(types_code, "types");
-    let usage_doc = create_document_with_module_id(usage_code, "usage");
+    let _usage_doc = create_document_with_module_id(usage_code, "usage");
 
     let provider = ReferencesProvider::new();
     let types_uri = create_uri("/test/types.luax");
@@ -189,7 +189,7 @@ local y = getValue() + getValue()
 "#;
 
     let lib_doc = create_document_with_module_id(lib_code, "lib");
-    let usage_doc = create_document_with_module_id(usage_code, "usage");
+    let _usage_doc = create_document_with_module_id(usage_code, "usage");
 
     let provider = ReferencesProvider::new();
     let lib_uri = create_uri("/test/lib.luax");
@@ -208,7 +208,7 @@ local y = getValue() + getValue()
 // Test 6: Find references with circular type dependencies
 #[test]
 fn test_find_references_circular_type_dependencies() {
-    let nodeA_code = r#"
+    let node_a_code = r#"
 import type { NodeB } from './nodeB'
 
 export interface NodeA {
@@ -217,7 +217,7 @@ export interface NodeA {
 }
 "#;
 
-    let nodeB_code = r#"
+    let node_b_code = r#"
 import type { NodeA } from './nodeA'
 
 export interface NodeB {
@@ -226,16 +226,16 @@ export interface NodeB {
 }
 "#;
 
-    let nodeA_doc = create_document_with_module_id(nodeA_code, "nodeA");
-    let nodeB_doc = create_document_with_module_id(nodeB_code, "nodeB");
+    let node_a_doc = create_document_with_module_id(node_a_code, "nodeA");
+    let node_b_doc = create_document_with_module_id(node_b_code, "nodeB");
 
     let provider = ReferencesProvider::new();
-    let nodeA_uri = create_uri("/test/nodeA.luax");
-    let nodeB_uri = create_uri("/test/nodeB.luax");
+    let node_a_uri = create_uri("/test/nodeA.luax");
+    let node_b_uri = create_uri("/test/nodeB.luax");
 
     // Find references despite circular type dependencies
-    let refs_a = provider.provide(&nodeA_uri, &nodeA_doc, Position::new(3, 16), true);
-    let refs_b = provider.provide(&nodeB_uri, &nodeB_doc, Position::new(3, 16), true);
+    let refs_a = provider.provide(&node_a_uri, &node_a_doc, Position::new(3, 16), true);
+    let refs_b = provider.provide(&node_b_uri, &node_b_doc, Position::new(3, 16), true);
 
     // Should handle gracefully without panicking
     let _ = (refs_a, refs_b);
