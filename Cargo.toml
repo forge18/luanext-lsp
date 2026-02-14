@@ -47,6 +47,10 @@ once_cell.workspace = true
 tempfile = "3.8"
 criterion.workspace = true
 
+[features]
+default = ["incremental-parsing"]
+incremental-parsing = ["luanext-parser/incremental-parsing"]
+
 [[bench]]
 name = "lsp_responsiveness"
 harness = false

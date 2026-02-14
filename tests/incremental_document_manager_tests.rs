@@ -3,9 +3,9 @@
 //! These tests verify that the DocumentManager correctly integrates heuristics,
 //! metrics, and incremental parsing for realistic LSP workflows.
 
+use lsp_types::{Position, Range, TextDocumentContentChangeEvent};
 use luanext_lsp::core::document::Document;
 use luanext_lsp::core::heuristics::{IncrementalConfig, ParseStrategy, ParseStrategyAnalyzer};
-use lsp_types::{Position, Range, TextDocumentContentChangeEvent};
 
 fn make_change(
     start_line: u32,
@@ -79,10 +79,7 @@ fn test_document_caching() {
 
 #[test]
 fn test_document_interface() {
-    let doc = Document::new_test(
-        "interface Point { x: number, y: number }".to_string(),
-        1,
-    );
+    let doc = Document::new_test("interface Point { x: number, y: number }".to_string(), 1);
 
     let ast = doc.get_or_parse_ast();
     assert!(ast.is_some());

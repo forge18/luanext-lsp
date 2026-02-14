@@ -86,6 +86,7 @@ pub struct Document {
     /// Module ID for this document (used for cross-file symbol resolution)
     pub module_id: Option<ModuleId>,
     /// Incremental parse tree for efficient re-parsing (invalidated on change)
+    #[cfg(feature = "incremental-parsing")]
     incremental_tree: RefCell<Option<luanext_parser::incremental::IncrementalParseTree<'static>>>,
     /// Performance metrics for incremental vs full parsing
     pub metrics: Arc<crate::core::metrics::ParseMetrics>,
@@ -120,6 +121,7 @@ impl Document {
             ast: RefCell::new(None),
             symbol_table: None,
             module_id: None,
+            #[cfg(feature = "incremental-parsing")]
             incremental_tree: RefCell::new(None),
             metrics: Arc::new(crate::core::metrics::ParseMetrics::new()),
         }
@@ -136,11 +138,19 @@ impl Document {
         }
 
         // No cached AST, do full parse
-        self.parse_with_edits(&[])
+        #[cfg(feature = "incremental-parsing")]
+        {
+            self.parse_with_edits(&[])
+        }
+        #[cfg(not(feature = "incremental-parsing"))]
+        {
+            self.parse_full()
+        }
     }
 
     /// Parse with optional incremental support
     /// If edits is empty, does full parse. Otherwise attempts incremental parse.
+    #[cfg(feature = "incremental-parsing")]
     pub(crate) fn parse_with_edits(
         &self,
         edits: &[luanext_parser::incremental::TextEdit],
@@ -161,8 +171,12 @@ impl Document {
             let prev_tree = self.incremental_tree.borrow();
             match parser.parse_incremental(prev_tree.as_ref(), edits, &self.text) {
                 Ok((prog, tree)) => (prog, Some(tree)),
-                Err(_) => {
+                Err(e) => {
                     // Fallback to full parse on error
+                    tracing::warn!(
+                        "Incremental parse failed, falling back to full parse: {:?}",
+                        e
+                    );
                     (parser.parse().ok()?, None)
                 }
             }
@@ -198,10 +212,44 @@ impl Document {
         Some((leaked_program, interner_arc, common_ids_arc, arena))
     }
 
+    /// Full parse without incremental support (used when incremental-parsing feature is disabled)
+    #[cfg(not(feature = "incremental-parsing"))]
+    pub(crate) fn parse_full(&self) -> Option<ParsedAst> {
+        let handler = Arc::new(CollectingDiagnosticHandler::new());
+        let (interner, common_ids) = StringInterner::new_with_common_identifiers();
+        let arena = Arc::new(bumpalo::Bump::new());
+
+        let mut lexer = Lexer::new(&self.text, handler.clone(), &interner);
+        let tokens = lexer.tokenize().ok()?;
+
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, &arena);
+        let program = parser.parse().ok()?;
+
+        let leaked_program: &'static Program<'static> = unsafe {
+            let program_ptr = &program as *const Program<'_>;
+            &*(program_ptr as *const Program<'static>)
+        };
+
+        let interner_arc = Arc::new(interner);
+        let common_ids_arc = Arc::new(common_ids);
+
+        *self.ast.borrow_mut() = Some((
+            leaked_program,
+            Arc::clone(&interner_arc),
+            Arc::clone(&common_ids_arc),
+            Arc::clone(&arena),
+        ));
+
+        Some((leaked_program, interner_arc, common_ids_arc, arena))
+    }
+
     #[cfg(test)]
     pub(crate) fn clear_cache(&self) {
         *self.ast.borrow_mut() = None;
-        *self.incremental_tree.borrow_mut() = None;
+        #[cfg(feature = "incremental-parsing")]
+        {
+            *self.incremental_tree.borrow_mut() = None;
+        }
     }
 }
 
@@ -270,6 +318,7 @@ impl DocumentManager {
             ast: RefCell::new(None),
             symbol_table: None,
             module_id: module_id.clone(),
+            #[cfg(feature = "incremental-parsing")]
             incremental_tree: RefCell::new(None),
             metrics: Arc::new(crate::core::metrics::ParseMetrics::new()),
         };
@@ -292,11 +341,14 @@ impl DocumentManager {
             doc.version = params.text_document.version;
 
             // Analyze parse strategy BEFORE building TextEdits
+            #[cfg(feature = "incremental-parsing")]
             let statement_count = doc
                 .incremental_tree
                 .borrow()
                 .as_ref()
                 .map(|t| t.statements.len());
+            #[cfg(not(feature = "incremental-parsing"))]
+            let statement_count: Option<usize> = None;
 
             let strategy = self.strategy_analyzer.analyze_lsp_changes(
                 &params.content_changes,
@@ -308,6 +360,7 @@ impl DocumentManager {
                 !matches!(strategy, crate::core::heuristics::ParseStrategy::FullParse);
 
             // Build TextEdits for incremental parsing
+            #[cfg(feature = "incremental-parsing")]
             let mut text_edits = Vec::new();
 
             for change in params.content_changes {
@@ -316,6 +369,7 @@ impl DocumentManager {
                     let end_offset = Self::position_to_offset(&doc.text, range.end);
 
                     // Create TextEdit only if using incremental
+                    #[cfg(feature = "incremental-parsing")]
                     if use_incremental {
                         text_edits.push(luanext_parser::incremental::TextEdit {
                             range: (start_offset as u32, end_offset as u32),
@@ -332,6 +386,7 @@ impl DocumentManager {
                 } else {
                     // Full document replacement
                     doc.text = change.text;
+                    #[cfg(feature = "incremental-parsing")]
                     text_edits.clear();
                 }
             }
@@ -340,15 +395,19 @@ impl DocumentManager {
             *doc.ast.borrow_mut() = None;
 
             // Clear incremental tree if forcing full parse
+            #[cfg(feature = "incremental-parsing")]
             if !use_incremental {
                 *doc.incremental_tree.borrow_mut() = None;
             }
 
             // Re-parse with incremental support
             if let Some(module_id) = &doc.module_id {
-                if let Some((ast, interner, _common_ids, _arena)) =
-                    doc.parse_with_edits(&text_edits)
-                {
+                #[cfg(feature = "incremental-parsing")]
+                let parse_result = doc.parse_with_edits(&text_edits);
+                #[cfg(not(feature = "incremental-parsing"))]
+                let parse_result = doc.parse_full();
+
+                if let Some((ast, interner, _common_ids, _arena)) = parse_result {
                     let elapsed = start_time.elapsed();
 
                     // Record metrics

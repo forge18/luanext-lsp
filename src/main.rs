@@ -198,7 +198,7 @@ fn main_loop(connection: Connection, params: InitializeParams) -> Result<()> {
 mod tests {
     use super::*;
     use lsp_server::{Request, RequestId};
-    
+
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 

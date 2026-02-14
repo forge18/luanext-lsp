@@ -588,7 +588,10 @@ mod tests {
 
         // Verify all hints have valid positions
         for hint in hints {
-            assert!(hint.position.character < 1000, "Hint position should be reasonable");
+            assert!(
+                hint.position.character < 1000,
+                "Hint position should be reasonable"
+            );
         }
     }
 

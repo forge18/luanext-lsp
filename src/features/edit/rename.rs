@@ -1531,7 +1531,11 @@ mod tests {
         let result = provider.prepare(&doc, Position::new(0, 6));
         assert!(result.is_some());
 
-        if let Some(PrepareRenameResponse::RangeWithPlaceholder { range: _, placeholder }) = result {
+        if let Some(PrepareRenameResponse::RangeWithPlaceholder {
+            range: _,
+            placeholder,
+        }) = result
+        {
             assert_eq!(placeholder, "myFunction");
         }
     }
