@@ -15,6 +15,7 @@
 
 use lsp_types::{CompletionItem, Diagnostic, Hover, Position, SemanticTokens};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::time::Duration;
 
 /// Cached result of a single type-check run, extracted to owned types.
 ///
@@ -234,8 +235,8 @@ pub struct DocumentCache {
     /// NOT version-gated: stores whatever was last published, regardless of version.
     /// This enables skipping `PublishDiagnostics` when edits don't change errors.
     pub(crate) last_published_diagnostics: Option<Vec<Diagnostic>>,
-    /// Cache statistics for observability.
-    stats: CacheStats,
+    /// Per-cache-type statistics for observability.
+    stats: HashMap<CacheType, CacheStats>,
 }
 
 impl DocumentCache {
@@ -247,7 +248,7 @@ impl DocumentCache {
             completion_cache: BoundedPositionCache::new(DEFAULT_COMPLETION_CACHE_CAPACITY),
             type_check_result: VersionedCache::new(),
             last_published_diagnostics: None,
-            stats: CacheStats::default(),
+            stats: HashMap::new(),
         }
     }
 
@@ -276,14 +277,28 @@ impl DocumentCache {
         self.completion_cache.invalidate_range(start, end);
     }
 
-    /// Get a reference to the cache statistics.
-    pub fn stats(&self) -> &CacheStats {
-        &self.stats
+    /// Get stats for a specific cache type, if any have been recorded.
+    pub fn stats_for(&self, cache_type: CacheType) -> Option<&CacheStats> {
+        self.stats.get(&cache_type)
     }
 
-    /// Get a mutable reference to the cache statistics.
-    pub fn stats_mut(&mut self) -> &mut CacheStats {
-        &mut self.stats
+    /// Get mutable stats for a specific cache type, creating the entry if needed.
+    pub fn stats_for_mut(&mut self, cache_type: CacheType) -> &mut CacheStats {
+        self.stats.entry(cache_type).or_default()
+    }
+
+    /// Log all per-type cache stats if `LUANEXT_LSP_CACHE_STATS` is set.
+    pub fn maybe_log_all_stats(&self) {
+        for cache_type in &[
+            CacheType::Hover,
+            CacheType::Completion,
+            CacheType::SemanticTokens,
+            CacheType::TypeCheck,
+        ] {
+            if let Some(stats) = self.stats_for(*cache_type) {
+                stats.maybe_log(cache_type.name());
+            }
+        }
     }
 }
 
@@ -293,7 +308,32 @@ impl Default for DocumentCache {
     }
 }
 
-/// Hit/miss counters for cache effectiveness monitoring.
+/// Identifies a specific cache type for per-cache metrics tracking.
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+pub enum CacheType {
+    /// Hover information cache (position-keyed).
+    Hover,
+    /// Completion items cache (position-keyed).
+    Completion,
+    /// Semantic tokens cache (document-level).
+    SemanticTokens,
+    /// Type-check result cache (document-level).
+    TypeCheck,
+}
+
+impl CacheType {
+    /// Human-readable name for logging.
+    pub fn name(&self) -> &'static str {
+        match self {
+            CacheType::Hover => "hover",
+            CacheType::Completion => "completion",
+            CacheType::SemanticTokens => "semantic_tokens",
+            CacheType::TypeCheck => "type_check",
+        }
+    }
+}
+
+/// Hit/miss counters with timing for cache effectiveness monitoring.
 ///
 /// Logged when `LUANEXT_LSP_CACHE_STATS=1` environment variable is set.
 #[derive(Debug, Default, Clone)]
@@ -302,17 +342,23 @@ pub struct CacheStats {
     pub hits: usize,
     /// Total cache misses.
     pub misses: usize,
+    /// Cumulative time spent on cache hits (microseconds).
+    pub total_hit_time_micros: u64,
+    /// Cumulative time spent on cache misses (microseconds).
+    pub total_miss_time_micros: u64,
 }
 
 impl CacheStats {
-    /// Record a cache hit.
-    pub fn record_hit(&mut self) {
+    /// Record a cache hit with timing information.
+    pub fn record_hit_with_duration(&mut self, duration: Duration) {
         self.hits += 1;
+        self.total_hit_time_micros += duration.as_micros() as u64;
     }
 
-    /// Record a cache miss.
-    pub fn record_miss(&mut self) {
+    /// Record a cache miss with timing information.
+    pub fn record_miss_with_duration(&mut self, duration: Duration) {
         self.misses += 1;
+        self.total_miss_time_micros += duration.as_micros() as u64;
     }
 
     /// Hit rate as a fraction (0.0 to 1.0). Returns 0.0 if no lookups.
@@ -325,14 +371,34 @@ impl CacheStats {
         }
     }
 
+    /// Average response time for cache hits in milliseconds.
+    pub fn avg_hit_time_ms(&self) -> f64 {
+        if self.hits > 0 {
+            (self.total_hit_time_micros as f64 / self.hits as f64) / 1000.0
+        } else {
+            0.0
+        }
+    }
+
+    /// Average response time for cache misses in milliseconds.
+    pub fn avg_miss_time_ms(&self) -> f64 {
+        if self.misses > 0 {
+            (self.total_miss_time_micros as f64 / self.misses as f64) / 1000.0
+        } else {
+            0.0
+        }
+    }
+
     /// Log stats if `LUANEXT_LSP_CACHE_STATS` environment variable is set.
     pub fn maybe_log(&self, cache_name: &str) {
         if std::env::var("LUANEXT_LSP_CACHE_STATS").is_ok() {
             tracing::info!(
-                "Cache stats [{}]: hits={}, misses={}, hit_rate={:.1}%",
+                "Cache stats [{}]: hits={} ({:.2}ms avg), misses={} ({:.2}ms avg), hit_rate={:.1}%",
                 cache_name,
                 self.hits,
+                self.avg_hit_time_ms(),
                 self.misses,
+                self.avg_miss_time_ms(),
                 self.hit_rate() * 100.0
             );
         }
@@ -348,6 +414,118 @@ pub fn content_hash(text: &str) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     text.hash(&mut hasher);
     hasher.finish()
+}
+
+/// Trait for estimating heap memory usage of cached values.
+///
+/// Implementations should return the estimated number of bytes allocated
+/// on the heap by this value. Stack size is not included (use `std::mem::size_of`
+/// for that). Over-counting is preferred to under-counting for eviction safety.
+pub trait MemoryEstimate {
+    /// Estimated heap bytes used by this value.
+    fn estimated_heap_bytes(&self) -> usize;
+}
+
+impl MemoryEstimate for CachedSymbolInfo {
+    fn estimated_heap_bytes(&self) -> usize {
+        self.kind.capacity() + self.type_display.capacity()
+    }
+}
+
+impl MemoryEstimate for TypeCheckResult {
+    fn estimated_heap_bytes(&self) -> usize {
+        // HashMap overhead + key/value String capacities
+        let symbols_bytes: usize = self
+            .symbols
+            .iter()
+            .map(|(k, v)| k.capacity() + v.estimated_heap_bytes())
+            .sum();
+        // Rough HashMap bucket overhead: 1 pointer per capacity slot
+        let map_overhead = self.symbols.capacity() * std::mem::size_of::<usize>();
+        // Diagnostics Vec capacity * size per Diagnostic (estimate ~200 bytes each)
+        let diagnostics_bytes = self.diagnostics.capacity() * 200;
+        symbols_bytes + map_overhead + diagnostics_bytes
+    }
+}
+
+impl MemoryEstimate for SemanticTokens {
+    fn estimated_heap_bytes(&self) -> usize {
+        let result_id_bytes = self.result_id.as_ref().map_or(0, |s| s.capacity());
+        let data_bytes = self.data.capacity() * std::mem::size_of::<lsp_types::SemanticToken>();
+        result_id_bytes + data_bytes
+    }
+}
+
+impl MemoryEstimate for Hover {
+    fn estimated_heap_bytes(&self) -> usize {
+        match &self.contents {
+            lsp_types::HoverContents::Markup(markup) => markup.value.capacity(),
+            lsp_types::HoverContents::Scalar(lsp_types::MarkedString::String(s)) => s.capacity(),
+            lsp_types::HoverContents::Scalar(lsp_types::MarkedString::LanguageString(ls)) => {
+                ls.language.capacity() + ls.value.capacity()
+            }
+            lsp_types::HoverContents::Array(items) => items
+                .iter()
+                .map(|item| match item {
+                    lsp_types::MarkedString::String(s) => s.capacity(),
+                    lsp_types::MarkedString::LanguageString(ls) => {
+                        ls.language.capacity() + ls.value.capacity()
+                    }
+                })
+                .sum(),
+        }
+    }
+}
+
+impl MemoryEstimate for Vec<CompletionItem> {
+    fn estimated_heap_bytes(&self) -> usize {
+        let per_item: usize = self
+            .iter()
+            .map(|item| {
+                let label = item.label.capacity();
+                let detail = item.detail.as_ref().map_or(0, |s| s.capacity());
+                let insert_text = item.insert_text.as_ref().map_or(0, |s| s.capacity());
+                label + detail + insert_text + std::mem::size_of::<CompletionItem>()
+            })
+            .sum();
+        per_item
+    }
+}
+
+impl<T: MemoryEstimate> VersionedCache<T> {
+    /// Estimated heap bytes used by the cached value (0 if empty).
+    pub fn estimated_bytes(&self) -> usize {
+        self.value.as_ref().map_or(0, |v| v.estimated_heap_bytes())
+    }
+}
+
+impl<T: MemoryEstimate> BoundedPositionCache<T> {
+    /// Estimated heap bytes used by all cached entries.
+    pub fn estimated_bytes(&self) -> usize {
+        let entries_bytes: usize = self
+            .entries
+            .values()
+            .map(|v| v.estimated_heap_bytes())
+            .sum();
+        let map_overhead = self.entries.capacity() * std::mem::size_of::<usize>();
+        let deque_overhead = self.access_order.capacity() * std::mem::size_of::<Position>();
+        entries_bytes + map_overhead + deque_overhead
+    }
+}
+
+impl DocumentCache {
+    /// Estimated total heap bytes used by all caches in this document.
+    pub fn estimated_bytes(&self) -> usize {
+        let semantic = self.semantic_tokens.estimated_bytes();
+        let hover: usize = self.hover_cache.estimated_bytes();
+        let completion: usize = self.completion_cache.estimated_bytes();
+        let type_check = self.type_check_result.estimated_bytes();
+        let diagnostics = self
+            .last_published_diagnostics
+            .as_ref()
+            .map_or(0, |d| d.capacity() * 200);
+        semantic + hover + completion + type_check + diagnostics
+    }
 }
 
 /// Cached type-checked exports for a module, shared across all consumers.
@@ -446,6 +624,89 @@ impl ModuleDependencyGraph {
         }
 
         result
+    }
+}
+
+/// Default maximum total cache size across all documents (50 MB).
+const DEFAULT_MAX_CACHE_BYTES: usize = 50 * 1024 * 1024;
+/// Default per-document soft limit (1 MB).
+const DEFAULT_PER_DOCUMENT_SOFT_LIMIT: usize = 1024 * 1024;
+
+/// Global cache memory limiter with LRU eviction.
+///
+/// Tracks estimated memory usage per document and evicts the least
+/// recently used documents' caches when the total exceeds `max_bytes`.
+/// A per-document soft limit prevents one large file from consuming
+/// the entire budget.
+#[derive(Debug)]
+pub struct GlobalCacheLimiter {
+    max_bytes: usize,
+    per_document_soft_limit: usize,
+    /// LRU order: most recently used at the back.
+    access_order: VecDeque<String>,
+    /// URI string → estimated bytes.
+    sizes: HashMap<String, usize>,
+}
+
+impl GlobalCacheLimiter {
+    /// Create a limiter with default limits (50 MB global, 1 MB per-document).
+    pub fn new() -> Self {
+        Self {
+            max_bytes: DEFAULT_MAX_CACHE_BYTES,
+            per_document_soft_limit: DEFAULT_PER_DOCUMENT_SOFT_LIMIT,
+            access_order: VecDeque::new(),
+            sizes: HashMap::new(),
+        }
+    }
+
+    /// Record a cache access for a document, updating its size estimate.
+    pub fn record_access(&mut self, uri: &str, estimated_bytes: usize) {
+        // Clamp to per-document soft limit for eviction accounting
+        let clamped = estimated_bytes.min(self.per_document_soft_limit);
+
+        self.sizes.insert(uri.to_string(), clamped);
+
+        // Move to back of LRU (most recently used)
+        self.access_order.retain(|u| u != uri);
+        self.access_order.push_back(uri.to_string());
+    }
+
+    /// Remove a document from tracking (called on `didClose`).
+    pub fn remove_document(&mut self, uri: &str) {
+        self.sizes.remove(uri);
+        self.access_order.retain(|u| u != uri);
+    }
+
+    /// Total estimated bytes across all tracked documents.
+    pub fn total_bytes(&self) -> usize {
+        self.sizes.values().sum()
+    }
+
+    /// Return URIs of documents whose caches should be evicted to stay under the limit.
+    ///
+    /// Walks the LRU from front (oldest) and collects URIs until total <= max_bytes.
+    pub fn documents_to_evict(&mut self) -> Vec<String> {
+        let mut total = self.total_bytes();
+        let mut to_evict = Vec::new();
+
+        while total > self.max_bytes {
+            if let Some(lru_uri) = self.access_order.pop_front() {
+                if let Some(size) = self.sizes.remove(&lru_uri) {
+                    total -= size;
+                }
+                to_evict.push(lru_uri);
+            } else {
+                break;
+            }
+        }
+
+        to_evict
+    }
+}
+
+impl Default for GlobalCacheLimiter {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -646,6 +907,7 @@ mod tests {
         assert!(cache.hover_cache.is_empty());
         assert!(cache.completion_cache.is_empty());
         assert!(cache.last_published_diagnostics.is_none());
+        assert!(cache.stats.is_empty());
     }
 
     fn empty_tokens() -> SemanticTokens {
@@ -755,12 +1017,33 @@ mod tests {
         let mut stats = CacheStats::default();
         assert_eq!(stats.hit_rate(), 0.0);
 
-        stats.record_hit();
-        stats.record_hit();
-        stats.record_miss();
+        stats.record_hit_with_duration(Duration::ZERO);
+        stats.record_hit_with_duration(Duration::ZERO);
+        stats.record_miss_with_duration(Duration::ZERO);
         assert_eq!(stats.hits, 2);
         assert_eq!(stats.misses, 1);
         assert!((stats.hit_rate() - 2.0 / 3.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_stats_recording_with_duration() {
+        let mut stats = CacheStats::default();
+
+        stats.record_hit_with_duration(std::time::Duration::from_micros(1000));
+        stats.record_hit_with_duration(std::time::Duration::from_micros(2000));
+        stats.record_miss_with_duration(std::time::Duration::from_micros(5000));
+
+        assert_eq!(stats.hits, 2);
+        assert_eq!(stats.misses, 1);
+        assert_eq!(stats.avg_hit_time_ms(), 1.5); // (1000 + 2000) / 2 / 1000
+        assert_eq!(stats.avg_miss_time_ms(), 5.0); // 5000 / 1 / 1000
+    }
+
+    #[test]
+    fn test_stats_avg_times_zero_when_empty() {
+        let stats = CacheStats::default();
+        assert_eq!(stats.avg_hit_time_ms(), 0.0);
+        assert_eq!(stats.avg_miss_time_ms(), 0.0);
     }
 
     #[test]
@@ -774,6 +1057,7 @@ mod tests {
         );
         assert!(!cache.type_check_result.is_valid(0));
         assert!(cache.last_published_diagnostics.is_none());
+        assert!(cache.stats.is_empty());
     }
 
     // ── ModuleDependencyGraph tests ─────────────────────────────────
@@ -883,5 +1167,276 @@ mod tests {
         let h1 = content_hash("hello world");
         let h2 = content_hash("hello world!");
         assert_ne!(h1, h2);
+    }
+
+    // ── CacheType tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_cache_type_names() {
+        assert_eq!(CacheType::Hover.name(), "hover");
+        assert_eq!(CacheType::Completion.name(), "completion");
+        assert_eq!(CacheType::SemanticTokens.name(), "semantic_tokens");
+        assert_eq!(CacheType::TypeCheck.name(), "type_check");
+    }
+
+    #[test]
+    fn test_per_type_stats_independent() {
+        let mut cache = DocumentCache::new();
+
+        cache
+            .stats_for_mut(CacheType::Hover)
+            .record_hit_with_duration(Duration::ZERO);
+        cache
+            .stats_for_mut(CacheType::Hover)
+            .record_hit_with_duration(Duration::ZERO);
+        cache
+            .stats_for_mut(CacheType::Completion)
+            .record_miss_with_duration(Duration::ZERO);
+
+        assert_eq!(cache.stats_for(CacheType::Hover).unwrap().hits, 2);
+        assert_eq!(cache.stats_for(CacheType::Hover).unwrap().misses, 0);
+        assert_eq!(cache.stats_for(CacheType::Completion).unwrap().hits, 0);
+        assert_eq!(cache.stats_for(CacheType::Completion).unwrap().misses, 1);
+        assert!(cache.stats_for(CacheType::SemanticTokens).is_none());
+    }
+
+    // ── MemoryEstimate tests ────────────────────────────────────────
+
+    #[test]
+    fn test_memory_estimate_cached_symbol_info() {
+        let info = CachedSymbolInfo {
+            kind: "function".to_string(),
+            type_display: "(x: number) -> string".to_string(),
+        };
+        let bytes = info.estimated_heap_bytes();
+        // Should account for both string capacities
+        assert!(bytes >= "function".len() + "(x: number) -> string".len());
+    }
+
+    #[test]
+    fn test_memory_estimate_type_check_result() {
+        let result = test_type_check_result();
+        let bytes = result.estimated_heap_bytes();
+        // Should be > 0 with one symbol entry
+        assert!(bytes > 0);
+    }
+
+    #[test]
+    fn test_memory_estimate_type_check_result_empty() {
+        let result = TypeCheckResult {
+            symbols: HashMap::new(),
+            diagnostics: vec![],
+        };
+        let bytes = result.estimated_heap_bytes();
+        // Empty result should have minimal overhead
+        assert!(bytes < 100);
+    }
+
+    #[test]
+    fn test_memory_estimate_semantic_tokens_empty() {
+        let tokens = empty_tokens();
+        assert_eq!(tokens.estimated_heap_bytes(), 0);
+    }
+
+    #[test]
+    fn test_memory_estimate_semantic_tokens_with_data() {
+        let tokens = SemanticTokens {
+            result_id: Some("42".to_string()),
+            data: vec![
+                lsp_types::SemanticToken {
+                    delta_line: 0,
+                    delta_start: 6,
+                    length: 1,
+                    token_type: 5,
+                    token_modifiers_bitset: 0,
+                },
+                lsp_types::SemanticToken {
+                    delta_line: 1,
+                    delta_start: 0,
+                    length: 3,
+                    token_type: 1,
+                    token_modifiers_bitset: 0,
+                },
+            ],
+        };
+        let bytes = tokens.estimated_heap_bytes();
+        // result_id capacity + 2 * size_of::<SemanticToken>()
+        assert!(bytes > 0);
+        assert!(bytes >= 2 * std::mem::size_of::<lsp_types::SemanticToken>());
+    }
+
+    #[test]
+    fn test_memory_estimate_hover() {
+        let hover = test_hover();
+        let bytes = hover.estimated_heap_bytes();
+        assert!(bytes >= "test hover".len());
+    }
+
+    #[test]
+    fn test_memory_estimate_completion_items() {
+        let items = test_completion_items();
+        let bytes = items.estimated_heap_bytes();
+        assert!(bytes > 0);
+    }
+
+    #[test]
+    fn test_memory_estimate_completion_items_empty() {
+        let items: Vec<CompletionItem> = vec![];
+        assert_eq!(items.estimated_heap_bytes(), 0);
+    }
+
+    #[test]
+    fn test_versioned_cache_estimated_bytes() {
+        let mut cache = VersionedCache::<SemanticTokens>::new();
+        assert_eq!(cache.estimated_bytes(), 0);
+
+        cache.set(empty_tokens(), 1);
+        // Empty tokens → 0 heap bytes
+        assert_eq!(cache.estimated_bytes(), 0);
+
+        cache.set(
+            SemanticTokens {
+                result_id: Some("test".to_string()),
+                data: vec![lsp_types::SemanticToken {
+                    delta_line: 0,
+                    delta_start: 0,
+                    length: 1,
+                    token_type: 0,
+                    token_modifiers_bitset: 0,
+                }],
+            },
+            2,
+        );
+        assert!(cache.estimated_bytes() > 0);
+    }
+
+    #[test]
+    fn test_bounded_position_cache_estimated_bytes() {
+        let mut cache = BoundedPositionCache::new(10);
+        let empty_bytes = cache.estimated_bytes();
+
+        cache.insert(pos(0, 0), test_hover(), 1);
+        let after_insert = cache.estimated_bytes();
+        assert!(after_insert > empty_bytes);
+    }
+
+    #[test]
+    fn test_document_cache_estimated_bytes_empty() {
+        let cache = DocumentCache::new();
+        let bytes = cache.estimated_bytes();
+        // Empty cache should have some overhead from HashMap/VecDeque internals
+        // but should be reasonably small
+        assert!(bytes < 4096, "empty cache: {bytes} bytes");
+    }
+
+    #[test]
+    fn test_document_cache_estimated_bytes_populated() {
+        let mut cache = DocumentCache::new();
+        let before = cache.estimated_bytes();
+
+        cache.semantic_tokens.set(
+            SemanticTokens {
+                result_id: Some("1".to_string()),
+                data: vec![lsp_types::SemanticToken {
+                    delta_line: 0,
+                    delta_start: 6,
+                    length: 1,
+                    token_type: 5,
+                    token_modifiers_bitset: 0,
+                }],
+            },
+            1,
+        );
+        cache.hover_cache.insert(pos(0, 0), test_hover(), 1);
+        cache
+            .completion_cache
+            .insert(pos(0, 0), test_completion_items(), 1);
+        cache.type_check_result.set(test_type_check_result(), 1);
+
+        let after = cache.estimated_bytes();
+        assert!(after > before, "populated cache should be larger");
+    }
+
+    // ── GlobalCacheLimiter tests ────────────────────────────────────
+
+    #[test]
+    fn test_limiter_new_is_empty() {
+        let limiter = GlobalCacheLimiter::new();
+        assert_eq!(limiter.total_bytes(), 0);
+    }
+
+    #[test]
+    fn test_limiter_record_access() {
+        let mut limiter = GlobalCacheLimiter::new();
+        limiter.record_access("file:///a.tl", 500);
+        assert_eq!(limiter.total_bytes(), 500);
+    }
+
+    #[test]
+    fn test_limiter_clamps_to_per_document_limit() {
+        let mut limiter = GlobalCacheLimiter::new();
+        // Record 5MB for one doc → should be clamped to 1MB
+        limiter.record_access("file:///big.tl", 5 * 1024 * 1024);
+        assert_eq!(limiter.total_bytes(), DEFAULT_PER_DOCUMENT_SOFT_LIMIT);
+    }
+
+    #[test]
+    fn test_limiter_remove_document() {
+        let mut limiter = GlobalCacheLimiter::new();
+        limiter.record_access("file:///a.tl", 500);
+        limiter.record_access("file:///b.tl", 300);
+        assert_eq!(limiter.total_bytes(), 800);
+
+        limiter.remove_document("file:///a.tl");
+        assert_eq!(limiter.total_bytes(), 300);
+    }
+
+    #[test]
+    fn test_limiter_remove_nonexistent_is_noop() {
+        let mut limiter = GlobalCacheLimiter::new();
+        limiter.record_access("file:///a.tl", 500);
+        limiter.remove_document("file:///nonexistent.tl");
+        assert_eq!(limiter.total_bytes(), 500);
+    }
+
+    #[test]
+    fn test_limiter_no_eviction_under_limit() {
+        let mut limiter = GlobalCacheLimiter::new();
+        limiter.record_access("file:///a.tl", 100);
+        limiter.record_access("file:///b.tl", 200);
+        let evicted = limiter.documents_to_evict();
+        assert!(evicted.is_empty());
+    }
+
+    #[test]
+    fn test_limiter_update_existing_document_size() {
+        let mut limiter = GlobalCacheLimiter::new();
+        limiter.record_access("file:///a.tl", 100);
+        assert_eq!(limiter.total_bytes(), 100);
+
+        // Update size
+        limiter.record_access("file:///a.tl", 500);
+        assert_eq!(limiter.total_bytes(), 500);
+    }
+
+    #[test]
+    fn test_limiter_mru_ordering() {
+        let mut limiter = GlobalCacheLimiter::new();
+        limiter.record_access("file:///a.tl", 100);
+        limiter.record_access("file:///b.tl", 200);
+        limiter.record_access("file:///c.tl", 300);
+
+        // Re-access 'a' → moves to MRU
+        limiter.record_access("file:///a.tl", 100);
+
+        // Total is 600, well under 50MB → no eviction
+        let evicted = limiter.documents_to_evict();
+        assert!(evicted.is_empty());
+    }
+
+    #[test]
+    fn test_limiter_default_trait() {
+        let limiter = GlobalCacheLimiter::default();
+        assert_eq!(limiter.total_bytes(), 0);
     }
 }

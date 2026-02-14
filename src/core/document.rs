@@ -1,5 +1,5 @@
 use super::analysis::SymbolIndex;
-use super::cache::{ModuleDependencyGraph, ModuleExportsEntry};
+use super::cache::{GlobalCacheLimiter, ModuleDependencyGraph, ModuleExportsEntry};
 use lsp_types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DidSaveTextDocumentParams, Position, Uri,
@@ -79,6 +79,8 @@ pub struct DocumentManager {
     module_exports_cache: HashMap<String, ModuleExportsEntry>,
     /// Dependency graph for cascade invalidation
     dependency_graph: ModuleDependencyGraph,
+    /// Global cache memory limiter with LRU eviction
+    cache_limiter: GlobalCacheLimiter,
 }
 
 /// Represents a single document with cached analysis
@@ -295,6 +297,7 @@ impl DocumentManager {
             ),
             module_exports_cache: HashMap::new(),
             dependency_graph: ModuleDependencyGraph::new(),
+            cache_limiter: GlobalCacheLimiter::new(),
         }
     }
 
@@ -544,6 +547,14 @@ impl DocumentManager {
                     // Log metrics every 100 parses
                     if doc.version % 100 == 0 {
                         doc.metrics.maybe_log_stats();
+                        let cache = doc.cache();
+                        cache.maybe_log_all_stats();
+                        if std::env::var("LUANEXT_LSP_CACHE_STATS").is_ok() {
+                            tracing::info!(
+                                "Cache memory: {} bytes estimated",
+                                cache.estimated_bytes()
+                            );
+                        }
                     }
                 }
             }
@@ -559,6 +570,22 @@ impl DocumentManager {
                     if let Some(dep_doc) = self.documents.get(dep_uri) {
                         dep_doc.cache.borrow_mut().type_check_result.invalidate();
                     }
+                }
+            }
+        }
+
+        // Update global cache limiter and evict LRU documents if over budget
+        let uri_str = uri.to_string();
+        if let Some(doc) = self.documents.get(&uri) {
+            let bytes = doc.cache().estimated_bytes();
+            self.cache_limiter.record_access(&uri_str, bytes);
+        }
+        let to_evict = self.cache_limiter.documents_to_evict();
+        for evict_uri_str in &to_evict {
+            for (doc_uri, doc) in &self.documents {
+                if doc_uri.to_string() == *evict_uri_str {
+                    doc.cache.borrow_mut().invalidate_all();
+                    break;
                 }
             }
         }
@@ -595,6 +622,8 @@ impl DocumentManager {
 
             self.dependency_graph.clear_module(&mid_str);
         }
+
+        self.cache_limiter.remove_document(&uri.to_string());
 
         if let Some(module_id) = self.uri_to_module_id.remove(uri) {
             self.module_id_to_uri.remove(&module_id);

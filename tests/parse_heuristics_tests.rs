@@ -124,11 +124,14 @@ fn test_medium_edit_under_threshold() {
     assert_eq!(strategy, ParseStrategy::Incremental);
 }
 
+/// Tests env-var-based configuration. Combined into a single test to avoid
+/// race conditions when tests run in parallel (env vars are process-global).
 #[test]
 fn test_config_from_env() {
     // Clean up any env vars from other tests first
     std::env::remove_var("LUANEXT_DISABLE_INCREMENTAL");
 
+    // Part 1: custom config values
     std::env::set_var("LUANEXT_MAX_EDIT_SIZE", "500");
     std::env::set_var("LUANEXT_MAX_DIRTY_REGIONS", "5");
     std::env::set_var("LUANEXT_MAX_AFFECTED_RATIO", "0.3");
@@ -141,10 +144,8 @@ fn test_config_from_env() {
     std::env::remove_var("LUANEXT_MAX_EDIT_SIZE");
     std::env::remove_var("LUANEXT_MAX_DIRTY_REGIONS");
     std::env::remove_var("LUANEXT_MAX_AFFECTED_RATIO");
-}
 
-#[test]
-fn test_disable_incremental_env_var() {
+    // Part 2: disable incremental
     std::env::set_var("LUANEXT_DISABLE_INCREMENTAL", "1");
 
     let config = IncrementalConfig::from_env();

@@ -1,4 +1,5 @@
 use crate::arena_pool::with_pooled_arena;
+use crate::core::cache::CacheType;
 use crate::core::document::Document;
 use lsp_types::*;
 use luanext_parser::ast::expression::{Expression, ExpressionKind};
@@ -53,6 +54,8 @@ impl SemanticTokensProvider {
     /// version, returns the cached result immediately (~0ms). Otherwise computes
     /// fresh tokens and stores them in the cache for subsequent requests.
     pub fn provide_full(&self, document: &Document) -> SemanticTokens {
+        let start = std::time::Instant::now();
+
         // Check cache first - clone to release the borrow before recording stats
         let cached = {
             let cache = document.cache();
@@ -63,12 +66,19 @@ impl SemanticTokensProvider {
         };
 
         if let Some(tokens) = cached {
-            document.cache_mut().stats_mut().record_hit();
-            document.cache().stats().maybe_log("semantic_tokens");
+            let mut cache = document.cache_mut();
+            let stats = cache.stats_for_mut(CacheType::SemanticTokens);
+            stats.record_hit_with_duration(start.elapsed());
+            stats.maybe_log(CacheType::SemanticTokens.name());
             return tokens;
         }
 
-        document.cache_mut().stats_mut().record_miss();
+        {
+            let mut cache = document.cache_mut();
+            let stats = cache.stats_for_mut(CacheType::SemanticTokens);
+            stats.record_miss_with_duration(start.elapsed());
+            stats.maybe_log(CacheType::SemanticTokens.name());
+        }
 
         let result = self.compute_semantic_tokens(document);
 
@@ -78,7 +88,6 @@ impl SemanticTokensProvider {
             .semantic_tokens
             .set(result.clone(), document.version);
 
-        document.cache().stats().maybe_log("semantic_tokens");
         result
     }
 
@@ -879,16 +888,18 @@ mod tests {
         let _ = provider.provide_full(&doc);
         {
             let cache = doc.cache();
-            assert_eq!(cache.stats().misses, 1);
-            assert_eq!(cache.stats().hits, 0);
+            let st_stats = cache.stats_for(CacheType::SemanticTokens).unwrap();
+            assert_eq!(st_stats.misses, 1);
+            assert_eq!(st_stats.hits, 0);
         }
 
         // Second call is a hit
         let _ = provider.provide_full(&doc);
         {
             let cache = doc.cache();
-            assert_eq!(cache.stats().misses, 1);
-            assert_eq!(cache.stats().hits, 1);
+            let st_stats = cache.stats_for(CacheType::SemanticTokens).unwrap();
+            assert_eq!(st_stats.misses, 1);
+            assert_eq!(st_stats.hits, 1);
         }
     }
 
@@ -905,7 +916,8 @@ mod tests {
         // Should recompute (miss)
         let _ = provider.provide_full(&doc);
         let cache = doc.cache();
-        assert_eq!(cache.stats().misses, 2);
+        let st_stats = cache.stats_for(CacheType::SemanticTokens).unwrap();
+        assert_eq!(st_stats.misses, 2);
     }
 
     #[test]

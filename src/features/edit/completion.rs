@@ -1,4 +1,5 @@
 use crate::arena_pool::with_pooled_arena;
+use crate::core::cache::CacheType;
 use crate::core::document::Document;
 use crate::traits::CompletionProviderTrait;
 use lsp_types::*;
@@ -50,6 +51,7 @@ impl CompletionProvider {
 
         // Check cache for expensive contexts - clone result to release RefMut borrow
         if use_cache {
+            let start = std::time::Instant::now();
             let cached = document
                 .cache_mut()
                 .completion_cache
@@ -57,12 +59,19 @@ impl CompletionProvider {
                 .cloned();
 
             if let Some(result) = cached {
-                document.cache_mut().stats_mut().record_hit();
-                document.cache().stats().maybe_log("completion");
+                let mut cache = document.cache_mut();
+                let stats = cache.stats_for_mut(CacheType::Completion);
+                stats.record_hit_with_duration(start.elapsed());
+                stats.maybe_log(CacheType::Completion.name());
                 return result;
             }
 
-            document.cache_mut().stats_mut().record_miss();
+            {
+                let mut cache = document.cache_mut();
+                let stats = cache.stats_for_mut(CacheType::Completion);
+                stats.record_miss_with_duration(start.elapsed());
+                stats.maybe_log(CacheType::Completion.name());
+            }
         }
 
         let mut items = Vec::new();
@@ -1664,11 +1673,15 @@ mod tests {
         }
 
         // Cache should have recorded a hit
-        let stats = doc.cache().stats().clone();
+        let comp_stats = doc
+            .cache()
+            .stats_for(CacheType::Completion)
+            .cloned()
+            .unwrap_or_default();
         assert!(
-            stats.hits >= 1,
+            comp_stats.hits >= 1,
             "Expected at least 1 cache hit, got {}",
-            stats.hits
+            comp_stats.hits
         );
     }
 
@@ -1683,9 +1696,10 @@ mod tests {
 
         // TypeAnnotation is cheap and should NOT be cached,
         // so no stats should be recorded
-        let stats = doc.cache().stats().clone();
-        assert_eq!(stats.hits, 0, "TypeAnnotation should not use cache");
-        assert_eq!(stats.misses, 0, "TypeAnnotation should not record misses");
+        assert!(
+            doc.cache().stats_for(CacheType::Completion).is_none(),
+            "TypeAnnotation should not use cache"
+        );
     }
 
     #[test]
@@ -1698,8 +1712,10 @@ mod tests {
         let _result2 = provider.provide(&doc, pos);
 
         // Decorator is cheap and should NOT be cached
-        let stats = doc.cache().stats().clone();
-        assert_eq!(stats.hits, 0, "Decorator should not use cache");
+        assert!(
+            doc.cache().stats_for(CacheType::Completion).is_none(),
+            "Decorator should not use cache"
+        );
     }
 
     #[test]
@@ -1710,7 +1726,11 @@ mod tests {
         let _result1 = provider.provide(&doc, Position::new(0, 0));
         let _result2 = provider.provide(&doc, Position::new(1, 0));
 
-        let stats = doc.cache().stats().clone();
-        assert!(stats.misses >= 2, "Expected at least 2 cache misses");
+        let comp_stats = doc
+            .cache()
+            .stats_for(CacheType::Completion)
+            .cloned()
+            .unwrap_or_default();
+        assert!(comp_stats.misses >= 2, "Expected at least 2 cache misses");
     }
 }

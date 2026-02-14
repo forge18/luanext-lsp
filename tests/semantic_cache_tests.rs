@@ -3,6 +3,7 @@
 //! Tests the end-to-end flow: compute tokens → cache hit →
 //! invalidate → recompute.
 
+use luanext_lsp::core::cache::CacheType;
 use luanext_lsp::core::document::Document;
 use luanext_lsp::features::semantic::SemanticTokensProvider;
 
@@ -185,8 +186,8 @@ fn test_hover_cache_integration_keyword() {
     assert!(result2.is_some());
 
     // Verify cache stats recorded a hit
-    let stats = doc.cache().stats().clone();
-    assert!(stats.hits >= 1);
+    let hover_stats = doc.cache().stats_for(CacheType::Hover).cloned().unwrap();
+    assert!(hover_stats.hits >= 1);
 }
 
 #[test]
@@ -209,9 +210,9 @@ fn test_hover_cache_integration_different_positions() {
     let result3 = provider.provide(&doc, lsp_types::Position::new(0, 0));
     assert!(result3.is_some());
 
-    let stats = doc.cache().stats().clone();
-    assert!(stats.hits >= 1);
-    assert!(stats.misses >= 2);
+    let hover_stats = doc.cache().stats_for(CacheType::Hover).cloned().unwrap();
+    assert!(hover_stats.hits >= 1);
+    assert!(hover_stats.misses >= 2);
 }
 
 // ── Completion cache integration tests ───────────────────────────
@@ -232,8 +233,12 @@ fn test_completion_cache_integration_statement_context() {
     assert!(!result2.is_empty());
     assert_eq!(result1.len(), result2.len());
 
-    let stats = doc.cache().stats().clone();
-    assert!(stats.hits >= 1);
+    let completion_stats = doc
+        .cache()
+        .stats_for(CacheType::Completion)
+        .cloned()
+        .unwrap();
+    assert!(completion_stats.hits >= 1);
 }
 
 #[test]
@@ -248,7 +253,5 @@ fn test_completion_cache_integration_type_context_not_cached() {
     let _result2 = provider.provide(&doc, lsp_types::Position::new(0, 9));
 
     // No cache stats should be recorded for cheap contexts
-    let stats = doc.cache().stats().clone();
-    assert_eq!(stats.hits, 0);
-    assert_eq!(stats.misses, 0);
+    assert!(doc.cache().stats_for(CacheType::Completion).is_none());
 }

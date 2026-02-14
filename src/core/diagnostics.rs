@@ -1,5 +1,5 @@
 use crate::arena_pool::with_pooled_arena;
-use crate::core::cache::{CachedSymbolInfo, TypeCheckResult};
+use crate::core::cache::{CacheType, CachedSymbolInfo, TypeCheckResult};
 use crate::core::document::Document;
 use crate::traits::DiagnosticsProviderTrait;
 use lsp_types::*;
@@ -28,6 +28,8 @@ impl DiagnosticsProvider {
     /// All features (diagnostics, hover, completion) should call this
     /// instead of running their own lex→parse→typecheck pipeline.
     pub fn ensure_type_checked(document: &Document) -> TypeCheckResult {
+        let start = std::time::Instant::now();
+
         // Check cache first — clone to release RefCell borrow before recording stats
         let cached = document
             .cache()
@@ -36,12 +38,19 @@ impl DiagnosticsProvider {
             .cloned();
 
         if let Some(result) = cached {
-            document.cache_mut().stats_mut().record_hit();
-            document.cache().stats().maybe_log("type_check");
+            let mut cache = document.cache_mut();
+            let stats = cache.stats_for_mut(CacheType::TypeCheck);
+            stats.record_hit_with_duration(start.elapsed());
+            stats.maybe_log(CacheType::TypeCheck.name());
             return result;
         }
 
-        document.cache_mut().stats_mut().record_miss();
+        {
+            let mut cache = document.cache_mut();
+            let stats = cache.stats_for_mut(CacheType::TypeCheck);
+            stats.record_miss_with_duration(start.elapsed());
+            stats.maybe_log(CacheType::TypeCheck.name());
+        }
 
         // Cache miss: run full lex→parse→typecheck pipeline
         let handler = Arc::new(CollectingDiagnosticHandler::new());
@@ -350,8 +359,12 @@ mod tests {
         assert!(result2.diagnostics.is_empty());
 
         // Cache should have recorded a hit on second call
-        let stats = doc.cache().stats().clone();
-        assert!(stats.hits >= 1, "Expected at least 1 cache hit");
+        let tc_stats = doc
+            .cache()
+            .stats_for(CacheType::TypeCheck)
+            .cloned()
+            .unwrap_or_default();
+        assert!(tc_stats.hits >= 1, "Expected at least 1 cache hit");
     }
 
     #[test]
@@ -407,8 +420,12 @@ mod tests {
 
         assert_eq!(d1, d2);
 
-        let stats = doc.cache().stats().clone();
-        assert!(stats.hits >= 1, "Expected at least 1 cache hit");
+        let tc_stats = doc
+            .cache()
+            .stats_for(CacheType::TypeCheck)
+            .cloned()
+            .unwrap_or_default();
+        assert!(tc_stats.hits >= 1, "Expected at least 1 cache hit");
     }
 
     #[test]

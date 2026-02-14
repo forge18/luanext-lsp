@@ -1,3 +1,4 @@
+use crate::core::cache::CacheType;
 use crate::core::diagnostics::DiagnosticsProvider;
 use crate::core::document::Document;
 use crate::traits::HoverProviderTrait;
@@ -19,6 +20,8 @@ impl HoverProvider {
     /// Uses position-based caching: if the same position is requested again
     /// at the same document version, returns the cached result immediately.
     pub fn provide_impl(&self, document: &Document, position: Position) -> Option<Hover> {
+        let start = std::time::Instant::now();
+
         // Check cache first - clone result to release RefMut borrow before recording stats
         let cached = document
             .cache_mut()
@@ -27,12 +30,19 @@ impl HoverProvider {
             .cloned();
 
         if let Some(result) = cached {
-            document.cache_mut().stats_mut().record_hit();
-            document.cache().stats().maybe_log("hover");
+            let mut cache = document.cache_mut();
+            let stats = cache.stats_for_mut(CacheType::Hover);
+            stats.record_hit_with_duration(start.elapsed());
+            stats.maybe_log(CacheType::Hover.name());
             return Some(result);
         }
 
-        document.cache_mut().stats_mut().record_miss();
+        {
+            let mut cache = document.cache_mut();
+            let stats = cache.stats_for_mut(CacheType::Hover);
+            stats.record_miss_with_duration(start.elapsed());
+            stats.maybe_log(CacheType::Hover.name());
+        }
 
         // Get the word at the current position
         let word = self.get_word_at_position(document, position)?;
@@ -832,11 +842,15 @@ mod tests {
         assert_eq!(format!("{:?}", result1), format!("{:?}", result2),);
 
         // Cache should have recorded a hit
-        let stats = doc.cache().stats().clone();
+        let hover_stats = doc
+            .cache()
+            .stats_for(CacheType::Hover)
+            .cloned()
+            .unwrap_or_default();
         assert!(
-            stats.hits >= 1,
+            hover_stats.hits >= 1,
             "Expected at least 1 cache hit, got {}",
-            stats.hits
+            hover_stats.hits
         );
     }
 
@@ -853,8 +867,12 @@ mod tests {
         let result2 = provider.provide_impl(&doc, Position::new(1, 0));
         assert!(result2.is_some());
 
-        let stats = doc.cache().stats().clone();
-        assert!(stats.misses >= 2, "Expected at least 2 cache misses");
+        let hover_stats = doc
+            .cache()
+            .stats_for(CacheType::Hover)
+            .cloned()
+            .unwrap_or_default();
+        assert!(hover_stats.misses >= 2, "Expected at least 2 cache misses");
     }
 
     #[test]
@@ -866,6 +884,11 @@ mod tests {
         let _result = provider.provide_impl(&doc, pos);
 
         // Cache should contain an entry now
-        assert!(!doc.cache().hover_cache.is_empty() || doc.cache().stats().misses > 0);
+        let hover_stats = doc
+            .cache()
+            .stats_for(CacheType::Hover)
+            .cloned()
+            .unwrap_or_default();
+        assert!(!doc.cache().hover_cache.is_empty() || hover_stats.misses > 0);
     }
 }
