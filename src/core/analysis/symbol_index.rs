@@ -101,6 +101,61 @@ pub struct WorkspaceSymbolInfo {
 /// - "What symbols does module Z export?"
 /// - "Where is symbol W imported from?"
 /// - "Find all symbols matching query Q in the workspace"
+/// Fingerprint of a document's contribution to the symbol index.
+///
+/// Used for diffing: if the snapshot hasn't changed, the index entries
+/// don't need to be cleared and re-inserted, saving significant work
+/// when only function bodies change (not imports/exports).
+#[derive(Debug, Clone, Default)]
+struct DocumentSymbolSnapshot {
+    /// (module_id, exported_name) -> hash of ExportInfo
+    exports: HashMap<(String, String), u64>,
+    /// (module_id, local_name) -> hash of Vec<ImportInfo>
+    imports: HashMap<(String, String), u64>,
+    /// lowercase_name -> hash of symbols from this URI
+    workspace_symbols: HashMap<String, u64>,
+}
+
+fn hash_export_info(info: &ExportInfo) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    info.exported_name.hash(&mut hasher);
+    info.local_name.hash(&mut hasher);
+    info.is_default.hash(&mut hasher);
+    info.is_type_only.hash(&mut hasher);
+    info.is_reexport.hash(&mut hasher);
+    info.source_module_id.hash(&mut hasher);
+    info.original_symbol_name.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn hash_import_infos(infos: &[ImportInfo]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for info in infos {
+        info.local_name.hash(&mut hasher);
+        info.imported_name.hash(&mut hasher);
+        info.is_type_only.hash(&mut hasher);
+        info.source_uri.as_str().hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+fn hash_workspace_symbols(symbols: &[WorkspaceSymbolInfo]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for sym in symbols {
+        sym.name.hash(&mut hasher);
+        // SymbolKind is not a primitive; hash its debug representation
+        format!("{:?}", sym.kind).hash(&mut hasher);
+        sym.span.start.hash(&mut hasher);
+        sym.span.end.hash(&mut hasher);
+        sym.span.line.hash(&mut hasher);
+        sym.container_name.hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
 #[derive(Debug, Clone)]
 pub struct SymbolIndex {
     /// Map from (module_id, exported_symbol_name) -> ExportInfo
@@ -124,6 +179,10 @@ pub struct SymbolIndex {
     /// Cache for resolved re-export chains: (module_id, symbol_name) -> ExportChainEnd
     /// This avoids redundant re-export chain traversals for the same symbol
     reexport_chain_cache: std::cell::RefCell<HashMap<(String, String), ExportChainEnd>>,
+
+    /// Per-document snapshots for incremental diffing.
+    /// Compared on each `update_document()` to avoid re-indexing unchanged entries.
+    document_snapshots: HashMap<Uri, DocumentSymbolSnapshot>,
 }
 
 impl Default for SymbolIndex {
@@ -135,6 +194,7 @@ impl Default for SymbolIndex {
             uri_to_module: HashMap::new(),
             workspace_symbols: HashMap::new(),
             reexport_chain_cache: std::cell::RefCell::new(HashMap::new()),
+            document_snapshots: HashMap::new(),
         }
     }
 }
@@ -144,9 +204,10 @@ impl SymbolIndex {
         Self::default()
     }
 
-    /// Update the index for a specific document
+    /// Update the index for a specific document.
     ///
-    /// This should be called whenever a document is opened, changed, or saved.
+    /// Uses snapshot diffing to avoid re-indexing unchanged entries.
+    /// Returns `true` if exports changed (used for cascade invalidation).
     pub fn update_document(
         &mut self,
         uri: &Uri,
@@ -154,25 +215,111 @@ impl SymbolIndex {
         ast: &Program,
         interner: &StringInterner,
         resolve_import: impl Fn(&str, &str) -> Option<(String, Uri)>,
-    ) {
-        // Clear old entries for this document
-        self.clear_document(uri, module_id);
+    ) -> bool {
+        // Step 1: Build new entries into temp collections
+        let mut new_exports: HashMap<(String, String), ExportInfo> = HashMap::new();
+        let mut new_imports: HashMap<(String, String), Vec<ImportInfo>> = HashMap::new();
+        let mut new_importer_entries: HashSet<(String, String)> = HashSet::new();
+        let mut new_workspace_symbols: HashMap<String, Vec<WorkspaceSymbolInfo>> = HashMap::new();
 
-        // Invalidate re-export chain cache for this module
-        self.invalidate_reexport_cache(module_id);
+        Self::index_exports_to(
+            &self.exports,
+            uri,
+            module_id,
+            &ast.statements,
+            interner,
+            &resolve_import,
+            &mut new_exports,
+        );
+        Self::index_imports_to(
+            uri,
+            module_id,
+            &ast.statements,
+            interner,
+            &resolve_import,
+            &mut new_imports,
+            &mut new_importer_entries,
+        );
+        Self::index_workspace_symbols_to(
+            uri,
+            &ast.statements,
+            interner,
+            &mut new_workspace_symbols,
+        );
 
-        // Register URI -> module_id mapping
+        // Step 2: Build new snapshot (importer_entries not stored — derived from imports)
+        let new_snapshot = DocumentSymbolSnapshot {
+            exports: new_exports
+                .iter()
+                .map(|(k, v)| (k.clone(), hash_export_info(v)))
+                .collect(),
+            imports: new_imports
+                .iter()
+                .map(|(k, v)| (k.clone(), hash_import_infos(v)))
+                .collect(),
+            workspace_symbols: new_workspace_symbols
+                .iter()
+                .map(|(k, v)| (k.clone(), hash_workspace_symbols(v)))
+                .collect(),
+        };
+
+        // Step 3: Compare with old snapshot
+        let old_snapshot = self
+            .document_snapshots
+            .get(uri)
+            .cloned()
+            .unwrap_or_default();
+
+        let exports_changed = old_snapshot.exports != new_snapshot.exports;
+        let imports_changed = old_snapshot.imports != new_snapshot.imports;
+        let workspace_symbols_changed =
+            old_snapshot.workspace_symbols != new_snapshot.workspace_symbols;
+
+        // Step 4: Apply only changed categories
+        if exports_changed {
+            self.exports.retain(|(mid, _), _| mid != module_id);
+            self.exports.extend(new_exports);
+            self.invalidate_reexport_cache(module_id);
+        }
+
+        if imports_changed {
+            self.imports.retain(|(mid, _), _| mid != module_id);
+            // Remove old importer entries for this URI
+            for importing_set in self.importers.values_mut() {
+                importing_set.remove(uri);
+            }
+            self.importers.retain(|_, set| !set.is_empty());
+            // Insert new imports and importer entries
+            self.imports.extend(new_imports);
+            for (source_module_id, imported_name) in &new_importer_entries {
+                self.importers
+                    .entry((source_module_id.clone(), imported_name.clone()))
+                    .or_default()
+                    .insert(uri.clone());
+            }
+        }
+
+        if workspace_symbols_changed {
+            for symbol_list in self.workspace_symbols.values_mut() {
+                symbol_list.retain(|sym| &sym.uri != uri);
+            }
+            self.workspace_symbols.retain(|_, list| !list.is_empty());
+            for (name_lower, symbols) in new_workspace_symbols {
+                self.workspace_symbols
+                    .entry(name_lower)
+                    .or_default()
+                    .extend(symbols);
+            }
+        }
+
+        // Step 5: Always update the URI -> module mapping
         self.uri_to_module
             .insert(uri.clone(), module_id.to_string());
 
-        // Index exports (pass resolve_import for re-export source resolution)
-        self.index_exports(uri, module_id, &ast.statements, interner, &resolve_import);
+        // Step 6: Store new snapshot
+        self.document_snapshots.insert(uri.clone(), new_snapshot);
 
-        // Index imports
-        self.index_imports(uri, module_id, &ast.statements, interner, resolve_import);
-
-        // Index workspace symbols
-        self.index_workspace_symbols(uri, &ast.statements, interner);
+        exports_changed
     }
 
     /// Clear index entries for a document
@@ -197,16 +344,23 @@ impl SymbolIndex {
 
         // Remove URI mapping
         self.uri_to_module.remove(uri);
+
+        // Remove document snapshot
+        self.document_snapshots.remove(uri);
     }
 
-    /// Index all exports in a module
-    fn index_exports(
-        &mut self,
+    /// Index exports into an external collection (for snapshot diffing).
+    ///
+    /// Same logic as the old `index_exports` but writes to `target` instead of `self.exports`.
+    /// For `ExportKind::All`, reads from `existing_exports` (other modules' data).
+    fn index_exports_to(
+        existing_exports: &HashMap<(String, String), ExportInfo>,
         uri: &Uri,
         module_id: &str,
         statements: &[Statement],
         interner: &StringInterner,
         resolve_import: &dyn Fn(&str, &str) -> Option<(String, Uri)>,
+        target: &mut HashMap<(String, String), ExportInfo>,
     ) {
         for stmt in statements {
             if let Statement::Export(export_decl) = stmt {
@@ -227,8 +381,7 @@ impl SymbolIndex {
                                 source_uri: None,
                                 original_symbol_name: None,
                             };
-                            self.exports
-                                .insert((module_id.to_string(), exported_name), export_info);
+                            target.insert((module_id.to_string(), exported_name), export_info);
                         }
                     }
                     ExportKind::Named {
@@ -245,7 +398,6 @@ impl SymbolIndex {
                                 .unwrap_or_else(|| local_name.clone());
 
                             let export_info = if let Some(source_path) = source {
-                                // RE-EXPORT: Track source module information
                                 if let Some((source_module_id, source_uri)) =
                                     resolve_import(source_path, module_id)
                                 {
@@ -261,7 +413,6 @@ impl SymbolIndex {
                                         original_symbol_name: Some(local_name),
                                     }
                                 } else {
-                                    // Source module couldn't be resolved - treat as local export
                                     ExportInfo {
                                         exported_name: exported_name.clone(),
                                         local_name: local_name.clone(),
@@ -275,7 +426,6 @@ impl SymbolIndex {
                                     }
                                 }
                             } else {
-                                // LOCAL EXPORT
                                 ExportInfo {
                                     exported_name: exported_name.clone(),
                                     local_name,
@@ -288,8 +438,7 @@ impl SymbolIndex {
                                     original_symbol_name: None,
                                 }
                             };
-                            self.exports
-                                .insert((module_id.to_string(), exported_name), export_info);
+                            target.insert((module_id.to_string(), exported_name), export_info);
                         }
                     }
                     ExportKind::Default(_) => {
@@ -304,21 +453,16 @@ impl SymbolIndex {
                             source_uri: None,
                             original_symbol_name: None,
                         };
-                        self.exports
-                            .insert((module_id.to_string(), "default".to_string()), export_info);
+                        target.insert((module_id.to_string(), "default".to_string()), export_info);
                     }
                     ExportKind::All {
                         source,
                         is_type_only,
                     } => {
-                        // export * from './module' or export type * from './module'
-                        // Copy all exports from source module to this module
                         if let Some((source_module_id, source_uri)) =
                             resolve_import(source, module_id)
                         {
-                            // Look up all exports from source module in symbol index
-                            let source_exports: Vec<_> = self
-                                .exports
+                            let source_exports: Vec<_> = existing_exports
                                 .iter()
                                 .filter(|((src_mid, _), _)| src_mid == &source_module_id)
                                 .map(|((_, export_name), export_info)| {
@@ -326,9 +470,7 @@ impl SymbolIndex {
                                 })
                                 .collect();
 
-                            // Add all source exports as re-exports in current module
                             for (export_name, source_export_info) in source_exports {
-                                // Skip non-type exports if this is export type *
                                 if *is_type_only && !source_export_info.is_type_only {
                                     continue;
                                 }
@@ -345,8 +487,7 @@ impl SymbolIndex {
                                     original_symbol_name: Some(source_export_info.local_name),
                                 };
 
-                                self.exports
-                                    .insert((module_id.to_string(), export_name), reexport_info);
+                                target.insert((module_id.to_string(), export_name), reexport_info);
                             }
                         }
                     }
@@ -355,20 +496,20 @@ impl SymbolIndex {
         }
     }
 
-    /// Index all imports in a module
-    fn index_imports(
-        &mut self,
+    /// Index imports into external collections (for snapshot diffing).
+    fn index_imports_to(
         uri: &Uri,
         module_id: &str,
         statements: &[Statement],
         interner: &StringInterner,
-        resolve_import: impl Fn(&str, &str) -> Option<(String, Uri)>,
+        resolve_import: &dyn Fn(&str, &str) -> Option<(String, Uri)>,
+        imports_target: &mut HashMap<(String, String), Vec<ImportInfo>>,
+        importer_entries: &mut HashSet<(String, String)>,
     ) {
         for stmt in statements {
             if let Statement::Import(import_decl) = stmt {
                 let import_source = &import_decl.source;
 
-                // Resolve the import path to get source module ID and URI
                 if let Some((source_module_id, source_uri)) =
                     resolve_import(import_source, module_id)
                 {
@@ -390,17 +531,12 @@ impl SymbolIndex {
                                     is_type_only: false,
                                 };
 
-                                // Add to imports index
-                                self.imports
+                                imports_target
                                     .entry((module_id.to_string(), local_name))
-                                    .or_insert_with(Vec::new)
+                                    .or_default()
                                     .push(import_info);
 
-                                // Add to importers reverse index
-                                self.importers
-                                    .entry((source_module_id.clone(), imported_name))
-                                    .or_insert_with(HashSet::new)
-                                    .insert(uri.clone());
+                                importer_entries.insert((source_module_id.clone(), imported_name));
                             }
                         }
                         ImportClause::Default(ident) => {
@@ -413,15 +549,13 @@ impl SymbolIndex {
                                 is_type_only: false,
                             };
 
-                            self.imports
+                            imports_target
                                 .entry((module_id.to_string(), local_name))
-                                .or_insert_with(Vec::new)
+                                .or_default()
                                 .push(import_info);
 
-                            self.importers
-                                .entry((source_module_id.clone(), "default".to_string()))
-                                .or_insert_with(HashSet::new)
-                                .insert(uri.clone());
+                            importer_entries
+                                .insert((source_module_id.clone(), "default".to_string()));
                         }
                         ImportClause::Namespace(_ident) => {
                             // Namespace imports are complex, skip for now
@@ -443,21 +577,15 @@ impl SymbolIndex {
                                     is_type_only: true,
                                 };
 
-                                // Add to imports index
-                                self.imports
+                                imports_target
                                     .entry((module_id.to_string(), local_name))
-                                    .or_insert_with(Vec::new)
+                                    .or_default()
                                     .push(import_info);
 
-                                // Add to importers reverse index
-                                self.importers
-                                    .entry((source_module_id.clone(), imported_name))
-                                    .or_insert_with(HashSet::new)
-                                    .insert(uri.clone());
+                                importer_entries.insert((source_module_id.clone(), imported_name));
                             }
                         }
                         ImportClause::Mixed { default, named } => {
-                            // Handle default import
                             let local_name = interner.resolve(default.node);
                             let import_info = ImportInfo {
                                 local_name: local_name.clone(),
@@ -467,17 +595,14 @@ impl SymbolIndex {
                                 is_type_only: false,
                             };
 
-                            self.imports
+                            imports_target
                                 .entry((module_id.to_string(), local_name))
-                                .or_insert_with(Vec::new)
+                                .or_default()
                                 .push(import_info);
 
-                            self.importers
-                                .entry((source_module_id.clone(), "default".to_string()))
-                                .or_insert_with(HashSet::new)
-                                .insert(uri.clone());
+                            importer_entries
+                                .insert((source_module_id.clone(), "default".to_string()));
 
-                            // Handle named imports
                             for spec in named.iter() {
                                 let imported_name = interner.resolve(spec.imported.node);
                                 let local_name = spec
@@ -494,15 +619,12 @@ impl SymbolIndex {
                                     is_type_only: false,
                                 };
 
-                                self.imports
+                                imports_target
                                     .entry((module_id.to_string(), local_name))
-                                    .or_insert_with(Vec::new)
+                                    .or_default()
                                     .push(import_info);
 
-                                self.importers
-                                    .entry((source_module_id.clone(), imported_name))
-                                    .or_insert_with(HashSet::new)
-                                    .insert(uri.clone());
+                                importer_entries.insert((source_module_id.clone(), imported_name));
                             }
                         }
                     }
@@ -511,25 +633,25 @@ impl SymbolIndex {
         }
     }
 
-    /// Index all workspace symbols in a module
-    fn index_workspace_symbols(
-        &mut self,
+    /// Index workspace symbols into an external collection (for snapshot diffing).
+    fn index_workspace_symbols_to(
         uri: &Uri,
         statements: &[Statement],
         interner: &StringInterner,
+        target: &mut HashMap<String, Vec<WorkspaceSymbolInfo>>,
     ) {
         for stmt in statements {
-            self.index_statement_symbols(uri, stmt, None, interner);
+            Self::index_statement_symbols_to(uri, stmt, None, interner, target);
         }
     }
 
-    /// Recursively index symbols from a statement
-    fn index_statement_symbols(
-        &mut self,
+    /// Recursively index symbols from a statement into an external collection.
+    fn index_statement_symbols_to(
         uri: &Uri,
         stmt: &Statement,
         container_name: Option<String>,
         interner: &StringInterner,
+        target: &mut HashMap<String, Vec<WorkspaceSymbolInfo>>,
     ) {
         use luanext_parser::ast::pattern::Pattern;
         use luanext_parser::ast::statement::ClassMember;
@@ -545,10 +667,7 @@ impl SymbolIndex {
                         span: ident.span.clone(),
                         container_name: container_name.clone(),
                     };
-                    self.workspace_symbols
-                        .entry(name.to_lowercase())
-                        .or_insert_with(Vec::new)
-                        .push(symbol);
+                    target.entry(name.to_lowercase()).or_default().push(symbol);
                 }
             }
             Statement::Function(func_decl) => {
@@ -560,10 +679,7 @@ impl SymbolIndex {
                     span: func_decl.name.span.clone(),
                     container_name: container_name.clone(),
                 };
-                self.workspace_symbols
-                    .entry(name.to_lowercase())
-                    .or_insert_with(Vec::new)
-                    .push(symbol);
+                target.entry(name.to_lowercase()).or_default().push(symbol);
             }
             Statement::Class(class_decl) => {
                 let class_name = interner.resolve(class_decl.name.node);
@@ -574,12 +690,11 @@ impl SymbolIndex {
                     span: class_decl.name.span.clone(),
                     container_name: container_name.clone(),
                 };
-                self.workspace_symbols
+                target
                     .entry(class_name.to_lowercase())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(symbol);
 
-                // Index class members
                 for member in class_decl.members.iter() {
                     match member {
                         ClassMember::Property(prop) => {
@@ -591,10 +706,7 @@ impl SymbolIndex {
                                 span: prop.name.span.clone(),
                                 container_name: Some(class_name.clone()),
                             };
-                            self.workspace_symbols
-                                .entry(name.to_lowercase())
-                                .or_insert_with(Vec::new)
-                                .push(symbol);
+                            target.entry(name.to_lowercase()).or_default().push(symbol);
                         }
                         ClassMember::Method(method) => {
                             let name = interner.resolve(method.name.node);
@@ -605,10 +717,7 @@ impl SymbolIndex {
                                 span: method.name.span.clone(),
                                 container_name: Some(class_name.clone()),
                             };
-                            self.workspace_symbols
-                                .entry(name.to_lowercase())
-                                .or_insert_with(Vec::new)
-                                .push(symbol);
+                            target.entry(name.to_lowercase()).or_default().push(symbol);
                         }
                         ClassMember::Constructor(ctor) => {
                             let symbol = WorkspaceSymbolInfo {
@@ -618,9 +727,9 @@ impl SymbolIndex {
                                 span: ctor.span.clone(),
                                 container_name: Some(class_name.clone()),
                             };
-                            self.workspace_symbols
+                            target
                                 .entry("constructor".to_string())
-                                .or_insert_with(Vec::new)
+                                .or_default()
                                 .push(symbol);
                         }
                         ClassMember::Getter(getter) => {
@@ -632,10 +741,7 @@ impl SymbolIndex {
                                 span: getter.name.span.clone(),
                                 container_name: Some(class_name.clone()),
                             };
-                            self.workspace_symbols
-                                .entry(name.to_lowercase())
-                                .or_insert_with(Vec::new)
-                                .push(symbol);
+                            target.entry(name.to_lowercase()).or_default().push(symbol);
                         }
                         ClassMember::Setter(setter) => {
                             let name = interner.resolve(setter.name.node);
@@ -646,10 +752,7 @@ impl SymbolIndex {
                                 span: setter.name.span.clone(),
                                 container_name: Some(class_name.clone()),
                             };
-                            self.workspace_symbols
-                                .entry(name.to_lowercase())
-                                .or_insert_with(Vec::new)
-                                .push(symbol);
+                            target.entry(name.to_lowercase()).or_default().push(symbol);
                         }
                         ClassMember::Operator(op) => {
                             let op_symbol = match op.operator {
@@ -686,10 +789,7 @@ impl SymbolIndex {
                                 span: op.span.clone(),
                                 container_name: Some(class_name.clone()),
                             };
-                            self.workspace_symbols
-                                .entry(name.to_lowercase())
-                                .or_insert_with(Vec::new)
-                                .push(symbol);
+                            target.entry(name.to_lowercase()).or_default().push(symbol);
                         }
                     }
                 }
@@ -703,10 +803,7 @@ impl SymbolIndex {
                     span: interface_decl.name.span.clone(),
                     container_name: container_name.clone(),
                 };
-                self.workspace_symbols
-                    .entry(name.to_lowercase())
-                    .or_insert_with(Vec::new)
-                    .push(symbol);
+                target.entry(name.to_lowercase()).or_default().push(symbol);
             }
             Statement::TypeAlias(type_decl) => {
                 let name = interner.resolve(type_decl.name.node);
@@ -717,10 +814,7 @@ impl SymbolIndex {
                     span: type_decl.name.span.clone(),
                     container_name: container_name.clone(),
                 };
-                self.workspace_symbols
-                    .entry(name.to_lowercase())
-                    .or_insert_with(Vec::new)
-                    .push(symbol);
+                target.entry(name.to_lowercase()).or_default().push(symbol);
             }
             Statement::Enum(enum_decl) => {
                 let name = interner.resolve(enum_decl.name.node);
@@ -731,10 +825,7 @@ impl SymbolIndex {
                     span: enum_decl.name.span.clone(),
                     container_name: container_name.clone(),
                 };
-                self.workspace_symbols
-                    .entry(name.to_lowercase())
-                    .or_insert_with(Vec::new)
-                    .push(symbol);
+                target.entry(name.to_lowercase()).or_default().push(symbol);
             }
             _ => {}
         }
@@ -1892,5 +1983,126 @@ mod tests {
             }
             _ => panic!("Expected ExportNotFound error"),
         }
+    }
+
+    // ── Incremental symbol index tests ──────────────────────────────
+
+    /// Helper: parse source code and return (ast, interner, arena).
+    /// Arena is returned so it stays alive for the duration of the test.
+    fn parse_source(
+        source: &str,
+    ) -> (
+        Program<'static>,
+        StringInterner,
+        luanext_parser::string_interner::CommonIdentifiers,
+        bumpalo::Bump,
+    ) {
+        let arena = bumpalo::Bump::new();
+        let handler = Arc::new(CollectingDiagnosticHandler::new());
+        let (interner, common_ids) = StringInterner::new_with_common_identifiers();
+        let mut lexer = Lexer::new(source, handler.clone(), &interner);
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens, handler, &interner, &common_ids, &arena);
+        let ast = parser.parse().unwrap();
+        // SAFETY: ast references arena-allocated data; we return both together
+        // and the caller must keep the arena alive.
+        let ast: Program<'static> = unsafe { std::mem::transmute(ast) };
+        let arena: bumpalo::Bump = unsafe { std::mem::transmute(arena) };
+        (ast, interner, common_ids, arena)
+    }
+
+    #[test]
+    fn test_incremental_update_no_change() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test/module.tl");
+        let module_id = "/test/module.tl";
+
+        let source = "export function greet(): void {}\nexport const X: number = 42";
+        let (ast, interner, _common_ids, _arena) = parse_source(source);
+
+        // First update — everything is new
+        let changed1 = index.update_document(&uri, module_id, &ast, &interner, |_, _| None);
+        assert!(changed1); // First time is always "changed"
+
+        // Second update with identical AST — nothing should change
+        let changed2 = index.update_document(&uri, module_id, &ast, &interner, |_, _| None);
+        assert!(!changed2); // Exports didn't change
+    }
+
+    #[test]
+    fn test_incremental_update_export_added() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test/module.tl");
+        let module_id = "/test/module.tl";
+
+        // Start with one export
+        let (ast1, interner1, _, _arena1) = parse_source("export function greet(): void {}");
+        index.update_document(&uri, module_id, &ast1, &interner1, |_, _| None);
+        assert!(index.get_export(module_id, "greet").is_some());
+
+        // Add a second export
+        let (ast2, interner2, _, _arena2) =
+            parse_source("export function greet(): void {}\nexport const X: number = 1");
+        let changed = index.update_document(&uri, module_id, &ast2, &interner2, |_, _| None);
+        assert!(changed);
+        assert!(index.get_export(module_id, "greet").is_some());
+        assert!(index.get_export(module_id, "X").is_some());
+    }
+
+    #[test]
+    fn test_incremental_update_export_removed() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test/module.tl");
+        let module_id = "/test/module.tl";
+
+        // Start with two exports
+        let (ast1, interner1, _, _arena1) =
+            parse_source("export function greet(): void {}\nexport const X: number = 1");
+        index.update_document(&uri, module_id, &ast1, &interner1, |_, _| None);
+        assert!(index.get_export(module_id, "greet").is_some());
+        assert!(index.get_export(module_id, "X").is_some());
+
+        // Remove one export
+        let (ast2, interner2, _, _arena2) = parse_source("export function greet(): void {}");
+        let changed = index.update_document(&uri, module_id, &ast2, &interner2, |_, _| None);
+        assert!(changed);
+        assert!(index.get_export(module_id, "greet").is_some());
+        assert!(index.get_export(module_id, "X").is_none()); // removed
+    }
+
+    #[test]
+    fn test_incremental_update_body_only() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test/module.tl");
+        let module_id = "/test/module.tl";
+
+        // Export a function with body v1
+        let (ast1, interner1, _, _arena1) =
+            parse_source("export function greet(): void {}\nconst x = 1");
+        let changed1 = index.update_document(&uri, module_id, &ast1, &interner1, |_, _| None);
+        assert!(changed1);
+
+        // Change only local variable (not exports) — exports should NOT change
+        let (ast2, interner2, _, _arena2) =
+            parse_source("export function greet(): void {}\nconst y = 2");
+        let changed2 = index.update_document(&uri, module_id, &ast2, &interner2, |_, _| None);
+        assert!(!changed2); // exports didn't change
+    }
+
+    #[test]
+    fn test_snapshot_cleanup_on_clear() {
+        let mut index = SymbolIndex::new();
+        let uri = make_uri("/test/module.tl");
+        let module_id = "/test/module.tl";
+
+        let (ast, interner, _, _arena) = parse_source("export function greet(): void {}");
+        index.update_document(&uri, module_id, &ast, &interner, |_, _| None);
+
+        // Snapshot should exist
+        assert!(index.document_snapshots.contains_key(&uri));
+
+        // Clear should remove snapshot
+        index.clear_document(&uri, module_id);
+        assert!(!index.document_snapshots.contains_key(&uri));
     }
 }

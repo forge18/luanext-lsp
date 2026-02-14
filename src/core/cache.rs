@@ -10,9 +10,11 @@
 //! - [`BoundedPositionCache<T>`]: Position-keyed cache with LRU eviction
 //! - [`DocumentCache`]: Per-document container holding all cache types
 //! - [`CacheStats`]: Hit/miss counters for observability
+//! - [`ModuleDependencyGraph`]: Tracks import relationships for cascade invalidation
+//! - [`ModuleExportsEntry`]: Cached type-checked exports for cross-file queries
 
 use lsp_types::{CompletionItem, Diagnostic, Hover, Position, SemanticTokens};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Cached result of a single type-check run, extracted to owned types.
 ///
@@ -334,6 +336,116 @@ impl CacheStats {
                 self.hit_rate() * 100.0
             );
         }
+    }
+}
+
+/// Compute a content hash for cache staleness detection.
+///
+/// Uses `DefaultHasher` (non-cryptographic) to detect content changes
+/// even across version resets (e.g., close + reopen a document).
+pub fn content_hash(text: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Cached type-checked exports for a module, shared across all consumers.
+///
+/// Avoids re-running lex→parse→typecheck when querying cross-file symbols.
+/// Populated lazily by `DocumentManager::ensure_module_exports_cached()`.
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // Public API - fields consumed by cross-file features
+pub struct ModuleExportsEntry {
+    /// Symbol name → owned type info (kind + type display)
+    pub symbols: HashMap<String, CachedSymbolInfo>,
+    /// Document version when this cache was computed
+    pub version: i32,
+    /// Content hash for detecting staleness after close+reopen (version reset)
+    pub content_hash: u64,
+}
+
+/// Tracks import relationships between modules for cascade invalidation.
+///
+/// When module B changes and module A imports from B, A's caches must be
+/// invalidated too. This graph enables efficient lookup of all affected modules.
+#[derive(Debug, Default, Clone)]
+pub struct ModuleDependencyGraph {
+    /// module_id → set of module_ids that import from it ("who depends on me?")
+    dependents: HashMap<String, HashSet<String>>,
+    /// module_id → set of module_ids it imports from ("what do I depend on?")
+    dependencies: HashMap<String, HashSet<String>>,
+}
+
+impl ModuleDependencyGraph {
+    /// Create an empty dependency graph.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record that `importer` imports from `imported`.
+    pub fn add_dependency(&mut self, importer: &str, imported: &str) {
+        self.dependents
+            .entry(imported.to_string())
+            .or_default()
+            .insert(importer.to_string());
+        self.dependencies
+            .entry(importer.to_string())
+            .or_default()
+            .insert(imported.to_string());
+    }
+
+    /// Clear all dependencies for a module (called before re-indexing).
+    pub fn clear_module(&mut self, module_id: &str) {
+        // Remove this module from all dependents sets
+        if let Some(deps) = self.dependencies.remove(module_id) {
+            for dep in &deps {
+                if let Some(set) = self.dependents.get_mut(dep) {
+                    set.remove(module_id);
+                    if set.is_empty() {
+                        self.dependents.remove(dep);
+                    }
+                }
+            }
+        }
+        // Also remove from dependents map (others may depend on this module)
+        // But we don't remove the dependents entry itself — others still import from us
+    }
+
+    /// Get all modules that directly depend on (import from) the given module.
+    #[allow(dead_code)] // Used in tests
+    pub fn get_dependents(&self, module_id: &str) -> HashSet<String> {
+        self.dependents.get(module_id).cloned().unwrap_or_default()
+    }
+
+    /// Get all modules transitively dependent on the given module.
+    ///
+    /// Uses BFS with a visited set to handle circular dependencies safely.
+    pub fn get_transitive_dependents(&self, module_id: &str) -> HashSet<String> {
+        let mut result = HashSet::new();
+        let mut queue = VecDeque::new();
+
+        // Seed with direct dependents
+        if let Some(direct) = self.dependents.get(module_id) {
+            for dep in direct {
+                queue.push_back(dep.clone());
+            }
+        }
+
+        while let Some(current) = queue.pop_front() {
+            if !result.insert(current.clone()) {
+                continue; // already visited
+            }
+            if let Some(next) = self.dependents.get(&current) {
+                for dep in next {
+                    if !result.contains(dep) {
+                        queue.push_back(dep.clone());
+                    }
+                }
+            }
+        }
+
+        result
     }
 }
 
@@ -662,5 +774,114 @@ mod tests {
         );
         assert!(!cache.type_check_result.is_valid(0));
         assert!(cache.last_published_diagnostics.is_none());
+    }
+
+    // ── ModuleDependencyGraph tests ─────────────────────────────────
+
+    #[test]
+    fn test_dependency_graph_add_and_get() {
+        let mut graph = ModuleDependencyGraph::new();
+        graph.add_dependency("/a.tl", "/b.tl");
+        graph.add_dependency("/a.tl", "/c.tl");
+
+        // /b.tl is depended on by /a.tl
+        let dependents = graph.get_dependents("/b.tl");
+        assert!(dependents.contains("/a.tl"));
+        assert_eq!(dependents.len(), 1);
+
+        // /c.tl is depended on by /a.tl
+        let dependents = graph.get_dependents("/c.tl");
+        assert!(dependents.contains("/a.tl"));
+    }
+
+    #[test]
+    fn test_dependency_graph_clear_module() {
+        let mut graph = ModuleDependencyGraph::new();
+        graph.add_dependency("/a.tl", "/b.tl");
+        graph.add_dependency("/a.tl", "/c.tl");
+        graph.add_dependency("/d.tl", "/b.tl");
+
+        graph.clear_module("/a.tl");
+
+        // /a.tl should no longer appear as a dependent of /b.tl
+        let dependents = graph.get_dependents("/b.tl");
+        assert!(!dependents.contains("/a.tl"));
+        // /d.tl should still be a dependent of /b.tl
+        assert!(dependents.contains("/d.tl"));
+        // /c.tl should have no dependents left
+        assert!(graph.get_dependents("/c.tl").is_empty());
+    }
+
+    #[test]
+    fn test_dependency_graph_transitive() {
+        let mut graph = ModuleDependencyGraph::new();
+        // A imports B, B imports C
+        graph.add_dependency("/a.tl", "/b.tl");
+        graph.add_dependency("/b.tl", "/c.tl");
+
+        // Changing C should invalidate both B and A
+        let transitive = graph.get_transitive_dependents("/c.tl");
+        assert!(transitive.contains("/b.tl"));
+        assert!(transitive.contains("/a.tl"));
+        assert_eq!(transitive.len(), 2);
+    }
+
+    #[test]
+    fn test_dependency_graph_circular() {
+        let mut graph = ModuleDependencyGraph::new();
+        // Circular: A imports B, B imports A
+        graph.add_dependency("/a.tl", "/b.tl");
+        graph.add_dependency("/b.tl", "/a.tl");
+
+        // Should not infinite loop
+        let transitive = graph.get_transitive_dependents("/a.tl");
+        assert!(transitive.contains("/b.tl"));
+        // /a.tl itself may or may not appear (B depends on A, so A is transitive of A)
+        // The important thing is no infinite loop
+    }
+
+    #[test]
+    fn test_dependency_graph_no_dependents() {
+        let graph = ModuleDependencyGraph::new();
+        assert!(graph.get_dependents("/x.tl").is_empty());
+        assert!(graph.get_transitive_dependents("/x.tl").is_empty());
+    }
+
+    // ── ModuleExportsEntry tests ────────────────────────────────────
+
+    #[test]
+    fn test_module_exports_entry_creation() {
+        let mut symbols = HashMap::new();
+        symbols.insert(
+            "foo".to_string(),
+            CachedSymbolInfo {
+                kind: "function".to_string(),
+                type_display: "(x: number) -> string".to_string(),
+            },
+        );
+        let entry = ModuleExportsEntry {
+            symbols,
+            version: 5,
+            content_hash: 12345,
+        };
+        assert_eq!(entry.version, 5);
+        assert_eq!(entry.symbols.len(), 1);
+        assert_eq!(entry.symbols["foo"].kind, "function");
+    }
+
+    // ── content_hash tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_content_hash_same_text() {
+        let h1 = content_hash("hello world");
+        let h2 = content_hash("hello world");
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn test_content_hash_differs() {
+        let h1 = content_hash("hello world");
+        let h2 = content_hash("hello world!");
+        assert_ne!(h1, h2);
     }
 }

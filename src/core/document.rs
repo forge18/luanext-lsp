@@ -1,8 +1,10 @@
 use super::analysis::SymbolIndex;
+use super::cache::{ModuleDependencyGraph, ModuleExportsEntry};
 use lsp_types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DidSaveTextDocumentParams, Position, Uri,
 };
+use luanext_parser::ast::statement::{ExportKind, Statement};
 use luanext_parser::ast::Program;
 use luanext_parser::diagnostics::CollectingDiagnosticHandler;
 use luanext_parser::string_interner::StringInterner;
@@ -73,6 +75,10 @@ pub struct DocumentManager {
     symbol_index: SymbolIndex,
     /// Strategy analyzer for incremental parsing heuristics
     strategy_analyzer: crate::core::heuristics::ParseStrategyAnalyzer,
+    /// Cached module type exports for cross-file queries
+    module_exports_cache: HashMap<String, ModuleExportsEntry>,
+    /// Dependency graph for cascade invalidation
+    dependency_graph: ModuleDependencyGraph,
 }
 
 /// Represents a single document with cached analysis
@@ -287,6 +293,8 @@ impl DocumentManager {
             strategy_analyzer: crate::core::heuristics::ParseStrategyAnalyzer::new(
                 crate::core::heuristics::IncrementalConfig::from_env(),
             ),
+            module_exports_cache: HashMap::new(),
+            dependency_graph: ModuleDependencyGraph::new(),
         }
     }
 
@@ -353,6 +361,10 @@ impl DocumentManager {
 
     pub fn change(&mut self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri.clone();
+
+        // Cascade invalidation info collected during the mutable borrow,
+        // applied after the borrow is released to avoid aliasing.
+        let mut cascade_dependents: Option<std::collections::HashSet<String>> = None;
 
         if let Some(doc) = self.documents.get_mut(&uri) {
             let start_time = std::time::Instant::now();
@@ -492,26 +504,60 @@ impl DocumentManager {
                         doc.metrics.record_full_parse(elapsed);
                     }
 
-                    self.symbol_index.update_document(
+                    let resolve_import = |import_path: &str, from_module_id: &str| {
+                        self.module_resolver
+                            .resolve(import_path, std::path::Path::new(from_module_id))
+                            .ok()
+                            .and_then(|resolved_module_id| {
+                                self.module_id_to_uri.get(&resolved_module_id).map(|uri| {
+                                    (resolved_module_id.as_str().to_string(), uri.clone())
+                                })
+                            })
+                    };
+
+                    let exports_changed = self.symbol_index.update_document(
                         &uri,
                         module_id.as_str(),
-                        &ast,
+                        ast,
                         &interner,
-                        |import_path, from_module_id: &str| {
-                            self.module_resolver
-                                .resolve(import_path, std::path::Path::new(from_module_id))
-                                .ok()
-                                .and_then(|resolved_module_id| {
-                                    self.module_id_to_uri.get(&resolved_module_id).map(|uri| {
-                                        (resolved_module_id.as_str().to_string(), uri.clone())
-                                    })
-                                })
-                        },
+                        &resolve_import,
                     );
+
+                    // Update dependency graph
+                    let mid_str = module_id.as_str().to_string();
+                    self.dependency_graph.clear_module(&mid_str);
+                    let deps = Self::extract_dependencies(ast, &mid_str, &resolve_import);
+                    for dep in &deps {
+                        self.dependency_graph.add_dependency(&mid_str, dep);
+                    }
+
+                    // Collect cascade invalidation info (applied after mutable borrow ends)
+                    if exports_changed {
+                        self.module_exports_cache.remove(&mid_str);
+                        let dependents = self.dependency_graph.get_transitive_dependents(&mid_str);
+                        for dep in &dependents {
+                            self.module_exports_cache.remove(dep);
+                        }
+                        cascade_dependents = Some(dependents);
+                    }
 
                     // Log metrics every 100 parses
                     if doc.version % 100 == 0 {
                         doc.metrics.maybe_log_stats();
+                    }
+                }
+            }
+        }
+
+        // Apply cascade invalidation to dependent documents (outside mutable borrow)
+        if let Some(dependents) = cascade_dependents {
+            for dep in &dependents {
+                if let Some(dep_uri) = self
+                    .module_id_to_uri
+                    .get(&ModuleId::from(PathBuf::from(dep.as_str())))
+                {
+                    if let Some(dep_doc) = self.documents.get(dep_uri) {
+                        dep_doc.cache.borrow_mut().type_check_result.invalidate();
                     }
                 }
             }
@@ -537,7 +583,17 @@ impl DocumentManager {
         let uri = &params.text_document.uri;
 
         if let Some(module_id) = self.uri_to_module_id.get(uri) {
-            self.symbol_index.clear_document(uri, module_id.as_str());
+            let mid_str = module_id.as_str().to_string();
+            self.symbol_index.clear_document(uri, &mid_str);
+            self.module_exports_cache.remove(&mid_str);
+
+            // Cascade invalidate dependents
+            let dependents = self.dependency_graph.get_transitive_dependents(&mid_str);
+            for dep in &dependents {
+                self.module_exports_cache.remove(dep);
+            }
+
+            self.dependency_graph.clear_module(&mid_str);
         }
 
         if let Some(module_id) = self.uri_to_module_id.remove(uri) {
@@ -564,6 +620,87 @@ impl DocumentManager {
 
     pub fn uri_to_module_id(&self, uri: &Uri) -> Option<&ModuleId> {
         self.uri_to_module_id.get(uri)
+    }
+
+    /// Get cached module exports if valid for current document version.
+    #[allow(dead_code)]
+    pub fn get_module_exports(&self, module_id: &str) -> Option<&ModuleExportsEntry> {
+        if let Some(entry) = self.module_exports_cache.get(module_id) {
+            if let Some(uri) = self
+                .module_id_to_uri
+                .get(&ModuleId::from(PathBuf::from(module_id)))
+            {
+                if let Some(doc) = self.documents.get(uri) {
+                    if entry.version == doc.version {
+                        return Some(entry);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Compute and cache module exports if not already cached at current version.
+    #[allow(dead_code)]
+    pub fn ensure_module_exports_cached(&mut self, module_id: &str) {
+        // Skip if already cached at current version
+        if self.get_module_exports(module_id).is_some() {
+            return;
+        }
+
+        let uri = self
+            .module_id_to_uri
+            .get(&ModuleId::from(PathBuf::from(module_id)))
+            .cloned();
+        if let Some(uri) = uri {
+            if let Some(doc) = self.documents.get(&uri) {
+                let result =
+                    crate::core::diagnostics::DiagnosticsProvider::ensure_type_checked(doc);
+                let entry = ModuleExportsEntry {
+                    symbols: result.symbols,
+                    version: doc.version,
+                    content_hash: super::cache::content_hash(&doc.text),
+                };
+                self.module_exports_cache
+                    .insert(module_id.to_string(), entry);
+            }
+        }
+    }
+
+    /// Extract module dependency edges from an AST's import and re-export statements.
+    fn extract_dependencies(
+        ast: &Program,
+        module_id: &str,
+        resolve_import: &dyn Fn(&str, &str) -> Option<(String, Uri)>,
+    ) -> Vec<String> {
+        let mut deps = Vec::new();
+        for stmt in ast.statements {
+            match stmt {
+                Statement::Import(import_decl) => {
+                    if let Some((dep_module_id, _)) = resolve_import(&import_decl.source, module_id)
+                    {
+                        deps.push(dep_module_id);
+                    }
+                }
+                Statement::Export(export_decl) => match &export_decl.kind {
+                    ExportKind::Named {
+                        source: Some(src), ..
+                    } => {
+                        if let Some((dep_module_id, _)) = resolve_import(src, module_id) {
+                            deps.push(dep_module_id);
+                        }
+                    }
+                    ExportKind::All { source, .. } => {
+                        if let Some((dep_module_id, _)) = resolve_import(source, module_id) {
+                            deps.push(dep_module_id);
+                        }
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+        deps
     }
 
     fn position_to_offset(text: &str, position: Position) -> usize {
