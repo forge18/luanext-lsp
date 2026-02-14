@@ -343,6 +343,10 @@ impl HoverProvider {
             "import" => ("Import statement", "Imports modules or specific exports.\n\n```typedlua\nimport { func } from \"module\"\n```"),
             "from" => ("From clause", "Specifies the module to import from."),
             "export" => ("Export statement", "Exports declarations from a module."),
+            "assertType" => (
+                "Runtime type assertion (compiler intrinsic)",
+                "Asserts that a value matches the specified type at runtime, throwing an error if the check fails.\n\nReturns the value with the narrowed type.\n\n```typedlua\nconst name = assertType<string>(input)\n-- Also narrows the argument: input is now string\n```\n\nSignature: `assertType<T>(value: unknown): T`"
+            ),
             _ => return None,
         };
 

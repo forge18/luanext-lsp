@@ -244,6 +244,11 @@ impl CompletionProvider {
             ("import", "Import statement", CompletionItemKind::KEYWORD),
             ("from", "From clause", CompletionItemKind::KEYWORD),
             ("export", "Export statement", CompletionItemKind::KEYWORD),
+            (
+                "assertType",
+                "Runtime type assertion intrinsic",
+                CompletionItemKind::FUNCTION,
+            ),
         ];
 
         keywords
