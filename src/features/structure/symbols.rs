@@ -62,6 +62,7 @@ impl SymbolsProvider {
                 if let Pattern::Identifier(ident) = &var_decl.pattern {
                     let kind = match var_decl.kind {
                         luanext_parser::ast::statement::VariableKind::Const => SymbolKind::CONSTANT,
+                        luanext_parser::ast::statement::VariableKind::Global => SymbolKind::VARIABLE,
                         luanext_parser::ast::statement::VariableKind::Local => SymbolKind::VARIABLE,
                     };
 
