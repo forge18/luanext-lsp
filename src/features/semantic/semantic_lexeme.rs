@@ -470,6 +470,20 @@ impl SemanticTokensProvider {
                 self.collect_tokens_from_expression(then_expr, tokens, last_line, last_char);
                 self.collect_tokens_from_expression(else_expr, tokens, last_line, last_char);
             }
+            ExpressionKind::MethodCall(object, method_name, args, _types) => {
+                self.collect_tokens_from_expression(object, tokens, last_line, last_char);
+                self.add_token(
+                    &method_name.span,
+                    &SemanticTokenType::METHOD,
+                    &[],
+                    tokens,
+                    last_line,
+                    last_char,
+                );
+                for arg in args.iter() {
+                    self.collect_tokens_from_expression(&arg.value, tokens, last_line, last_char);
+                }
+            }
             ExpressionKind::Parenthesized(inner) => {
                 self.collect_tokens_from_expression(inner, tokens, last_line, last_char);
             }
@@ -1029,7 +1043,8 @@ mod tests {
     fn test_method_call_tokens() {
         let provider = SemanticTokensProvider::new();
 
-        let doc = Document::new_test("obj:method()".to_string(), 1);
+        // LuaNext uses :: for method calls (not single : like Lua)
+        let doc = Document::new_test("obj::method()".to_string(), 1);
         let result = provider.provide_full(&doc);
 
         assert!(!result.data.is_empty());
