@@ -157,7 +157,25 @@ fn main_loop(connection: Connection, params: InitializeParams) -> Result<()> {
     tracing::info!("LSP workspace root: {:?}", workspace_root);
 
     let fs = Arc::new(RealFileSystem);
-    let compiler_options = CompilerOptions::default();
+
+    // Try to load project config for path aliases and other settings
+    let compiler_options = {
+        let config_path = workspace_root.join("luanext.config.yaml");
+        if config_path.exists() {
+            match luanext_typechecker::cli::config::CompilerConfig::from_file(&config_path) {
+                Ok(config) => {
+                    tracing::info!("Loaded config from {:?}", config_path);
+                    config.compiler_options
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load config {:?}: {}", config_path, e);
+                    CompilerOptions::default()
+                }
+            }
+        } else {
+            CompilerOptions::default()
+        }
+    };
     let module_config = ModuleConfig::from_compiler_options(&compiler_options, &workspace_root);
 
     let module_registry = Arc::new(ModuleRegistry::new());
