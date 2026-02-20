@@ -13,9 +13,6 @@ pub mod protocol;
 // Core document management
 pub mod core;
 
-// Analysis features
-pub mod analysis;
-
 // Feature providers organized by category
 pub mod features;
 

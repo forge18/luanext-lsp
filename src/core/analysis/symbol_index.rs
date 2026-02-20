@@ -7,7 +7,6 @@ use std::collections::{HashMap, HashSet};
 
 /// Information about an exported symbol
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Public API - fields may be used by external consumers
 pub struct ExportInfo {
     /// The exported name (what other modules see)
     pub exported_name: String,
@@ -31,7 +30,6 @@ pub struct ExportInfo {
 
 /// Information about an imported symbol
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Public API - fields may be used by external consumers
 pub struct ImportInfo {
     /// The local name in the importing module
     pub local_name: String,
@@ -47,7 +45,6 @@ pub struct ImportInfo {
 
 /// Result of resolving a re-export chain
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Public API - used in LSP features
 pub struct ExportChainEnd {
     /// The final URI where the symbol is originally defined
     pub definition_uri: Uri,
@@ -59,7 +56,6 @@ pub struct ExportChainEnd {
 
 /// Error types for re-export resolution
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Public API - used in LSP features
 pub enum ReexportError {
     /// Re-export chain exceeds maximum depth
     ChainTooDeep { depth: usize, max_depth: usize },
@@ -832,7 +828,6 @@ impl SymbolIndex {
     }
 
     /// Get export information for a symbol
-    #[allow(dead_code)] // Used in tests for symbol index validation
     pub fn get_export(&self, module_id: &str, symbol_name: &str) -> Option<&ExportInfo> {
         self.exports
             .get(&(module_id.to_string(), symbol_name.to_string()))
@@ -991,7 +986,6 @@ impl SymbolIndex {
     ///
     /// - `Ok(ExportChainEnd)`: Original definition location and metadata
     /// - `Err(ReexportError)`: Resolution failure (cycle, depth limit, not found)
-    #[allow(dead_code)] // Used in LSP features
     pub fn resolve_reexport_chain(
         &self,
         module_id: &str,

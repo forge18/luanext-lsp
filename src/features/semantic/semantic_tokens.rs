@@ -215,45 +215,6 @@ impl SemanticTokensProvider {
         result
     }
 
-    /// Helper: Create a semantic token entry
-    ///
-    /// LSP semantic tokens use a relative encoding:
-    /// [deltaLine, deltaStartChar, length, tokenType, tokenModifiers]
-    ///
-    /// Each token is encoded relative to the previous token
-    #[allow(dead_code)]
-    fn create_token(
-        &self,
-        delta_line: u32,
-        delta_start: u32,
-        length: u32,
-        token_type: &SemanticTokenType,
-        modifiers: &[SemanticTokenModifier],
-    ) -> Vec<u32> {
-        vec![
-            delta_line,
-            delta_start,
-            length,
-            self.get_token_type_index(token_type),
-            self.encode_modifiers(modifiers),
-        ]
-    }
-
-    /// Helper: Classify a token based on AST node type
-    #[allow(dead_code)]
-    fn classify_token(&self, _node_kind: &str) -> (SemanticTokenType, Vec<SemanticTokenModifier>) {
-        // Examples:
-        // - FunctionDeclaration -> (FUNCTION, [DECLARATION])
-        // - ClassDeclaration -> (CLASS, [DECLARATION])
-        // - VariableDeclaration with const -> (VARIABLE, [DECLARATION, READONLY])
-        // - Parameter -> (PARAMETER, [DECLARATION])
-        // - PropertyAccess -> (PROPERTY, [])
-        // - MethodCall -> (METHOD, [])
-        // - TypeReference -> (TYPE, [])
-
-        (SemanticTokenType::VARIABLE, vec![])
-    }
-
     /// Collect semantic tokens from a statement
     fn collect_tokens_from_statement(
         &self,

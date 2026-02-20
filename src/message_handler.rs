@@ -21,8 +21,9 @@ use lsp_types::request::{
     CodeActionRequest, CodeActionResolveRequest, Completion, DocumentSymbolRequest,
     FoldingRangeRequest, Formatting, GotoDefinition, HoverRequest, InlayHintRequest,
     InlayHintResolveRequest, OnTypeFormatting, PrepareRenameRequest, RangeFormatting, References,
-    Rename, SelectionRangeRequest, SemanticTokensFullDeltaRequest, SemanticTokensFullRequest,
-    SemanticTokensRangeRequest, SignatureHelpRequest, WorkspaceSymbolRequest,
+    Rename, ResolveCompletionItem, SelectionRangeRequest, SemanticTokensFullDeltaRequest,
+    SemanticTokensFullRequest, SemanticTokensRangeRequest, SignatureHelpRequest,
+    WorkspaceSymbolRequest,
 };
 use lsp_types::*;
 use serde::{de::DeserializeOwned, Serialize};
@@ -35,10 +36,8 @@ use serde::{de::DeserializeOwned, Serialize};
 ///
 /// Use this when you need LSP document management without full type checking capabilities.
 /// For complete IDE features (completion, hover, goto-definition, etc.), use `MessageHandler`.
-#[allow(dead_code)]
 pub struct BasicMessageHandler;
 
-#[allow(dead_code)]
 impl BasicMessageHandler {
     pub fn new() -> Self {
         Self
@@ -179,7 +178,6 @@ impl MessageHandler {
         Self { container }
     }
 
-    #[allow(dead_code)]
     pub fn with_container(container: DiContainer) -> Self {
         Self { container }
     }
@@ -232,6 +230,17 @@ impl MessageHandler {
                     })
                     .map(CompletionResponse::Array);
 
+                let response = Response::new_ok(id, result);
+                connection.send_response(response)?;
+                return Ok(());
+            }
+            Err(req) => req,
+        };
+
+        match Self::cast_request::<ResolveCompletionItem>(req.clone()) {
+            Ok((id, params)) => {
+                let completion_provider = self.container.resolve::<CompletionProvider>().unwrap();
+                let result = completion_provider.resolve(params);
                 let response = Response::new_ok(id, result);
                 connection.send_response(response)?;
                 return Ok(());

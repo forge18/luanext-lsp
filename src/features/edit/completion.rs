@@ -22,7 +22,6 @@ impl CompletionProvider {
     }
 
     /// Provide completion items at a given position
-    #[allow(dead_code)]
     pub fn provide(&self, document: &Document, position: Position) -> Vec<CompletionItem> {
         self.provide_with_workspace(document, position, None)
     }
@@ -769,10 +768,51 @@ impl CompletionProvider {
     }
 
     /// Resolve additional details for a completion item
-    #[allow(dead_code)]
-    pub fn resolve(&self, item: CompletionItem) -> CompletionItem {
-        // For now, just return the item as-is
+    ///
+    /// Enriches the item with documentation based on its kind and detail.
+    pub fn resolve(&self, mut item: CompletionItem) -> CompletionItem {
+        // Add documentation if not already present
+        if item.documentation.is_none() {
+            if let Some(doc) = Self::generate_documentation(&item) {
+                item.documentation = Some(Documentation::MarkupContent(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: doc,
+                }));
+            }
+        }
         item
+    }
+
+    /// Generate documentation for a completion item based on its kind and detail
+    fn generate_documentation(item: &CompletionItem) -> Option<String> {
+        let detail = item.detail.as_deref()?;
+        let label = &item.label;
+
+        match item.kind {
+            Some(CompletionItemKind::FUNCTION) | Some(CompletionItemKind::METHOD) => {
+                Some(format!("```luanext\n{label}: {detail}\n```"))
+            }
+            Some(CompletionItemKind::VARIABLE) | Some(CompletionItemKind::CONSTANT) => {
+                Some(format!("`{label}`: {detail}"))
+            }
+            Some(CompletionItemKind::CLASS) => Some(format!("```luanext\nclass {label}\n```")),
+            Some(CompletionItemKind::INTERFACE) => {
+                Some(format!("```luanext\ninterface {label}\n```"))
+            }
+            Some(CompletionItemKind::ENUM) => Some(format!("```luanext\nenum {label}\n```")),
+            Some(CompletionItemKind::PROPERTY) | Some(CompletionItemKind::FIELD) => {
+                Some(format!("`{label}`: {detail}"))
+            }
+            Some(CompletionItemKind::MODULE) => Some(format!("Module: {detail}")),
+            Some(CompletionItemKind::KEYWORD) => Some(format!("Keyword `{label}`")),
+            _ => {
+                if !detail.is_empty() {
+                    Some(format!("`{label}`: {detail}"))
+                } else {
+                    None
+                }
+            }
+        }
     }
 
     /// Complete import paths based on workspace files
@@ -897,7 +937,7 @@ impl CompletionProviderTrait for CompletionProvider {
     }
 
     fn resolve(&self, item: CompletionItem) -> CompletionItem {
-        item
+        Self::resolve(self, item)
     }
 }
 

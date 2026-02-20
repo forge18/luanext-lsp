@@ -1,5 +1,9 @@
 #![allow(clippy::all)]
 #![allow(deprecated)]
+// The binary re-declares the lib's module tree via `mod` statements.
+// Items that are used by integration tests/benches (via the lib crate)
+// appear dead within the binary's compilation unit. This is expected.
+#![allow(dead_code)]
 
 mod arena_pool;
 mod core;

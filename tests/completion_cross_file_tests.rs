@@ -15,7 +15,6 @@ mod test_utils {
     use luanext_typechecker::module_resolver::ModuleId;
     use std::path::PathBuf;
 
-    #[allow(dead_code)]
     pub fn create_uri(path: &str) -> Uri {
         Uri::from_str(&format!("file://{}", path)).unwrap()
     }

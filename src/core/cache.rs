@@ -533,7 +533,6 @@ impl DocumentCache {
 /// Avoids re-running lex→parse→typecheck when querying cross-file symbols.
 /// Populated lazily by `DocumentManager::ensure_module_exports_cached()`.
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Public API - fields consumed by cross-file features
 pub struct ModuleExportsEntry {
     /// Symbol name → owned type info (kind + type display)
     pub symbols: HashMap<String, CachedSymbolInfo>,
@@ -591,7 +590,6 @@ impl ModuleDependencyGraph {
     }
 
     /// Get all modules that directly depend on (import from) the given module.
-    #[allow(dead_code)] // Used in tests
     pub fn get_dependents(&self, module_id: &str) -> HashSet<String> {
         self.dependents.get(module_id).cloned().unwrap_or_default()
     }

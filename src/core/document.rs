@@ -22,7 +22,6 @@ use std::sync::Arc;
 /// and potential future substitution of different document storage backends.
 /// Currently implemented by [`DocumentManager`] but used directly
 /// rather than via trait objects.
-#[allow(dead_code)]
 pub trait DocumentManagerTrait {
     fn get(&self, uri: &Uri) -> Option<&Document>;
     fn symbol_index(&self) -> &SymbolIndex;
@@ -60,16 +59,12 @@ pub type ParsedAst = (
 #[derive(Debug)]
 pub struct DocumentManager {
     documents: HashMap<Uri, Document>,
-    /// Module registry for cross-file symbol tracking
-    #[allow(dead_code)]
-    module_registry: Arc<ModuleRegistry>,
     /// Module resolver for import path resolution
     module_resolver: Arc<ModuleResolver>,
     /// Bidirectional mapping between URIs and ModuleIds
     uri_to_module_id: HashMap<Uri, ModuleId>,
     module_id_to_uri: HashMap<ModuleId, Uri>,
     /// Workspace root path
-    #[allow(dead_code)]
     workspace_root: PathBuf,
     /// Reverse index for fast cross-file symbol lookups
     symbol_index: SymbolIndex,
@@ -124,7 +119,6 @@ impl std::fmt::Debug for Document {
 impl Document {
     /// Create a test document with minimal setup
     /// Available in both test and non-test builds for integration testing
-    #[allow(dead_code)]
     pub fn new_test(text: String, version: i32) -> Self {
         Self {
             text,
@@ -281,12 +275,11 @@ impl Document {
 impl DocumentManager {
     pub fn new(
         workspace_root: PathBuf,
-        module_registry: Arc<ModuleRegistry>,
+        _module_registry: Arc<ModuleRegistry>,
         module_resolver: Arc<ModuleResolver>,
     ) -> Self {
         Self {
             documents: HashMap::new(),
-            module_registry,
             module_resolver,
             uri_to_module_id: HashMap::new(),
             module_id_to_uri: HashMap::new(),
@@ -652,7 +645,6 @@ impl DocumentManager {
     }
 
     /// Get cached module exports if valid for current document version.
-    #[allow(dead_code)]
     pub fn get_module_exports(&self, module_id: &str) -> Option<&ModuleExportsEntry> {
         if let Some(entry) = self.module_exports_cache.get(module_id) {
             if let Some(uri) = self
@@ -670,7 +662,6 @@ impl DocumentManager {
     }
 
     /// Compute and cache module exports if not already cached at current version.
-    #[allow(dead_code)]
     pub fn ensure_module_exports_cached(&mut self, module_id: &str) {
         // Skip if already cached at current version
         if self.get_module_exports(module_id).is_some() {

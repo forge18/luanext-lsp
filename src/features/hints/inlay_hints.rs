@@ -82,9 +82,12 @@ impl InlayHintsProvider {
                     if stmt_start.line >= range.start.line && stmt_end.line <= range.end.line {
                         let pattern_end = span_to_position_end(&decl.pattern.span());
 
+                        // Look up the inferred type from the type checker
+                        let type_label = self.infer_variable_type(decl, type_checker, interner);
+
                         hints.push(InlayHint {
                             position: pattern_end,
-                            label: InlayHintLabel::String(": unknown".to_string()),
+                            label: InlayHintLabel::String(format!(": {}", type_label)),
                             kind: Some(InlayHintKind::TYPE),
                             text_edits: None,
                             tooltip: None,
@@ -93,6 +96,34 @@ impl InlayHintsProvider {
                             data: None,
                         });
                     }
+                }
+
+                // Visit expressions in the initializer
+                self.collect_hints_from_expression(
+                    &decl.initializer,
+                    type_checker,
+                    range,
+                    hints,
+                    interner,
+                );
+            }
+            Statement::Expression(expr) => {
+                self.collect_hints_from_expression(expr, type_checker, range, hints, interner);
+            }
+            Statement::Return(ret) => {
+                for value in ret.values.iter() {
+                    self.collect_hints_from_expression(value, type_checker, range, hints, interner);
+                }
+            }
+            Statement::Function(func) => {
+                for inner_stmt in func.body.statements.iter() {
+                    self.collect_hints_from_statement(
+                        inner_stmt,
+                        type_checker,
+                        range,
+                        hints,
+                        interner,
+                    );
                 }
             }
             Statement::Block(block) => {
@@ -106,12 +137,127 @@ impl InlayHintsProvider {
                     );
                 }
             }
+            Statement::If(if_stmt) => {
+                self.collect_hints_from_expression(
+                    &if_stmt.condition,
+                    type_checker,
+                    range,
+                    hints,
+                    interner,
+                );
+                for inner_stmt in if_stmt.then_block.statements.iter() {
+                    self.collect_hints_from_statement(
+                        inner_stmt,
+                        type_checker,
+                        range,
+                        hints,
+                        interner,
+                    );
+                }
+                for else_if in if_stmt.else_ifs.iter() {
+                    self.collect_hints_from_expression(
+                        &else_if.condition,
+                        type_checker,
+                        range,
+                        hints,
+                        interner,
+                    );
+                    for inner_stmt in else_if.block.statements.iter() {
+                        self.collect_hints_from_statement(
+                            inner_stmt,
+                            type_checker,
+                            range,
+                            hints,
+                            interner,
+                        );
+                    }
+                }
+                if let Some(else_block) = &if_stmt.else_block {
+                    for inner_stmt in else_block.statements.iter() {
+                        self.collect_hints_from_statement(
+                            inner_stmt,
+                            type_checker,
+                            range,
+                            hints,
+                            interner,
+                        );
+                    }
+                }
+            }
+            Statement::While(while_stmt) => {
+                self.collect_hints_from_expression(
+                    &while_stmt.condition,
+                    type_checker,
+                    range,
+                    hints,
+                    interner,
+                );
+                for inner_stmt in while_stmt.body.statements.iter() {
+                    self.collect_hints_from_statement(
+                        inner_stmt,
+                        type_checker,
+                        range,
+                        hints,
+                        interner,
+                    );
+                }
+            }
+            Statement::For(for_stmt) => {
+                use luanext_parser::ast::statement::ForStatement;
+                let body = match *for_stmt {
+                    ForStatement::Numeric(num) => &num.body,
+                    ForStatement::Generic(ref gen) => &gen.body,
+                };
+                for inner_stmt in body.statements.iter() {
+                    self.collect_hints_from_statement(
+                        inner_stmt,
+                        type_checker,
+                        range,
+                        hints,
+                        interner,
+                    );
+                }
+            }
+            Statement::Repeat(repeat_stmt) => {
+                for inner_stmt in repeat_stmt.body.statements.iter() {
+                    self.collect_hints_from_statement(
+                        inner_stmt,
+                        type_checker,
+                        range,
+                        hints,
+                        interner,
+                    );
+                }
+                self.collect_hints_from_expression(
+                    &repeat_stmt.until,
+                    type_checker,
+                    range,
+                    hints,
+                    interner,
+                );
+            }
             _ => {}
         }
     }
 
+    /// Infer the type of a variable declaration by looking it up in the type checker
+    fn infer_variable_type(
+        &self,
+        decl: &luanext_parser::ast::statement::VariableDeclaration,
+        type_checker: &TypeChecker,
+        interner: &StringInterner,
+    ) -> String {
+        use luanext_parser::ast::pattern::Pattern;
+        if let Pattern::Identifier(ident) = &decl.pattern {
+            let name = interner.resolve(ident.node);
+            if let Some(symbol) = type_checker.lookup_symbol(&name) {
+                return self.format_type_simple(&symbol.typ, interner);
+            }
+        }
+        "unknown".to_string()
+    }
+
     /// Collect parameter name hints from function calls
-    #[allow(dead_code)]
     fn collect_hints_from_expression(
         &self,
         expr: &Expression,
@@ -204,14 +350,12 @@ impl InlayHintsProvider {
     }
 
     /// Check if a span is within the requested range
-    #[allow(dead_code)]
     fn span_in_range(&self, span: &Span, range: Range) -> bool {
         let span_line = (span.line.saturating_sub(1)) as u32;
         span_line >= range.start.line && span_line <= range.end.line
     }
 
     /// Format a type for display
-    #[allow(dead_code)]
     fn format_type_simple(
         &self,
         typ: &luanext_parser::ast::types::Type,
@@ -239,7 +383,6 @@ impl InlayHintsProvider {
 }
 
 /// Convert a Span to an LSP Position (start)
-#[allow(dead_code)]
 fn span_to_position_start(span: &Span) -> Position {
     Position {
         line: (span.line.saturating_sub(1)) as u32,
@@ -248,7 +391,6 @@ fn span_to_position_start(span: &Span) -> Position {
 }
 
 /// Convert a Span to an LSP Position (end)
-#[allow(dead_code)]
 fn span_to_position_end(span: &Span) -> Position {
     Position {
         line: (span.line.saturating_sub(1)) as u32,
