@@ -1063,48 +1063,48 @@ mod tests {
     #[test]
     fn test_dependency_graph_add_and_get() {
         let mut graph = ModuleDependencyGraph::new();
-        graph.add_dependency("/a.tl", "/b.tl");
-        graph.add_dependency("/a.tl", "/c.tl");
+        graph.add_dependency("/a.luax", "/b.luax");
+        graph.add_dependency("/a.luax", "/c.luax");
 
-        // /b.tl is depended on by /a.tl
-        let dependents = graph.get_dependents("/b.tl");
-        assert!(dependents.contains("/a.tl"));
+        // /b.luax is depended on by /a.luax
+        let dependents = graph.get_dependents("/b.luax");
+        assert!(dependents.contains("/a.luax"));
         assert_eq!(dependents.len(), 1);
 
-        // /c.tl is depended on by /a.tl
-        let dependents = graph.get_dependents("/c.tl");
-        assert!(dependents.contains("/a.tl"));
+        // /c.luax is depended on by /a.luax
+        let dependents = graph.get_dependents("/c.luax");
+        assert!(dependents.contains("/a.luax"));
     }
 
     #[test]
     fn test_dependency_graph_clear_module() {
         let mut graph = ModuleDependencyGraph::new();
-        graph.add_dependency("/a.tl", "/b.tl");
-        graph.add_dependency("/a.tl", "/c.tl");
-        graph.add_dependency("/d.tl", "/b.tl");
+        graph.add_dependency("/a.luax", "/b.luax");
+        graph.add_dependency("/a.luax", "/c.luax");
+        graph.add_dependency("/d.luax", "/b.luax");
 
-        graph.clear_module("/a.tl");
+        graph.clear_module("/a.luax");
 
-        // /a.tl should no longer appear as a dependent of /b.tl
-        let dependents = graph.get_dependents("/b.tl");
-        assert!(!dependents.contains("/a.tl"));
-        // /d.tl should still be a dependent of /b.tl
-        assert!(dependents.contains("/d.tl"));
-        // /c.tl should have no dependents left
-        assert!(graph.get_dependents("/c.tl").is_empty());
+        // /a.luax should no longer appear as a dependent of /b.luax
+        let dependents = graph.get_dependents("/b.luax");
+        assert!(!dependents.contains("/a.luax"));
+        // /d.luax should still be a dependent of /b.luax
+        assert!(dependents.contains("/d.luax"));
+        // /c.luax should have no dependents left
+        assert!(graph.get_dependents("/c.luax").is_empty());
     }
 
     #[test]
     fn test_dependency_graph_transitive() {
         let mut graph = ModuleDependencyGraph::new();
         // A imports B, B imports C
-        graph.add_dependency("/a.tl", "/b.tl");
-        graph.add_dependency("/b.tl", "/c.tl");
+        graph.add_dependency("/a.luax", "/b.luax");
+        graph.add_dependency("/b.luax", "/c.luax");
 
         // Changing C should invalidate both B and A
-        let transitive = graph.get_transitive_dependents("/c.tl");
-        assert!(transitive.contains("/b.tl"));
-        assert!(transitive.contains("/a.tl"));
+        let transitive = graph.get_transitive_dependents("/c.luax");
+        assert!(transitive.contains("/b.luax"));
+        assert!(transitive.contains("/a.luax"));
         assert_eq!(transitive.len(), 2);
     }
 
@@ -1112,21 +1112,21 @@ mod tests {
     fn test_dependency_graph_circular() {
         let mut graph = ModuleDependencyGraph::new();
         // Circular: A imports B, B imports A
-        graph.add_dependency("/a.tl", "/b.tl");
-        graph.add_dependency("/b.tl", "/a.tl");
+        graph.add_dependency("/a.luax", "/b.luax");
+        graph.add_dependency("/b.luax", "/a.luax");
 
         // Should not infinite loop
-        let transitive = graph.get_transitive_dependents("/a.tl");
-        assert!(transitive.contains("/b.tl"));
-        // /a.tl itself may or may not appear (B depends on A, so A is transitive of A)
+        let transitive = graph.get_transitive_dependents("/a.luax");
+        assert!(transitive.contains("/b.luax"));
+        // /a.luax itself may or may not appear (B depends on A, so A is transitive of A)
         // The important thing is no infinite loop
     }
 
     #[test]
     fn test_dependency_graph_no_dependents() {
         let graph = ModuleDependencyGraph::new();
-        assert!(graph.get_dependents("/x.tl").is_empty());
-        assert!(graph.get_transitive_dependents("/x.tl").is_empty());
+        assert!(graph.get_dependents("/x.luax").is_empty());
+        assert!(graph.get_transitive_dependents("/x.luax").is_empty());
     }
 
     // ── ModuleExportsEntry tests ────────────────────────────────────
@@ -1366,7 +1366,7 @@ mod tests {
     #[test]
     fn test_limiter_record_access() {
         let mut limiter = GlobalCacheLimiter::new();
-        limiter.record_access("file:///a.tl", 500);
+        limiter.record_access("file:///a.luax", 500);
         assert_eq!(limiter.total_bytes(), 500);
     }
 
@@ -1374,34 +1374,34 @@ mod tests {
     fn test_limiter_clamps_to_per_document_limit() {
         let mut limiter = GlobalCacheLimiter::new();
         // Record 5MB for one doc → should be clamped to 1MB
-        limiter.record_access("file:///big.tl", 5 * 1024 * 1024);
+        limiter.record_access("file:///big.luax", 5 * 1024 * 1024);
         assert_eq!(limiter.total_bytes(), DEFAULT_PER_DOCUMENT_SOFT_LIMIT);
     }
 
     #[test]
     fn test_limiter_remove_document() {
         let mut limiter = GlobalCacheLimiter::new();
-        limiter.record_access("file:///a.tl", 500);
-        limiter.record_access("file:///b.tl", 300);
+        limiter.record_access("file:///a.luax", 500);
+        limiter.record_access("file:///b.luax", 300);
         assert_eq!(limiter.total_bytes(), 800);
 
-        limiter.remove_document("file:///a.tl");
+        limiter.remove_document("file:///a.luax");
         assert_eq!(limiter.total_bytes(), 300);
     }
 
     #[test]
     fn test_limiter_remove_nonexistent_is_noop() {
         let mut limiter = GlobalCacheLimiter::new();
-        limiter.record_access("file:///a.tl", 500);
-        limiter.remove_document("file:///nonexistent.tl");
+        limiter.record_access("file:///a.luax", 500);
+        limiter.remove_document("file:///nonexistent.luax");
         assert_eq!(limiter.total_bytes(), 500);
     }
 
     #[test]
     fn test_limiter_no_eviction_under_limit() {
         let mut limiter = GlobalCacheLimiter::new();
-        limiter.record_access("file:///a.tl", 100);
-        limiter.record_access("file:///b.tl", 200);
+        limiter.record_access("file:///a.luax", 100);
+        limiter.record_access("file:///b.luax", 200);
         let evicted = limiter.documents_to_evict();
         assert!(evicted.is_empty());
     }
@@ -1409,23 +1409,23 @@ mod tests {
     #[test]
     fn test_limiter_update_existing_document_size() {
         let mut limiter = GlobalCacheLimiter::new();
-        limiter.record_access("file:///a.tl", 100);
+        limiter.record_access("file:///a.luax", 100);
         assert_eq!(limiter.total_bytes(), 100);
 
         // Update size
-        limiter.record_access("file:///a.tl", 500);
+        limiter.record_access("file:///a.luax", 500);
         assert_eq!(limiter.total_bytes(), 500);
     }
 
     #[test]
     fn test_limiter_mru_ordering() {
         let mut limiter = GlobalCacheLimiter::new();
-        limiter.record_access("file:///a.tl", 100);
-        limiter.record_access("file:///b.tl", 200);
-        limiter.record_access("file:///c.tl", 300);
+        limiter.record_access("file:///a.luax", 100);
+        limiter.record_access("file:///b.luax", 200);
+        limiter.record_access("file:///c.luax", 300);
 
         // Re-access 'a' → moves to MRU
-        limiter.record_access("file:///a.tl", 100);
+        limiter.record_access("file:///a.luax", 100);
 
         // Total is 600, well under 50MB → no eviction
         let evicted = limiter.documents_to_evict();

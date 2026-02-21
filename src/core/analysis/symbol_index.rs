@@ -20,7 +20,7 @@ pub struct ExportInfo {
     pub is_type_only: bool,
     /// Whether this export is a re-export from another module
     pub is_reexport: bool,
-    /// Source module ID if this is a re-export (e.g., "/path/to/source.tl")
+    /// Source module ID if this is a re-export (e.g., "/path/to/source.luax")
     pub source_module_id: Option<String>,
     /// Source module URI if this is a re-export
     pub source_uri: Option<Uri>,
@@ -1094,8 +1094,8 @@ mod tests {
     fn test_symbol_index_new() {
         let index = SymbolIndex::new();
 
-        let _uri = make_uri("/test/module.tl");
-        let module_id = "/test/module.tl";
+        let _uri = make_uri("/test/module.luax");
+        let module_id = "/test/module.luax";
 
         assert!(index.get_export(module_id, "foo").is_none());
         assert!(index.get_importers(module_id, "foo").is_empty());
@@ -1105,8 +1105,8 @@ mod tests {
     #[test]
     fn test_symbol_index_clear_document() {
         let mut index = SymbolIndex::new();
-        let uri = make_uri("/test/module.tl");
-        let module_id = "/test/module.tl";
+        let uri = make_uri("/test/module.luax");
+        let module_id = "/test/module.luax";
 
         index.clear_document(&uri, module_id);
 
@@ -1116,7 +1116,7 @@ mod tests {
 
     #[test]
     fn test_export_info_creation() {
-        let uri = make_uri("/test/module.tl");
+        let uri = make_uri("/test/module.luax");
         let export_info = ExportInfo {
             exported_name: "myFunc".to_string(),
             local_name: "localFunc".to_string(),
@@ -1138,7 +1138,7 @@ mod tests {
 
     #[test]
     fn test_export_info_default() {
-        let uri = make_uri("/test/module.tl");
+        let uri = make_uri("/test/module.luax");
         let export_info = ExportInfo {
             exported_name: "default".to_string(),
             local_name: "default".to_string(),
@@ -1158,8 +1158,8 @@ mod tests {
 
     #[test]
     fn test_import_info_creation() {
-        let source_uri = make_uri("/test/source.tl");
-        let importing_uri = make_uri("/test/importer.tl");
+        let source_uri = make_uri("/test/source.luax");
+        let importing_uri = make_uri("/test/importer.luax");
         let import_info = ImportInfo {
             local_name: "alias".to_string(),
             imported_name: "OriginalName".to_string(),
@@ -1177,7 +1177,7 @@ mod tests {
 
     #[test]
     fn test_workspace_symbol_info_creation() {
-        let uri = make_uri("/test/module.tl");
+        let uri = make_uri("/test/module.luax");
         let symbol_info = WorkspaceSymbolInfo {
             name: "myFunction".to_string(),
             kind: SymbolKind::FUNCTION,
@@ -1194,7 +1194,7 @@ mod tests {
 
     #[test]
     fn test_workspace_symbol_info_no_container() {
-        let uri = make_uri("/test/module.tl");
+        let uri = make_uri("/test/module.luax");
         let symbol_info = WorkspaceSymbolInfo {
             name: "myVariable".to_string(),
             kind: SymbolKind::VARIABLE,
@@ -1223,7 +1223,7 @@ mod tests {
     #[test]
     fn test_get_importers_empty() {
         let index = SymbolIndex::new();
-        let _uri = make_uri("/test/module.tl");
+        let _uri = make_uri("/test/module.luax");
         let importers = index.get_importers("/other/module", "foo");
 
         assert!(importers.is_empty());
@@ -1254,7 +1254,7 @@ mod tests {
 
     #[test]
     fn test_export_info_debug_format() {
-        let uri = make_uri("/test/module.tl");
+        let uri = make_uri("/test/module.luax");
         let export_info = ExportInfo {
             exported_name: "test".to_string(),
             local_name: "test".to_string(),
@@ -1273,8 +1273,8 @@ mod tests {
 
     #[test]
     fn test_import_info_debug_format() {
-        let source_uri = make_uri("/test/source.tl");
-        let importing_uri = make_uri("/test/importer.tl");
+        let source_uri = make_uri("/test/source.luax");
+        let importing_uri = make_uri("/test/importer.luax");
         let import_info = ImportInfo {
             local_name: "alias".to_string(),
             imported_name: "OriginalName".to_string(),
@@ -1288,7 +1288,7 @@ mod tests {
 
     #[test]
     fn test_workspace_symbol_info_debug_format() {
-        let uri = make_uri("/test/module.tl");
+        let uri = make_uri("/test/module.luax");
         let symbol_info = WorkspaceSymbolInfo {
             name: "testFunc".to_string(),
             kind: SymbolKind::FUNCTION,
@@ -1303,7 +1303,7 @@ mod tests {
 
     #[test]
     fn test_symbol_kinds() {
-        let uri = make_uri("/test/module.tl");
+        let uri = make_uri("/test/module.luax");
 
         let variable = WorkspaceSymbolInfo {
             name: "myVar".to_string(),
@@ -1353,8 +1353,8 @@ mod tests {
 
     #[test]
     fn test_multiple_uris_same_module() {
-        let uri1 = make_uri("/test/module.tl");
-        let uri2 = make_uri("/test/Module.tl");
+        let uri1 = make_uri("/test/module.luax");
+        let uri2 = make_uri("/test/Module.luax");
 
         assert_ne!(uri1, uri2);
     }
@@ -1373,8 +1373,8 @@ mod tests {
         use std::sync::Arc;
 
         let mut index = SymbolIndex::new();
-        let uri = make_uri("/test/module.tl");
-        let module_id = "/test/module.tl";
+        let uri = make_uri("/test/module.luax");
+        let module_id = "/test/module.luax";
 
         let arena = bumpalo::Bump::new();
         let handler = Arc::new(CollectingDiagnosticHandler::new());
@@ -1666,7 +1666,7 @@ mod tests {
     #[test]
     fn test_resolve_reexport_chain_direct_export() {
         let mut index = SymbolIndex::new();
-        let uri = make_uri("/module.tl");
+        let uri = make_uri("/module.luax");
 
         let export = ExportInfo {
             exported_name: "foo".to_string(),
@@ -1682,9 +1682,9 @@ mod tests {
 
         index
             .exports
-            .insert(("/module.tl".to_string(), "foo".to_string()), export);
+            .insert(("/module.luax".to_string(), "foo".to_string()), export);
 
-        let result = index.resolve_reexport_chain("/module.tl", "foo");
+        let result = index.resolve_reexport_chain("/module.luax", "foo");
         assert!(result.is_ok());
 
         let chain_end = result.unwrap();
@@ -1696,8 +1696,8 @@ mod tests {
     #[test]
     fn test_resolve_reexport_chain_single_level() {
         let mut index = SymbolIndex::new();
-        let uri_a = make_uri("/module_a.tl");
-        let uri_b = make_uri("/module_b.tl");
+        let uri_a = make_uri("/module_a.luax");
+        let uri_b = make_uri("/module_b.luax");
 
         // A exports foo
         let export_a = ExportInfo {
@@ -1720,19 +1720,19 @@ mod tests {
             is_default: false,
             is_type_only: false,
             is_reexport: true,
-            source_module_id: Some("/module_a.tl".to_string()),
+            source_module_id: Some("/module_a.luax".to_string()),
             source_uri: Some(uri_a.clone()),
             original_symbol_name: Some("foo".to_string()),
         };
 
         index
             .exports
-            .insert(("/module_a.tl".to_string(), "foo".to_string()), export_a);
+            .insert(("/module_a.luax".to_string(), "foo".to_string()), export_a);
         index
             .exports
-            .insert(("/module_b.tl".to_string(), "foo".to_string()), export_b);
+            .insert(("/module_b.luax".to_string(), "foo".to_string()), export_b);
 
-        let result = index.resolve_reexport_chain("/module_b.tl", "foo");
+        let result = index.resolve_reexport_chain("/module_b.luax", "foo");
         assert!(result.is_ok());
 
         let chain_end = result.unwrap();
@@ -1744,9 +1744,9 @@ mod tests {
     #[test]
     fn test_resolve_reexport_chain_multi_level() {
         let mut index = SymbolIndex::new();
-        let uri_a = make_uri("/module_a.tl");
-        let uri_b = make_uri("/module_b.tl");
-        let uri_c = make_uri("/module_c.tl");
+        let uri_a = make_uri("/module_a.luax");
+        let uri_b = make_uri("/module_b.luax");
+        let uri_c = make_uri("/module_c.luax");
 
         // A exports foo
         let export_a = ExportInfo {
@@ -1769,7 +1769,7 @@ mod tests {
             is_default: false,
             is_type_only: false,
             is_reexport: true,
-            source_module_id: Some("/module_a.tl".to_string()),
+            source_module_id: Some("/module_a.luax".to_string()),
             source_uri: Some(uri_a.clone()),
             original_symbol_name: Some("foo".to_string()),
         };
@@ -1782,22 +1782,22 @@ mod tests {
             is_default: false,
             is_type_only: false,
             is_reexport: true,
-            source_module_id: Some("/module_b.tl".to_string()),
+            source_module_id: Some("/module_b.luax".to_string()),
             source_uri: Some(uri_b.clone()),
             original_symbol_name: Some("foo".to_string()),
         };
 
         index
             .exports
-            .insert(("/module_a.tl".to_string(), "foo".to_string()), export_a);
+            .insert(("/module_a.luax".to_string(), "foo".to_string()), export_a);
         index
             .exports
-            .insert(("/module_b.tl".to_string(), "foo".to_string()), export_b);
+            .insert(("/module_b.luax".to_string(), "foo".to_string()), export_b);
         index
             .exports
-            .insert(("/module_c.tl".to_string(), "foo".to_string()), export_c);
+            .insert(("/module_c.luax".to_string(), "foo".to_string()), export_c);
 
-        let result = index.resolve_reexport_chain("/module_c.tl", "foo");
+        let result = index.resolve_reexport_chain("/module_c.luax", "foo");
         assert!(result.is_ok());
 
         let chain_end = result.unwrap();
@@ -1809,8 +1809,8 @@ mod tests {
     #[test]
     fn test_resolve_reexport_chain_circular() {
         let mut index = SymbolIndex::new();
-        let uri_a = make_uri("/module_a.tl");
-        let uri_b = make_uri("/module_b.tl");
+        let uri_a = make_uri("/module_a.luax");
+        let uri_b = make_uri("/module_b.luax");
 
         // A re-exports foo from B
         let export_a = ExportInfo {
@@ -1820,7 +1820,7 @@ mod tests {
             is_default: false,
             is_type_only: false,
             is_reexport: true,
-            source_module_id: Some("/module_b.tl".to_string()),
+            source_module_id: Some("/module_b.luax".to_string()),
             source_uri: Some(uri_b.clone()),
             original_symbol_name: Some("foo".to_string()),
         };
@@ -1833,19 +1833,19 @@ mod tests {
             is_default: false,
             is_type_only: false,
             is_reexport: true,
-            source_module_id: Some("/module_a.tl".to_string()),
+            source_module_id: Some("/module_a.luax".to_string()),
             source_uri: Some(uri_a.clone()),
             original_symbol_name: Some("foo".to_string()),
         };
 
         index
             .exports
-            .insert(("/module_a.tl".to_string(), "foo".to_string()), export_a);
+            .insert(("/module_a.luax".to_string(), "foo".to_string()), export_a);
         index
             .exports
-            .insert(("/module_b.tl".to_string(), "foo".to_string()), export_b);
+            .insert(("/module_b.luax".to_string(), "foo".to_string()), export_b);
 
-        let result = index.resolve_reexport_chain("/module_a.tl", "foo");
+        let result = index.resolve_reexport_chain("/module_a.luax", "foo");
         assert!(result.is_err());
 
         match result {
@@ -1864,7 +1864,7 @@ mod tests {
         // Create a chain of 12 modules: 0 exports, 1-11 re-export from previous
         // When we resolve from module_11, chain will have 12 elements, exceeding MAX_DEPTH of 10
         for i in 0..12 {
-            let current_module = format!("/module_{}.tl", i);
+            let current_module = format!("/module_{}.luax", i);
             let uri = make_uri(&current_module);
 
             let export = if i == 0 {
@@ -1887,8 +1887,8 @@ mod tests {
                     is_default: false,
                     is_type_only: false,
                     is_reexport: true,
-                    source_module_id: Some(format!("/module_{}.tl", i - 1)),
-                    source_uri: Some(make_uri(&format!("/module_{}.tl", i - 1))),
+                    source_module_id: Some(format!("/module_{}.luax", i - 1)),
+                    source_uri: Some(make_uri(&format!("/module_{}.luax", i - 1))),
                     original_symbol_name: Some("foo".to_string()),
                 }
             };
@@ -1900,7 +1900,7 @@ mod tests {
 
         // Resolving module_11 means: 11 -> 10 -> 9 -> 8 -> 7 -> 6 -> 5 -> 4 -> 3 -> 2 -> 1 -> 0
         // That's 12 modules in the chain, which exceeds MAX_DEPTH of 10
-        let result = index.resolve_reexport_chain("/module_11.tl", "foo");
+        let result = index.resolve_reexport_chain("/module_11.luax", "foo");
         assert!(result.is_err());
 
         match result {
@@ -1915,8 +1915,8 @@ mod tests {
     #[test]
     fn test_resolve_reexport_chain_aliasing() {
         let mut index = SymbolIndex::new();
-        let uri_a = make_uri("/module_a.tl");
-        let uri_b = make_uri("/module_b.tl");
+        let uri_a = make_uri("/module_a.luax");
+        let uri_b = make_uri("/module_b.luax");
 
         // A exports Foo
         let export_a = ExportInfo {
@@ -1939,19 +1939,19 @@ mod tests {
             is_default: false,
             is_type_only: false,
             is_reexport: true,
-            source_module_id: Some("/module_a.tl".to_string()),
+            source_module_id: Some("/module_a.luax".to_string()),
             source_uri: Some(uri_a.clone()),
             original_symbol_name: Some("Foo".to_string()),
         };
 
         index
             .exports
-            .insert(("/module_a.tl".to_string(), "Foo".to_string()), export_a);
+            .insert(("/module_a.luax".to_string(), "Foo".to_string()), export_a);
         index
             .exports
-            .insert(("/module_b.tl".to_string(), "Bar".to_string()), export_b);
+            .insert(("/module_b.luax".to_string(), "Bar".to_string()), export_b);
 
-        let result = index.resolve_reexport_chain("/module_b.tl", "Bar");
+        let result = index.resolve_reexport_chain("/module_b.luax", "Bar");
         assert!(result.is_ok());
 
         let chain_end = result.unwrap();
@@ -1964,7 +1964,7 @@ mod tests {
     fn test_resolve_reexport_chain_export_not_found() {
         let index = SymbolIndex::new();
 
-        let result = index.resolve_reexport_chain("/module.tl", "nonexistent");
+        let result = index.resolve_reexport_chain("/module.luax", "nonexistent");
         assert!(result.is_err());
 
         match result {
@@ -1972,7 +1972,7 @@ mod tests {
                 module_id,
                 symbol_name,
             }) => {
-                assert_eq!(module_id, "/module.tl");
+                assert_eq!(module_id, "/module.luax");
                 assert_eq!(symbol_name, "nonexistent");
             }
             _ => panic!("Expected ExportNotFound error"),
@@ -2008,8 +2008,8 @@ mod tests {
     #[test]
     fn test_incremental_update_no_change() {
         let mut index = SymbolIndex::new();
-        let uri = make_uri("/test/module.tl");
-        let module_id = "/test/module.tl";
+        let uri = make_uri("/test/module.luax");
+        let module_id = "/test/module.luax";
 
         let source = "export function greet(): void {}\nexport const X: number = 42";
         let (ast, interner, _common_ids, _arena) = parse_source(source);
@@ -2026,8 +2026,8 @@ mod tests {
     #[test]
     fn test_incremental_update_export_added() {
         let mut index = SymbolIndex::new();
-        let uri = make_uri("/test/module.tl");
-        let module_id = "/test/module.tl";
+        let uri = make_uri("/test/module.luax");
+        let module_id = "/test/module.luax";
 
         // Start with one export
         let (ast1, interner1, _, _arena1) = parse_source("export function greet(): void {}");
@@ -2046,8 +2046,8 @@ mod tests {
     #[test]
     fn test_incremental_update_export_removed() {
         let mut index = SymbolIndex::new();
-        let uri = make_uri("/test/module.tl");
-        let module_id = "/test/module.tl";
+        let uri = make_uri("/test/module.luax");
+        let module_id = "/test/module.luax";
 
         // Start with two exports
         let (ast1, interner1, _, _arena1) =
@@ -2067,8 +2067,8 @@ mod tests {
     #[test]
     fn test_incremental_update_body_only() {
         let mut index = SymbolIndex::new();
-        let uri = make_uri("/test/module.tl");
-        let module_id = "/test/module.tl";
+        let uri = make_uri("/test/module.luax");
+        let module_id = "/test/module.luax";
 
         // Export a function with body v1
         let (ast1, interner1, _, _arena1) =
@@ -2086,8 +2086,8 @@ mod tests {
     #[test]
     fn test_snapshot_cleanup_on_clear() {
         let mut index = SymbolIndex::new();
-        let uri = make_uri("/test/module.tl");
-        let module_id = "/test/module.tl";
+        let uri = make_uri("/test/module.luax");
+        let module_id = "/test/module.luax";
 
         let (ast, interner, _, _arena) = parse_source("export function greet(): void {}");
         index.update_document(&uri, module_id, &ast, &interner, |_, _| None);
