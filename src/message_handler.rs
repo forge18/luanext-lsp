@@ -4,7 +4,7 @@ use crate::di::{DiContainer, ServiceLifetime};
 use crate::features::*;
 use crate::protocol::LspConnection;
 use crate::traits::{
-    DefinitionProviderTrait, DiagnosticsProviderTrait, HoverProviderTrait, ReferencesProviderTrait,
+    DefinitionProviderTrait, DiagnosticsProviderTrait, ReferencesProviderTrait,
     SymbolsProviderTrait,
 };
 use anyhow::Result;
@@ -218,15 +218,10 @@ impl MessageHandler {
                 let position = params.text_document_position.position;
 
                 let completion_provider = self.container.resolve::<CompletionProvider>().unwrap();
-                let workspace_root = document_manager.workspace_root();
                 let result = document_manager
                     .get(uri)
                     .map(|doc| {
-                        completion_provider.provide_with_workspace(
-                            doc,
-                            position,
-                            Some(workspace_root),
-                        )
+                        completion_provider.provide_with_manager(doc, position, document_manager)
                     })
                     .map(CompletionResponse::Array);
 
@@ -254,9 +249,9 @@ impl MessageHandler {
                 let position = params.text_document_position_params.position;
 
                 let hover_provider = self.container.resolve::<HoverProvider>().unwrap();
-                let result = document_manager
-                    .get(uri)
-                    .and_then(|doc| hover_provider.provide(doc, position));
+                let result = document_manager.get(uri).and_then(|doc| {
+                    hover_provider.provide_with_manager(doc, position, document_manager)
+                });
 
                 let response = Response::new_ok(id, result);
                 connection.send_response(response)?;
@@ -290,7 +285,13 @@ impl MessageHandler {
 
                 let references_provider = self.container.resolve::<ReferencesProvider>().unwrap();
                 let result = document_manager.get(uri).map(|doc| {
-                    references_provider.provide(uri, doc, position, include_declaration)
+                    references_provider.provide(
+                        uri,
+                        doc,
+                        position,
+                        include_declaration,
+                        document_manager,
+                    )
                 });
 
                 let response = Response::new_ok(id, result);

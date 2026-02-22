@@ -300,13 +300,19 @@ impl DocumentManager {
     }
 
     /// Create a test document manager with mock module system
-    #[cfg(test)]
     pub fn new_test() -> Self {
-        use luanext_typechecker::cli::config::CompilerOptions;
         use luanext_typechecker::cli::fs::MockFileSystem;
+        Self::new_test_with_fs(MockFileSystem::new())
+    }
+
+    /// Create a test document manager with a pre-populated mock file system.
+    ///
+    /// Use `MockFileSystem::add_file()` to populate files before calling this.
+    pub fn new_test_with_fs(fs: luanext_typechecker::cli::fs::MockFileSystem) -> Self {
+        use luanext_typechecker::cli::config::CompilerOptions;
 
         let workspace_root = PathBuf::from("/test");
-        let fs = Arc::new(MockFileSystem::new());
+        let fs = Arc::new(fs);
         let compiler_options = CompilerOptions::default();
         let module_config =
             luanext_typechecker::module_resolver::ModuleConfig::from_compiler_options(
@@ -321,6 +327,21 @@ impl DocumentManager {
         ));
 
         Self::new(workspace_root, module_registry, module_resolver)
+    }
+
+    /// Add a document for testing with explicit module_id (no canonicalization)
+    pub fn add_test_document(&mut self, uri: &Uri, module_id_str: &str, text: &str) {
+        let module_id = ModuleId::new(PathBuf::from(module_id_str));
+        let mut document = Document::new_test(text.to_string(), 1);
+        document.module_id = Some(module_id.clone());
+        self.uri_to_module_id.insert(uri.clone(), module_id.clone());
+        self.module_id_to_uri.insert(module_id, uri.clone());
+        self.documents.insert(uri.clone(), document);
+    }
+
+    /// Get mutable access to the symbol index for test setup
+    pub fn symbol_index_mut(&mut self) -> &mut SymbolIndex {
+        &mut self.symbol_index
     }
 
     pub fn open(&mut self, params: DidOpenTextDocumentParams) {
@@ -634,6 +655,18 @@ impl DocumentManager {
 
     pub fn module_resolver(&self) -> &Arc<ModuleResolver> {
         &self.module_resolver
+    }
+
+    /// Load a module from disk that isn't currently open in the editor.
+    ///
+    /// Creates a temporary `Document` by reading the file via the module
+    /// resolver's filesystem. The document is NOT added to this manager's
+    /// tracking maps — it is a read-only snapshot for cross-file queries.
+    pub fn load_unopened_module(&self, module_id: &ModuleId) -> Option<Document> {
+        let text = self.module_resolver.read_file(module_id.path()).ok()?;
+        let mut doc = Document::new_test(text, 0);
+        doc.module_id = Some(module_id.clone());
+        Some(doc)
     }
 
     pub fn symbol_index(&self) -> &SymbolIndex {
@@ -1521,5 +1554,50 @@ mod tests {
         let doc = dm.get(&uri).unwrap();
         assert!(!doc.cache().semantic_tokens.is_valid(1));
         assert!(!doc.cache().semantic_tokens.is_valid(2));
+    }
+
+    #[test]
+    fn test_load_unopened_module_success() {
+        use luanext_typechecker::cli::config::CompilerOptions;
+        use luanext_typechecker::cli::fs::MockFileSystem;
+
+        let workspace_root = PathBuf::from("/test");
+        let mut mock_fs = MockFileSystem::new();
+        mock_fs.add_file(
+            PathBuf::from("/test/math.luax"),
+            "export function add(a: number, b: number): number\n    return a + b\nend",
+        );
+        let fs = Arc::new(mock_fs);
+        let compiler_options = CompilerOptions::default();
+        let module_config =
+            luanext_typechecker::module_resolver::ModuleConfig::from_compiler_options(
+                &compiler_options,
+                &workspace_root,
+            );
+        let module_registry = Arc::new(ModuleRegistry::new());
+        let module_resolver = Arc::new(ModuleResolver::new(
+            fs,
+            module_config,
+            workspace_root.clone(),
+        ));
+
+        let dm = DocumentManager::new(workspace_root, module_registry, module_resolver);
+        let module_id = ModuleId::new(PathBuf::from("/test/math.luax"));
+
+        let doc = dm.load_unopened_module(&module_id);
+        assert!(doc.is_some());
+        let doc = doc.unwrap();
+        assert!(doc.text.contains("export function add"));
+        assert_eq!(doc.version, 0);
+        assert_eq!(doc.module_id.as_ref().unwrap(), &module_id);
+    }
+
+    #[test]
+    fn test_load_unopened_module_file_not_found() {
+        let dm = DocumentManager::new_test();
+        let module_id = ModuleId::new(PathBuf::from("/nonexistent/file.luax"));
+
+        let doc = dm.load_unopened_module(&module_id);
+        assert!(doc.is_none());
     }
 }

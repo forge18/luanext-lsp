@@ -1,6 +1,7 @@
 use crate::arena_pool::with_pooled_arena;
 use crate::core::cache::CacheType;
-use crate::core::document::Document;
+use crate::core::document::{Document, DocumentManager};
+use crate::features::import_utils::find_import_info;
 use crate::traits::CompletionProviderTrait;
 use lsp_types::*;
 use luanext_parser::ast::statement::{ExportKind, ImportClause, Statement};
@@ -26,6 +27,21 @@ impl CompletionProvider {
         self.provide_with_workspace(document, position, None)
     }
 
+    /// Provide completion items with cross-file resolution via DocumentManager.
+    pub fn provide_with_manager(
+        &self,
+        document: &Document,
+        position: Position,
+        document_manager: &DocumentManager,
+    ) -> Vec<CompletionItem> {
+        self.provide_impl(
+            document,
+            position,
+            Some(document_manager.workspace_root()),
+            Some(document_manager),
+        )
+    }
+
     /// Provide completion items at a given position with workspace context.
     ///
     /// Uses position-based caching for expensive contexts (Statement, MemberAccess,
@@ -36,6 +52,16 @@ impl CompletionProvider {
         document: &Document,
         position: Position,
         workspace_root: Option<&Path>,
+    ) -> Vec<CompletionItem> {
+        self.provide_impl(document, position, workspace_root, None)
+    }
+
+    fn provide_impl(
+        &self,
+        document: &Document,
+        position: Position,
+        workspace_root: Option<&Path>,
+        document_manager: Option<&DocumentManager>,
     ) -> Vec<CompletionItem> {
         // Determine completion context from the text before the cursor
         let context = self.get_completion_context(document, position);
@@ -78,11 +104,11 @@ impl CompletionProvider {
         match context {
             CompletionContext::MemberAccess => {
                 // Get type information and provide member completions
-                items.extend(self.complete_members(document, position, false));
+                items.extend(self.complete_members(document, position, false, document_manager));
             }
             CompletionContext::MethodCall => {
                 // Get type information and provide method completions
-                items.extend(self.complete_members(document, position, true));
+                items.extend(self.complete_members(document, position, true, document_manager));
             }
             CompletionContext::TypeAnnotation => {
                 items.extend(self.complete_types());
@@ -510,6 +536,7 @@ impl CompletionProvider {
         document: &Document,
         position: Position,
         methods_only: bool,
+        document_manager: Option<&DocumentManager>,
     ) -> Vec<CompletionItem> {
         // Extract the identifier before the '.' or ':'
         let lines: Vec<&str> = document.text.lines().collect();
@@ -538,7 +565,7 @@ impl CompletionProvider {
             Err(_) => return Vec::new(),
         };
 
-        with_pooled_arena(|arena| {
+        let local_result = with_pooled_arena(|arena| {
             let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
             let ast = match parser.parse() {
                 Ok(a) => a,
@@ -559,7 +586,96 @@ impl CompletionProvider {
 
             // Get members based on the type
             Self::extract_members_from_type(&symbol.typ, methods_only, &interner)
-        })
+        });
+
+        // If local resolution found members, return them
+        if !local_result.is_empty() {
+            return local_result;
+        }
+
+        // Cross-file fallback: try to resolve from the imported module
+        if let Some(dm) = document_manager {
+            if let Some(items) =
+                self.resolve_cross_file_members(document, &identifier, methods_only, dm)
+            {
+                return items;
+            }
+        }
+
+        local_result
+    }
+
+    /// Try to resolve completion members from a cross-file import.
+    ///
+    /// When local type-checking resolves an imported symbol as Unknown,
+    /// this loads the source module and type-checks it to get the real type.
+    fn resolve_cross_file_members(
+        &self,
+        document: &Document,
+        identifier: &str,
+        methods_only: bool,
+        document_manager: &DocumentManager,
+    ) -> Option<Vec<CompletionItem>> {
+        // Parse current doc to find import info for this identifier
+        let (ast, interner, _, _) = document.get_or_parse_ast()?;
+        let import_info = find_import_info(ast.statements, identifier, &interner)?;
+
+        // Namespace imports don't resolve to a single symbol's members
+        if import_info.exported_name == "*" {
+            return None;
+        }
+
+        // Resolve module path
+        let module_id = document.module_id.as_ref()?;
+        let resolver = document_manager.module_resolver();
+        let target_module_id = resolver
+            .resolve(
+                &import_info.source,
+                std::path::Path::new(module_id.as_str()),
+            )
+            .ok()?;
+
+        // Get source module text: try open documents first, fall back to disk
+        let source_text = document_manager
+            .module_id_to_uri(&target_module_id)
+            .and_then(|uri| document_manager.get(uri))
+            .map(|doc| doc.text.clone())
+            .or_else(|| {
+                document_manager
+                    .load_unopened_module(&target_module_id)
+                    .map(|doc| doc.text.clone())
+            })?;
+
+        // Type-check source module in a fresh arena to get actual Type
+        let exported_name = import_info.exported_name.clone();
+        Some(with_pooled_arena(|arena| {
+            let handler = Arc::new(CollectingDiagnosticHandler::new());
+            let (interner, common_ids) = StringInterner::new_with_common_identifiers();
+
+            let mut lexer = Lexer::new(&source_text, handler.clone(), &interner);
+            let tokens = match lexer.tokenize() {
+                Ok(t) => t,
+                Err(_) => return Vec::new(),
+            };
+
+            let mut parser = Parser::new(tokens, handler.clone(), &interner, &common_ids, arena);
+            let ast = match parser.parse() {
+                Ok(a) => a,
+                Err(_) => return Vec::new(),
+            };
+
+            let mut type_checker = TypeChecker::new(handler, &interner, &common_ids, arena);
+            let _ = type_checker.check_program(&ast);
+
+            // Look up the exported symbol in the source module
+            let symbol_table = type_checker.symbol_table();
+            let symbol = match symbol_table.lookup(&exported_name) {
+                Some(s) => s,
+                None => return Vec::new(),
+            };
+
+            Self::extract_members_from_type(&symbol.typ, methods_only, &interner)
+        }))
     }
 
     /// Extract the identifier before the dot or colon

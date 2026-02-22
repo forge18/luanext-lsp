@@ -3,6 +3,7 @@
 pub mod edit;
 pub mod formatting;
 pub mod hints;
+pub mod import_utils;
 pub mod navigation;
 pub mod semantic;
 pub mod structure;

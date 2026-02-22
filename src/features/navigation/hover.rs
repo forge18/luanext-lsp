@@ -1,10 +1,12 @@
 use crate::core::cache::CacheType;
 use crate::core::diagnostics::DiagnosticsProvider;
-use crate::core::document::Document;
+use crate::core::document::{Document, DocumentManager};
+use crate::features::import_utils::find_import_info;
 use crate::traits::HoverProviderTrait;
 use lsp_types::*;
 use luanext_parser::ast::statement::{ExportKind, ImportClause, Statement};
 use luanext_parser::string_interner::StringInterner;
+use std::path::Path;
 
 /// Provides hover information (type info, documentation, signatures)
 #[derive(Clone)]
@@ -64,8 +66,8 @@ impl HoverProvider {
             return Some(hover);
         }
 
-        // Try to get type information from type checker
-        if let Some(hover) = self.hover_for_symbol(document, &word) {
+        // Try to get type information from type checker (no cross-file context)
+        if let Some(hover) = self.hover_for_symbol(document, &word, None) {
             document
                 .cache_mut()
                 .hover_cache
@@ -76,16 +78,62 @@ impl HoverProvider {
         None
     }
 
-    /// Get hover information for a symbol using the cached type-check result.
-    fn hover_for_symbol(&self, document: &Document, word: &str) -> Option<Hover> {
+    /// Get hover information for a symbol, with optional cross-file resolution.
+    fn hover_for_symbol(
+        &self,
+        document: &Document,
+        word: &str,
+        document_manager: Option<&DocumentManager>,
+    ) -> Option<Hover> {
         // Use cached type-check result instead of running type checker again
         let result = DiagnosticsProvider::ensure_type_checked(document);
-        let symbol = result.symbols.get(word)?;
+        let local_symbol = result.symbols.get(word);
 
-        let mut markdown = format!(
-            "```typedlua\n{} {}: {}\n```",
-            symbol.kind, word, symbol.type_display
-        );
+        // Determine the symbol info to display.
+        // If the local symbol is Unknown and we have cross-file context, try resolving from source.
+        let (kind, type_display, cross_file_source, cross_file_type_only) = if let Some(symbol) =
+            local_symbol
+        {
+            if symbol.type_display == "Unknown" {
+                // Try cross-file resolution for Unknown imports
+                if let Some(resolved) =
+                    self.try_resolve_cross_file(document, word, document_manager)
+                {
+                    resolved
+                } else {
+                    (
+                        symbol.kind.clone(),
+                        symbol.type_display.clone(),
+                        None,
+                        false,
+                    )
+                }
+            } else {
+                (
+                    symbol.kind.clone(),
+                    symbol.type_display.clone(),
+                    None,
+                    false,
+                )
+            }
+        } else {
+            // Symbol not in local table — try cross-file resolution
+            if let Some(resolved) = self.try_resolve_cross_file(document, word, document_manager) {
+                resolved
+            } else {
+                return None;
+            }
+        };
+
+        let mut markdown = format!("```typedlua\n{} {}: {}\n```", kind, word, type_display);
+
+        if let Some(source) = cross_file_source {
+            markdown.push_str(&format!("\n\n*Imported from `{}`*", source));
+        }
+
+        if cross_file_type_only {
+            markdown.push_str("\n\n*Imported as type-only*");
+        }
 
         // Type-only import and re-export detection uses cached AST (cheap, no type checking)
         if let Some((ast, interner, _, _)) = document.get_or_parse_ast() {
@@ -107,6 +155,114 @@ impl HoverProvider {
             }),
             range: None,
         })
+    }
+
+    /// Try to resolve a symbol's type from its source module via cross-file lookup.
+    /// Returns (kind, type_display, source_path, is_type_only) if successful.
+    fn try_resolve_cross_file(
+        &self,
+        document: &Document,
+        word: &str,
+        document_manager: Option<&DocumentManager>,
+    ) -> Option<(String, String, Option<String>, bool)> {
+        let document_manager = document_manager?;
+        let (ast, interner, _, _) = document.get_or_parse_ast()?;
+        let import_info = find_import_info(ast.statements, word, &interner)?;
+
+        // Namespace imports ("*") don't resolve to a single symbol
+        if import_info.exported_name == "*" {
+            return None;
+        }
+
+        let module_id = document.module_id.as_ref()?;
+        let resolver = document_manager.module_resolver();
+        let target_module_id = resolver
+            .resolve(&import_info.source, Path::new(module_id.as_str()))
+            .ok()?;
+
+        // Try the open-document path first (fast, cached)
+        let target_result = document_manager
+            .module_id_to_uri(&target_module_id)
+            .and_then(|uri| document_manager.get(uri))
+            .map(DiagnosticsProvider::ensure_type_checked);
+
+        // Fall back to loading from disk if the file isn't open
+        let target_result = target_result.or_else(|| {
+            let doc = document_manager.load_unopened_module(&target_module_id)?;
+            Some(DiagnosticsProvider::ensure_type_checked(&doc))
+        })?;
+
+        let target_symbol = target_result.symbols.get(&import_info.exported_name)?;
+
+        Some((
+            target_symbol.kind.clone(),
+            target_symbol.type_display.clone(),
+            Some(import_info.source),
+            import_info.is_type_only,
+        ))
+    }
+
+    /// Provide hover information at a given position with cross-file context.
+    ///
+    /// When a `DocumentManager` is available, imported symbols are resolved
+    /// from their source modules to show real type information.
+    pub fn provide_with_manager(
+        &self,
+        document: &Document,
+        position: Position,
+        document_manager: &DocumentManager,
+    ) -> Option<Hover> {
+        let start = std::time::Instant::now();
+
+        // Check cache first
+        let cached = document
+            .cache_mut()
+            .hover_cache
+            .get(position, document.version)
+            .cloned();
+
+        if let Some(result) = cached {
+            let mut cache = document.cache_mut();
+            let stats = cache.stats_for_mut(CacheType::Hover);
+            stats.record_hit_with_duration(start.elapsed());
+            stats.maybe_log(CacheType::Hover.name());
+            return Some(result);
+        }
+
+        {
+            let mut cache = document.cache_mut();
+            let stats = cache.stats_for_mut(CacheType::Hover);
+            stats.record_miss_with_duration(start.elapsed());
+            stats.maybe_log(CacheType::Hover.name());
+        }
+
+        let word = self.get_word_at_position(document, position)?;
+
+        if let Some(hover) = self.hover_for_keyword(&word) {
+            document
+                .cache_mut()
+                .hover_cache
+                .insert(position, hover.clone(), document.version);
+            return Some(hover);
+        }
+
+        if let Some(hover) = self.hover_for_builtin_type(&word) {
+            document
+                .cache_mut()
+                .hover_cache
+                .insert(position, hover.clone(), document.version);
+            return Some(hover);
+        }
+
+        if let Some(hover) = self.hover_for_symbol(document, &word, Some(document_manager)) {
+            document
+                .cache_mut()
+                .hover_cache
+                .insert(position, hover.clone(), document.version);
+            return Some(hover);
+        }
+
+        None
     }
 
     /// Check if a symbol name was imported via `import type { ... }`
@@ -385,6 +541,7 @@ impl HoverProvider {
 
 impl HoverProviderTrait for HoverProvider {
     fn provide(&self, document: &Document, position: Position) -> Option<Hover> {
+        // Without a DocumentManager, fall back to local-only hover (no cross-file resolution)
         self.provide_impl(document, position)
     }
 }
@@ -978,5 +1135,71 @@ mod tests {
             .cloned()
             .unwrap_or_default();
         assert!(!doc.cache().hover_cache.is_empty() || hover_stats.misses > 0);
+    }
+
+    // ── find_import_info tests ──────────────────────────────────────
+
+    #[test]
+    fn test_find_import_info_named_import() {
+        let doc = create_test_document("import { add } from './math'");
+        let (ast, interner, _, _) = doc.get_or_parse_ast().unwrap();
+        let result = find_import_info(ast.statements, "add", &interner);
+        assert!(result.is_some());
+        let info = result.unwrap();
+        assert_eq!(info.exported_name, "add");
+        assert_eq!(info.source, "./math");
+        assert!(!info.is_type_only);
+    }
+
+    #[test]
+    fn test_find_import_info_aliased_import() {
+        let doc = create_test_document("import { add as plus } from './math'");
+        let (ast, interner, _, _) = doc.get_or_parse_ast().unwrap();
+        // "plus" is the local name
+        let result = find_import_info(ast.statements, "plus", &interner);
+        assert!(result.is_some());
+        let info = result.unwrap();
+        assert_eq!(info.exported_name, "add");
+        assert_eq!(info.source, "./math");
+    }
+
+    #[test]
+    fn test_find_import_info_default_import() {
+        let doc = create_test_document("import myFunc from './utils'");
+        let (ast, interner, _, _) = doc.get_or_parse_ast().unwrap();
+        let result = find_import_info(ast.statements, "myFunc", &interner);
+        assert!(result.is_some());
+        let info = result.unwrap();
+        assert_eq!(info.exported_name, "default");
+        assert_eq!(info.source, "./utils");
+    }
+
+    #[test]
+    fn test_find_import_info_type_only_import() {
+        let doc = create_test_document("import type { Config } from './types'");
+        let (ast, interner, _, _) = doc.get_or_parse_ast().unwrap();
+        let result = find_import_info(ast.statements, "Config", &interner);
+        assert!(result.is_some());
+        let info = result.unwrap();
+        assert_eq!(info.exported_name, "Config");
+        assert!(info.is_type_only);
+    }
+
+    #[test]
+    fn test_find_import_info_not_found() {
+        let doc = create_test_document("import { add } from './math'");
+        let (ast, interner, _, _) = doc.get_or_parse_ast().unwrap();
+        let result = find_import_info(ast.statements, "subtract", &interner);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_find_import_info_namespace_import() {
+        let doc = create_test_document("import * as math from './math'");
+        let (ast, interner, _, _) = doc.get_or_parse_ast().unwrap();
+        let result = find_import_info(ast.statements, "math", &interner);
+        assert!(result.is_some());
+        let info = result.unwrap();
+        assert_eq!(info.exported_name, "*");
     }
 }
